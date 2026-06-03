@@ -1,7 +1,7 @@
 import { useAuth } from "@/hooks/use-auth";
 import { AppLayout } from "@/components/layout";
 import { Bell, Settings, Eye, EyeOff, ArrowDownToLine, ArrowUpFromLine } from "lucide-react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useGetWallet } from "@workspace/api-client-react";
 import { useState } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -11,11 +11,15 @@ export default function WalletPage() {
   const { user } = useAuth();
   const { data: wallet, isLoading } = useGetWallet();
   const [showBalance, setShowBalance] = useState(true);
+  const [, setLocation] = useLocation();
 
   return (
     <AppLayout>
       <header className="flex items-center justify-between p-4 border-b border-border">
-        <h1 className="font-bold text-xl tracking-tight">EthioP2P</h1>
+        <div className="flex space-x-4 text-lg">
+          <button className="text-white font-bold">Wallet</button>
+          <button onClick={() => setLocation("/p2p")} className="text-muted-foreground font-medium">P2P</button>
+        </div>
         <div className="flex items-center space-x-4 text-muted-foreground">
           <Bell className="w-5 h-5" />
           <Settings className="w-5 h-5" />
