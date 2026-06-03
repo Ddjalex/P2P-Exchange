@@ -2,10 +2,11 @@ import { Switch, Route, Router as WouterRouter, Redirect } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { AuthProvider } from "@/hooks/use-auth";
+import { AuthProvider, useAuth } from "@/hooks/use-auth";
 import { AdminAuthProvider } from "@/hooks/use-admin-auth";
 
 // Regular pages
+import AuthPage from "@/pages/auth";
 import NotFound from "@/pages/not-found";
 import WalletPage from "@/pages/wallet";
 import P2PPage from "@/pages/p2p";
@@ -45,25 +46,42 @@ const queryClient = new QueryClient({
   },
 });
 
+function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
+  const { user, isLoading } = useAuth();
+  if (isLoading) return null;
+  if (!user) return <Redirect to="/auth" />;
+  return <Component />;
+}
+
 function Router() {
+  const { user, isLoading } = useAuth();
+
   return (
     <Switch>
-      <Route path="/"><Redirect to="/wallet" /></Route>
+      {/* Root redirect */}
+      <Route path="/">
+        {isLoading ? null : user ? <Redirect to="/wallet" /> : <Redirect to="/auth" />}
+      </Route>
 
-      {/* User-facing pages */}
-      <Route path="/wallet" component={WalletPage} />
+      {/* Auth page — redirect to /wallet if already logged in */}
+      <Route path="/auth">
+        {isLoading ? null : user ? <Redirect to="/wallet" /> : <AuthPage />}
+      </Route>
+
+      {/* User-facing protected pages */}
+      <Route path="/wallet"><ProtectedRoute component={WalletPage} /></Route>
       <Route path="/wallet/usdt"><Redirect to="/wallet" /></Route>
-      <Route path="/p2p" component={P2PPage} />
-      <Route path="/p2p/confirm/:adId" component={BuyConfirmPage} />
-      <Route path="/ads" component={AdsPage} />
-      <Route path="/ads/post" component={PostAdPage} />
-      <Route path="/orders" component={OrdersPage} />
-      <Route path="/trade/:id" component={TradePage} />
-      <Route path="/chat" component={ChatPage} />
-      <Route path="/chat/:orderId" component={ChatThreadPage} />
-      <Route path="/profile" component={ProfilePage} />
-      <Route path="/profile/payment-methods" component={PaymentMethodsPage} />
-      <Route path="/kyc" component={KycPage} />
+      <Route path="/p2p"><ProtectedRoute component={P2PPage} /></Route>
+      <Route path="/p2p/confirm/:adId"><ProtectedRoute component={BuyConfirmPage} /></Route>
+      <Route path="/ads"><ProtectedRoute component={AdsPage} /></Route>
+      <Route path="/ads/post"><ProtectedRoute component={PostAdPage} /></Route>
+      <Route path="/orders"><ProtectedRoute component={OrdersPage} /></Route>
+      <Route path="/trade/:id"><ProtectedRoute component={TradePage} /></Route>
+      <Route path="/chat"><ProtectedRoute component={ChatPage} /></Route>
+      <Route path="/chat/:orderId"><ProtectedRoute component={ChatThreadPage} /></Route>
+      <Route path="/profile"><ProtectedRoute component={ProfilePage} /></Route>
+      <Route path="/profile/payment-methods"><ProtectedRoute component={PaymentMethodsPage} /></Route>
+      <Route path="/kyc"><ProtectedRoute component={KycPage} /></Route>
 
       {/* Admin auth */}
       <Route path="/admin/login" component={AdminLoginPage} />

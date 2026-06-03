@@ -23,6 +23,7 @@ export const usersTable = pgTable("users", {
   flagCount: integer("flag_count").notNull().default(0),
   cancellationCount7d: integer("cancellation_count_7d").notNull().default(0),
   appealLossCount30d: integer("appeal_loss_count_30d").notNull().default(0),
+  passwordHash: text("password_hash"),
   lastActiveAt: timestamp("last_active_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });

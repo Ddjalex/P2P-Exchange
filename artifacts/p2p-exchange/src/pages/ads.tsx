@@ -9,7 +9,8 @@ import { useToast } from "@/hooks/use-toast";
 
 export default function AdsPage() {
   const [tab, setTab] = useState<"All" | "online" | "offline" | "private">("All");
-  const { data: ads, isLoading } = useListAds({ mine: true, status: tab === "All" ? undefined : tab });
+  const { data: adsRaw, isLoading } = useListAds({ mine: true, status: tab === "All" ? undefined : tab });
+  const ads = Array.isArray(adsRaw) ? adsRaw : [];
   const toggleStatus = useToggleAdStatus();
   const deleteAd = useDeleteAd();
   const queryClient = useQueryClient();
