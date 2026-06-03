@@ -10,3 +10,4 @@ export * from "./kyc_submissions";
 export * from "./appeals";
 export * from "./notifications";
 export * from "./admin";
+export * from "./fraud";

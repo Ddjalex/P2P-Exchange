@@ -1,4 +1,4 @@
-import { pgTable, serial, text, boolean, timestamp, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, boolean, timestamp, integer, pgEnum } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -18,6 +18,11 @@ export const usersTable = pgTable("users", {
   notificationSettings: text("notification_settings").notNull().default('{"tradeAlerts":true,"chatMessages":true,"systemNotifications":true,"emailNotifications":true,"smsNotifications":false}'),
   isSuspended: boolean("is_suspended").notNull().default(false),
   suspensionReason: text("suspension_reason"),
+  suspendedUntil: timestamp("suspended_until"),
+  suspendedAt: timestamp("suspended_at"),
+  flagCount: integer("flag_count").notNull().default(0),
+  cancellationCount7d: integer("cancellation_count_7d").notNull().default(0),
+  appealLossCount30d: integer("appeal_loss_count_30d").notNull().default(0),
   lastActiveAt: timestamp("last_active_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
