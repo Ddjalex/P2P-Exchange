@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "P2P Exchange Ethiopia"
+version = "1.0.0"
+id = "artifacts/p2p-exchange"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 21832
+
+[services.development]
+run = "pnpm --filter @workspace/p2p-exchange run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/p2p-exchange", "run", "build" ]
+publicDir = "artifacts/p2p-exchange/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "21832"
+BASE_PATH = "/"

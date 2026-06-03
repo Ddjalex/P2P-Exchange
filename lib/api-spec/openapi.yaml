@@ -3,20 +3,40 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: P2P Exchange Ethiopia API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: auth
+    description: Dev bypass auth
+  - name: wallet
+    description: Wallet operations
+  - name: transactions
+    description: Transaction history
+  - name: ads
+    description: P2P advertisement management
+  - name: orders
+    description: P2P order management
+  - name: messages
+    description: P2P chat messages
+  - name: profile
+    description: User profile and payment methods
+  - name: kyc
+    description: KYC verification
+  - name: notifications
+    description: User notifications
+  - name: admin
+    description: Admin operations
+
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +44,714 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  # Auth (dev bypass)
+  /auth/me:
+    get:
+      operationId: getMe
+      tags: [auth]
+      summary: Get current user (dev bypass)
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+
+  # Wallet
+  /wallet:
+    get:
+      operationId: getWallet
+      tags: [wallet]
+      summary: Get wallet balances
+      responses:
+        "200":
+          description: Wallet info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Wallet"
+
+  /wallet/deposit-address:
+    get:
+      operationId: getDepositAddress
+      tags: [wallet]
+      summary: Get deposit address for network
+      parameters:
+        - name: network
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [TRC20, ERC20]
+      responses:
+        "200":
+          description: Deposit address
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DepositAddress"
+
+  /wallet/withdraw:
+    post:
+      operationId: requestWithdraw
+      tags: [wallet]
+      summary: Request a withdrawal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WithdrawInput"
+      responses:
+        "200":
+          description: Withdrawal initiated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transaction"
+
+  # Transactions
+  /transactions:
+    get:
+      operationId: listTransactions
+      tags: [transactions]
+      summary: List user transactions
+      parameters:
+        - name: type
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [deposit, withdraw, transfer]
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: Transaction list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Transaction"
+
+  # Ads
+  /ads:
+    get:
+      operationId: listAds
+      tags: [ads]
+      summary: List P2P ads (marketplace)
+      parameters:
+        - name: type
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [buy, sell]
+        - name: payment_method
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: amount
+          in: query
+          required: false
+          schema:
+            type: number
+        - name: mine
+          in: query
+          required: false
+          schema:
+            type: boolean
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [online, offline, private]
+      responses:
+        "200":
+          description: List of ads
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Ad"
+    post:
+      operationId: createAd
+      tags: [ads]
+      summary: Post a new ad
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdInput"
+      responses:
+        "201":
+          description: Ad created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ad"
+
+  /ads/{id}:
+    get:
+      operationId: getAd
+      tags: [ads]
+      summary: Get ad by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Ad details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ad"
+    patch:
+      operationId: updateAd
+      tags: [ads]
+      summary: Update an ad
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdUpdate"
+      responses:
+        "200":
+          description: Updated ad
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ad"
+    delete:
+      operationId: deleteAd
+      tags: [ads]
+      summary: Delete an ad
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /ads/{id}/toggle-status:
+    post:
+      operationId: toggleAdStatus
+      tags: [ads]
+      summary: Toggle ad online/offline
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Updated ad
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ad"
+
+  # Orders
+  /orders:
+    get:
+      operationId: listOrders
+      tags: [orders]
+      summary: List orders
+      parameters:
+        - name: tab
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [ongoing, fulfilled]
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [unpaid, paid, completed, cancelled, appeal]
+      responses:
+        "200":
+          description: List of orders
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Order"
+    post:
+      operationId: createOrder
+      tags: [orders]
+      summary: Create an order from an ad
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrderInput"
+      responses:
+        "201":
+          description: Order created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+
+  /orders/{id}:
+    get:
+      operationId: getOrder
+      tags: [orders]
+      summary: Get order details
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Order details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+
+  /orders/{id}/mark-paid:
+    post:
+      operationId: markOrderPaid
+      tags: [orders]
+      summary: Buyer marks order as paid
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Updated order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+
+  /orders/{id}/release:
+    post:
+      operationId: releaseCrypto
+      tags: [orders]
+      summary: Seller releases crypto
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Order completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+
+  /orders/{id}/cancel:
+    post:
+      operationId: cancelOrder
+      tags: [orders]
+      summary: Cancel an order
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CancelOrderInput"
+      responses:
+        "200":
+          description: Order cancelled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+
+  /orders/{id}/appeal:
+    post:
+      operationId: raiseAppeal
+      tags: [orders]
+      summary: Raise a dispute appeal
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AppealInput"
+      responses:
+        "201":
+          description: Appeal created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Appeal"
+
+  /orders/{id}/feedback:
+    post:
+      operationId: submitFeedback
+      tags: [orders]
+      summary: Submit feedback for completed order
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FeedbackInput"
+      responses:
+        "201":
+          description: Feedback submitted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Feedback"
+
+  # Messages
+  /messages/conversations:
+    get:
+      operationId: listConversations
+      tags: [messages]
+      summary: List chat conversations
+      responses:
+        "200":
+          description: List of conversations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Conversation"
+
+  /messages/{orderId}:
+    get:
+      operationId: getMessages
+      tags: [messages]
+      summary: Get messages for an order
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Messages list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Message"
+    post:
+      operationId: sendMessage
+      tags: [messages]
+      summary: Send a message
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MessageInput"
+      responses:
+        "201":
+          description: Message sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+
+  /messages/{orderId}/read:
+    post:
+      operationId: markMessagesRead
+      tags: [messages]
+      summary: Mark messages as read
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Marked read
+
+  # Profile
+  /profile:
+    get:
+      operationId: getProfile
+      tags: [profile]
+      summary: Get user profile with stats
+      responses:
+        "200":
+          description: Profile data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Profile"
+    patch:
+      operationId: updateProfile
+      tags: [profile]
+      summary: Update profile (username)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProfileUpdate"
+      responses:
+        "200":
+          description: Updated profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Profile"
+
+  /profile/payment-methods:
+    get:
+      operationId: listPaymentMethods
+      tags: [profile]
+      summary: List user payment methods
+      responses:
+        "200":
+          description: Payment methods
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PaymentMethod"
+    post:
+      operationId: addPaymentMethod
+      tags: [profile]
+      summary: Add a payment method
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PaymentMethodInput"
+      responses:
+        "201":
+          description: Payment method added
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentMethod"
+
+  /profile/payment-methods/{id}:
+    delete:
+      operationId: deletePaymentMethod
+      tags: [profile]
+      summary: Delete a payment method
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  # KYC
+  /kyc/status:
+    get:
+      operationId: getKycStatus
+      tags: [kyc]
+      summary: Get current KYC status
+      responses:
+        "200":
+          description: KYC status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KycStatus"
+
+  /kyc/submit:
+    post:
+      operationId: submitKyc
+      tags: [kyc]
+      summary: Submit KYC application
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/KycInput"
+      responses:
+        "201":
+          description: KYC submitted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KycStatus"
+
+  # Notifications
+  /notifications:
+    get:
+      operationId: listNotifications
+      tags: [notifications]
+      summary: List notifications
+      responses:
+        "200":
+          description: Notifications list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Notification"
+
+  /notifications/read-all:
+    post:
+      operationId: markAllNotificationsRead
+      tags: [notifications]
+      summary: Mark all notifications as read
+      responses:
+        "200":
+          description: Marked read
+
+  # Dashboard stats (wow endpoints)
+  /stats/overview:
+    get:
+      operationId: getStatsOverview
+      tags: [profile]
+      summary: Get trading overview stats
+      responses:
+        "200":
+          description: Stats overview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatsOverview"
+
+  # Admin KYC
+  /admin/kyc:
+    get:
+      operationId: adminListKyc
+      tags: [admin]
+      summary: List all KYC submissions (admin)
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [pending, verified, rejected, more_info_required]
+      responses:
+        "200":
+          description: KYC submissions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/KycSubmission"
+
+  /admin/kyc/{userId}:
+    get:
+      operationId: adminGetKyc
+      tags: [admin]
+      summary: Get KYC submission for a user (admin)
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: KYC submission detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KycSubmission"
+
+  /admin/kyc/{userId}/review:
+    post:
+      operationId: adminReviewKyc
+      tags: [admin]
+      summary: Review a KYC submission (admin)
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/KycReviewInput"
+      responses:
+        "200":
+          description: Updated KYC status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KycSubmission"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +762,796 @@ components:
       required:
         - status
 
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+        username:
+          type: string
+        email:
+          type: string
+        phone:
+          type: ["string", "null"]
+        country:
+          type: string
+        kycStatus:
+          type: string
+          enum: [pending, verified, rejected, more_info_required, none]
+        isMerchant:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - username
+        - email
+        - country
+        - kycStatus
+        - isMerchant
+        - createdAt
+
+    Wallet:
+      type: object
+      properties:
+        userId:
+          type: integer
+        asset:
+          type: string
+        availableBalance:
+          type: string
+        frozenBalance:
+          type: string
+        totalBalance:
+          type: string
+        etbValue:
+          type: string
+        etbRate:
+          type: string
+      required:
+        - userId
+        - asset
+        - availableBalance
+        - frozenBalance
+        - totalBalance
+        - etbValue
+        - etbRate
+
+    DepositAddress:
+      type: object
+      properties:
+        address:
+          type: string
+        network:
+          type: string
+        qrCode:
+          type: string
+        minDeposit:
+          type: string
+      required:
+        - address
+        - network
+        - minDeposit
+
+    WithdrawInput:
+      type: object
+      properties:
+        address:
+          type: string
+        network:
+          type: string
+          enum: [TRC20, ERC20]
+        amount:
+          type: string
+      required:
+        - address
+        - network
+        - amount
+
+    Transaction:
+      type: object
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+        type:
+          type: string
+          enum: [deposit, withdraw, transfer]
+        amount:
+          type: string
+        network:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [pending, completed, failed]
+        txid:
+          type: ["string", "null"]
+        address:
+          type: ["string", "null"]
+        fee:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - userId
+        - type
+        - amount
+        - status
+        - createdAt
+
+    Ad:
+      type: object
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+        username:
+          type: string
+        isMerchant:
+          type: boolean
+        type:
+          type: string
+          enum: [buy, sell]
+        asset:
+          type: string
+        fiat:
+          type: string
+        priceType:
+          type: string
+          enum: [fixed, floating]
+        price:
+          type: string
+        floatingMargin:
+          type: ["string", "null"]
+        totalAmount:
+          type: string
+        availableAmount:
+          type: string
+        minLimit:
+          type: string
+        maxLimit:
+          type: string
+        paymentMethods:
+          type: array
+          items:
+            type: string
+        paymentTimeLimit:
+          type: integer
+        autoReply:
+          type: ["string", "null"]
+        conditions:
+          type: object
+        region:
+          type: string
+        status:
+          type: string
+          enum: [online, offline, private]
+        orderCount:
+          type: integer
+        completionRate:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - userId
+        - username
+        - isMerchant
+        - type
+        - asset
+        - fiat
+        - priceType
+        - price
+        - totalAmount
+        - availableAmount
+        - minLimit
+        - maxLimit
+        - paymentMethods
+        - paymentTimeLimit
+        - conditions
+        - region
+        - status
+        - orderCount
+        - completionRate
+        - createdAt
+
+    AdInput:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [buy, sell]
+        priceType:
+          type: string
+          enum: [fixed, floating]
+        price:
+          type: string
+        floatingMargin:
+          type: string
+        totalAmount:
+          type: string
+        minLimit:
+          type: string
+        maxLimit:
+          type: string
+        paymentMethods:
+          type: array
+          items:
+            type: string
+        paymentTimeLimit:
+          type: integer
+        autoReply:
+          type: string
+        conditions:
+          type: object
+        region:
+          type: string
+        status:
+          type: string
+          enum: [online, offline, private]
+      required:
+        - type
+        - priceType
+        - price
+        - totalAmount
+        - minLimit
+        - maxLimit
+        - paymentMethods
+        - paymentTimeLimit
+        - region
+        - status
+
+    AdUpdate:
+      type: object
+      properties:
+        priceType:
+          type: string
+          enum: [fixed, floating]
+        price:
+          type: string
+        floatingMargin:
+          type: string
+        totalAmount:
+          type: string
+        minLimit:
+          type: string
+        maxLimit:
+          type: string
+        paymentMethods:
+          type: array
+          items:
+            type: string
+        paymentTimeLimit:
+          type: integer
+        autoReply:
+          type: string
+        conditions:
+          type: object
+        region:
+          type: string
+        status:
+          type: string
+          enum: [online, offline, private]
+
+    Order:
+      type: object
+      properties:
+        id:
+          type: integer
+        adId:
+          type: integer
+        buyerId:
+          type: integer
+        sellerId:
+          type: integer
+        buyerUsername:
+          type: string
+        sellerUsername:
+          type: string
+        amountUsdt:
+          type: string
+        amountEtb:
+          type: string
+        price:
+          type: string
+        paymentMethod:
+          type: string
+        paymentTimeLimit:
+          type: integer
+        status:
+          type: string
+          enum: [unpaid, paid, completed, cancelled, appeal]
+        cancelReason:
+          type: ["string", "null"]
+        unreadCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        paidAt:
+          type: ["string", "null"]
+        completedAt:
+          type: ["string", "null"]
+        sellerAccountName:
+          type: ["string", "null"]
+        sellerAccountNumber:
+          type: ["string", "null"]
+      required:
+        - id
+        - adId
+        - buyerId
+        - sellerId
+        - buyerUsername
+        - sellerUsername
+        - amountUsdt
+        - amountEtb
+        - price
+        - paymentMethod
+        - paymentTimeLimit
+        - status
+        - unreadCount
+        - createdAt
+
+    OrderInput:
+      type: object
+      properties:
+        adId:
+          type: integer
+        amountUsdt:
+          type: string
+        amountEtb:
+          type: string
+        paymentMethod:
+          type: string
+      required:
+        - adId
+        - amountUsdt
+        - amountEtb
+        - paymentMethod
+
+    CancelOrderInput:
+      type: object
+      properties:
+        reason:
+          type: string
+
+    AppealInput:
+      type: object
+      properties:
+        reason:
+          type: string
+        description:
+          type: string
+        evidenceUrls:
+          type: array
+          items:
+            type: string
+      required:
+        - reason
+        - description
+
+    Appeal:
+      type: object
+      properties:
+        id:
+          type: integer
+        orderId:
+          type: integer
+        raisedBy:
+          type: integer
+        reason:
+          type: string
+        description:
+          type: string
+        evidenceUrls:
+          type: array
+          items:
+            type: string
+        status:
+          type: string
+          enum: [pending, resolved]
+        adminDecision:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - orderId
+        - raisedBy
+        - reason
+        - description
+        - evidenceUrls
+        - status
+        - createdAt
+
+    FeedbackInput:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [positive, negative]
+        comment:
+          type: string
+      required:
+        - type
+
+    Feedback:
+      type: object
+      properties:
+        id:
+          type: integer
+        orderId:
+          type: integer
+        fromUserId:
+          type: integer
+        toUserId:
+          type: integer
+        type:
+          type: string
+          enum: [positive, negative]
+        comment:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - orderId
+        - fromUserId
+        - toUserId
+        - type
+        - createdAt
+
+    Message:
+      type: object
+      properties:
+        id:
+          type: integer
+        orderId:
+          type: integer
+        senderId:
+          type: integer
+        senderUsername:
+          type: string
+        receiverId:
+          type: integer
+        content:
+          type: string
+        type:
+          type: string
+          enum: [text, image, system]
+        isRead:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - orderId
+        - senderId
+        - senderUsername
+        - receiverId
+        - content
+        - type
+        - isRead
+        - createdAt
+
+    MessageInput:
+      type: object
+      properties:
+        content:
+          type: string
+        type:
+          type: string
+          enum: [text, image]
+      required:
+        - content
+        - type
+
+    Conversation:
+      type: object
+      properties:
+        orderId:
+          type: integer
+        traderUsername:
+          type: string
+        isMerchant:
+          type: boolean
+        lastMessage:
+          type: string
+        lastMessageAt:
+          type: string
+          format: date-time
+        unreadCount:
+          type: integer
+        orderStatus:
+          type: string
+      required:
+        - orderId
+        - traderUsername
+        - isMerchant
+        - lastMessage
+        - lastMessageAt
+        - unreadCount
+        - orderStatus
+
+    Profile:
+      type: object
+      properties:
+        id:
+          type: integer
+        username:
+          type: string
+        email:
+          type: string
+        kycStatus:
+          type: string
+          enum: [pending, verified, rejected, more_info_required, none]
+        isMerchant:
+          type: boolean
+        emailVerified:
+          type: boolean
+        smsVerified:
+          type: boolean
+        addressVerified:
+          type: boolean
+        trades30d:
+          type: integer
+        completionRate30d:
+          type: string
+        avgReleaseTime:
+          type: string
+        avgPayTime:
+          type: string
+        totalTrades:
+          type: integer
+        positiveFeedbackPct:
+          type: string
+        negativeFeedbackPct:
+          type: string
+        feedbackCount:
+          type: integer
+        firstTradeAt:
+          type: ["string", "null"]
+        notificationSettings:
+          type: object
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - username
+        - email
+        - kycStatus
+        - isMerchant
+        - emailVerified
+        - smsVerified
+        - addressVerified
+        - trades30d
+        - completionRate30d
+        - avgReleaseTime
+        - avgPayTime
+        - totalTrades
+        - positiveFeedbackPct
+        - negativeFeedbackPct
+        - feedbackCount
+        - notificationSettings
+        - createdAt
+
+    ProfileUpdate:
+      type: object
+      properties:
+        username:
+          type: string
+
+    PaymentMethod:
+      type: object
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+        type:
+          type: string
+          enum: [CBE, Telebirr, Awash, Dashen, Abyssinia, HelloCash, MPesa]
+        accountName:
+          type: string
+        accountNumber:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - userId
+        - type
+        - accountName
+        - accountNumber
+        - createdAt
+
+    PaymentMethodInput:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [CBE, Telebirr, Awash, Dashen, Abyssinia, HelloCash, MPesa]
+        accountName:
+          type: string
+        accountNumber:
+          type: string
+      required:
+        - type
+        - accountName
+        - accountNumber
+
+    KycStatus:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [pending, verified, rejected, more_info_required, none]
+        rejectionReason:
+          type: ["string", "null"]
+        adminMessage:
+          type: ["string", "null"]
+        submittedAt:
+          type: ["string", "null"]
+        reviewedAt:
+          type: ["string", "null"]
+      required:
+        - status
+
+    KycInput:
+      type: object
+      properties:
+        fullName:
+          type: string
+        dateOfBirth:
+          type: string
+        nationality:
+          type: string
+        idType:
+          type: string
+          enum: [national_id, passport, drivers_license, kebele_id]
+        frontImageUrl:
+          type: string
+        backImageUrl:
+          type: ["string", "null"]
+        selfieUrl:
+          type: string
+        livenessResult:
+          type: object
+      required:
+        - fullName
+        - dateOfBirth
+        - nationality
+        - idType
+        - frontImageUrl
+        - selfieUrl
+        - livenessResult
+
+    KycSubmission:
+      type: object
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+        username:
+          type: string
+        email:
+          type: string
+        fullName:
+          type: string
+        dateOfBirth:
+          type: string
+        nationality:
+          type: string
+        idType:
+          type: string
+        frontImageUrl:
+          type: string
+        backImageUrl:
+          type: ["string", "null"]
+        selfieUrl:
+          type: string
+        livenessResult:
+          type: object
+        status:
+          type: string
+          enum: [pending, verified, rejected, more_info_required]
+        rejectionReason:
+          type: ["string", "null"]
+        adminMessage:
+          type: ["string", "null"]
+        reviewedBy:
+          type: ["integer", "null"]
+        submittedAt:
+          type: string
+          format: date-time
+        reviewedAt:
+          type: ["string", "null"]
+      required:
+        - id
+        - userId
+        - username
+        - email
+        - fullName
+        - dateOfBirth
+        - nationality
+        - idType
+        - frontImageUrl
+        - selfieUrl
+        - livenessResult
+        - status
+        - submittedAt
+
+    KycReviewInput:
+      type: object
+      properties:
+        decision:
+          type: string
+          enum: [verified, rejected, more_info_required]
+        rejectionReason:
+          type: string
+        adminMessage:
+          type: string
+      required:
+        - decision
+
+    Notification:
+      type: object
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+        type:
+          type: string
+        title:
+          type: string
+        message:
+          type: string
+        isRead:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - userId
+        - type
+        - title
+        - message
+        - isRead
+        - createdAt
+
+    StatsOverview:
+      type: object
+      properties:
+        totalVolume:
+          type: string
+        totalOrders:
+          type: integer
+        completionRate:
+          type: string
+        activeAds:
+          type: integer
+        pendingOrders:
+          type: integer
+        completedToday:
+          type: integer
+      required:
+        - totalVolume
+        - totalOrders
+        - completionRate
+        - activeAds
+        - pendingOrders
+        - completedToday
