@@ -18,7 +18,7 @@ export default function ProfilePage() {
         <div className="flex justify-between items-start mb-6">
           <div className="flex items-center space-x-4">
             <div className="w-16 h-16 rounded-full bg-secondary flex items-center justify-center text-xl font-bold">
-              {profile?.username.slice(0, 2).toUpperCase()}
+              {profile?.username?.slice(0, 2).toUpperCase()}
             </div>
             <div>
               <div className="flex items-center space-x-2">
