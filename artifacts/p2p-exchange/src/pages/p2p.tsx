@@ -7,7 +7,8 @@ import { Link, useLocation } from "wouter";
 
 export default function P2PPage() {
   const [type, setType] = useState<"buy" | "sell">("buy");
-  const { data: ads, isLoading } = useListAds({ type });
+  const { data: adsRaw, isLoading } = useListAds({ type });
+  const ads = Array.isArray(adsRaw) ? adsRaw : [];
   const [, setLocation] = useLocation();
 
   return (
