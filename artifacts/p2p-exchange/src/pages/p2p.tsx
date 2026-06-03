@@ -115,7 +115,7 @@ export default function P2PPage() {
                     <span className="px-1.5 py-0.5 rounded-sm bg-secondary text-[10px] text-muted-foreground font-medium">+{ad.paymentMethods.length - 3}</span>
                   )}
                 </div>
-                <Link href={`/trade/${ad.id}`}>
+                <Link href={type === "buy" ? `/p2p/confirm/${ad.id}` : `/p2p/confirm/${ad.id}`}>
                   <button className={`px-6 py-2 rounded-md font-semibold text-sm ${type === "buy" ? "bg-primary text-primary-foreground" : "bg-destructive text-destructive-foreground"}`}>
                     {type === "buy" ? "Buy" : "Sell"} USDT
                   </button>

@@ -4,7 +4,7 @@ import { db } from "@workspace/db";
 import {
   usersTable, adsTable, ordersTable, kycSubmissionsTable, appealsTable,
   transactionsTable, walletsTable, messagesTable, notificationsTable,
-  adminLogsTable, systemSettingsTable, notificationHistoryTable,
+  adminLogsTable, systemSettingsTable, notificationHistoryTable, fraudFlagsTable,
 } from "@workspace/db";
 import { eq, desc, and, or, ilike, sql, ne, count } from "drizzle-orm";
 
@@ -167,9 +167,30 @@ router.get("/users/:id", adminAuth, async (req, res) => {
 router.put("/users/:id/suspend", adminAuth, async (req: any, res) => {
   try {
     const id = parseInt(req.params.id);
-    const { reason } = req.body ?? {};
-    await db.update(usersTable).set({ isSuspended: true, suspensionReason: reason ?? null }).where(eq(usersTable.id, id));
-    await log(req.adminEmail, "suspend_user", "user", id, reason);
+    const { reason, duration } = req.body ?? {};
+    const now = new Date();
+    const durationMap: Record<string, number> = { "1d": 1, "3d": 3, "7d": 7, "30d": 30 };
+    let suspendedUntil: Date | null = null;
+    if (duration && duration !== "permanent" && durationMap[duration]) {
+      suspendedUntil = new Date(now.getTime() + durationMap[duration] * 24 * 60 * 60 * 1000);
+    }
+    await db.update(usersTable).set({
+      isSuspended: true,
+      suspensionReason: reason ?? null,
+      suspendedAt: now,
+      suspendedUntil: suspendedUntil ?? undefined,
+    }).where(eq(usersTable.id, id));
+    // Auto-cancel all active orders for this user
+    const activeOrders = await db.select().from(ordersTable).where(
+      and(
+        or(eq(ordersTable.buyerId, id), eq(ordersTable.sellerId, id))!,
+        or(eq(ordersTable.status, "unpaid"), eq(ordersTable.status, "paid"))!
+      )
+    );
+    for (const order of activeOrders) {
+      await db.update(ordersTable).set({ status: "cancelled", cancelReason: "Account suspended" }).where(eq(ordersTable.id, order.id));
+    }
+    await log(req.adminEmail, "suspend_user", "user", id, `${reason} (${duration ?? "permanent"})`);
     res.json({ success: true });
   } catch (err) {
     req.log.error({ err }, "Admin suspend user failed");
@@ -180,11 +201,30 @@ router.put("/users/:id/suspend", adminAuth, async (req: any, res) => {
 router.put("/users/:id/unsuspend", adminAuth, async (req: any, res) => {
   try {
     const id = parseInt(req.params.id);
-    await db.update(usersTable).set({ isSuspended: false, suspensionReason: null }).where(eq(usersTable.id, id));
+    await db.update(usersTable).set({ isSuspended: false, suspensionReason: null, suspendedUntil: null as any }).where(eq(usersTable.id, id));
     await log(req.adminEmail, "unsuspend_user", "user", id);
     res.json({ success: true });
   } catch (err) {
     req.log.error({ err }, "Admin unsuspend user failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.put("/users/:id/flag", adminAuth, async (req: any, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { flagType = "manual", description } = req.body ?? {};
+    await db.insert(fraudFlagsTable).values({
+      userId: id,
+      flagType,
+      description: description ?? null,
+      flaggedBy: "admin",
+    });
+    await db.update(usersTable).set({ flagCount: sql`${usersTable.flagCount} + 1` }).where(eq(usersTable.id, id));
+    await log(req.adminEmail, "flag_user", "user", id, `${flagType}: ${description}`);
+    res.json({ success: true });
+  } catch (err) {
+    req.log.error({ err }, "Admin flag user failed");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -434,6 +474,20 @@ router.put("/orders/:id/force-cancel", adminAuth, async (req: any, res) => {
     res.json({ success: true });
   } catch (err) {
     req.log.error({ err }, "Admin force cancel failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.put("/orders/:id/add-note", adminAuth, async (req: any, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { note } = req.body ?? {};
+    if (!note?.trim()) return res.status(400).json({ error: "Note is required" });
+    await db.update(ordersTable).set({ adminNote: note.trim() }).where(eq(ordersTable.id, id));
+    await log(req.adminEmail, "add_order_note", "order", id, note);
+    res.json({ success: true });
+  } catch (err) {
+    req.log.error({ err }, "Admin add order note failed");
     res.status(500).json({ error: "Internal server error" });
   }
 });

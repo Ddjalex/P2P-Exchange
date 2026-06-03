@@ -13,6 +13,7 @@ import AdsPage from "@/pages/ads";
 import PostAdPage from "@/pages/post-ad";
 import OrdersPage from "@/pages/orders";
 import TradePage from "@/pages/trade";
+import BuyConfirmPage from "@/pages/buy-confirm";
 import ChatPage from "@/pages/chat";
 import ChatThreadPage from "@/pages/chat-thread";
 import ProfilePage from "@/pages/profile";
@@ -53,6 +54,7 @@ function Router() {
       <Route path="/wallet" component={WalletPage} />
       <Route path="/wallet/usdt"><Redirect to="/wallet" /></Route>
       <Route path="/p2p" component={P2PPage} />
+      <Route path="/p2p/confirm/:adId" component={BuyConfirmPage} />
       <Route path="/ads" component={AdsPage} />
       <Route path="/ads/post" component={PostAdPage} />
       <Route path="/orders" component={OrdersPage} />
