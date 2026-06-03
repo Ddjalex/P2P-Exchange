@@ -9,3 +9,4 @@ export * from "./feedback";
 export * from "./kyc_submissions";
 export * from "./appeals";
 export * from "./notifications";
+export * from "./admin";

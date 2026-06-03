@@ -1,88 +1,737 @@
 import { Router } from "express";
+import { createHmac, timingSafeEqual, randomBytes } from "crypto";
 import { db } from "@workspace/db";
-import { kycSubmissionsTable, usersTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import {
+  usersTable, adsTable, ordersTable, kycSubmissionsTable, appealsTable,
+  transactionsTable, walletsTable, messagesTable, notificationsTable,
+  adminLogsTable, systemSettingsTable, notificationHistoryTable,
+} from "@workspace/db";
+import { eq, desc, and, or, ilike, sql, ne, count } from "drizzle-orm";
 
 const router = Router();
 
-async function formatSubmission(sub: any) {
+// ─── Token helpers ──────────────────────────────────────────────────────────
+
+function sign(payload: object, secret: string): string {
+  const data = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  const sig = createHmac("sha256", secret).update(data).digest("base64url");
+  return `${data}.${sig}`;
+}
+
+function verify(token: string, secret: string): { email: string; iat: number } | null {
+  const parts = token.split(".");
+  if (parts.length !== 2) return null;
+  const [data, sig] = parts;
+  const expected = createHmac("sha256", secret).update(data).digest("base64url");
+  try {
+    if (!timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return null;
+  } catch { return null; }
+  try {
+    const parsed = JSON.parse(Buffer.from(data, "base64url").toString());
+    if (Date.now() - parsed.iat > 24 * 60 * 60 * 1000) return null;
+    return parsed;
+  } catch { return null; }
+}
+
+function getSecret(): string {
+  return process.env.ADMIN_JWT_SECRET ?? randomBytes(32).toString("hex");
+}
+
+// ─── Auth middleware ─────────────────────────────────────────────────────────
+
+function adminAuth(req: any, res: any, next: any) {
+  const auth = req.headers.authorization;
+  if (!auth?.startsWith("Bearer ")) return res.status(401).json({ error: "Unauthorized" });
+  const token = auth.slice(7);
+  const payload = verify(token, getSecret());
+  if (!payload) return res.status(401).json({ error: "Unauthorized" });
+  req.adminEmail = payload.email;
+  next();
+}
+
+// ─── Audit logger ────────────────────────────────────────────────────────────
+
+async function log(adminEmail: string, action: string, targetType?: string, targetId?: number, note?: string) {
+  await db.insert(adminLogsTable).values({ adminEmail, action, targetType, targetId, note }).catch(() => {});
+}
+
+// ─── AUTH ────────────────────────────────────────────────────────────────────
+
+router.post("/auth/login", async (req, res) => {
+  try {
+    const { email, password } = req.body ?? {};
+    const adminEmail = process.env.ADMIN_EMAIL;
+    const adminPassword = process.env.ADMIN_PASSWORD;
+    if (!email || !password) return res.status(400).json({ error: "Email and password required" });
+    if (email !== adminEmail || password !== adminPassword)
+      return res.status(401).json({ error: "Invalid credentials" });
+    const token = sign({ email, iat: Date.now() }, getSecret());
+    res.json({ token, admin: { email } });
+  } catch (err) {
+    req.log.error({ err }, "Admin login failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.get("/auth/me", adminAuth, (req: any, res) => {
+  res.json({ email: req.adminEmail });
+});
+
+// ─── DASHBOARD STATS ─────────────────────────────────────────────────────────
+
+router.get("/stats/overview", adminAuth, async (req, res) => {
+  try {
+    const [totalUsers] = await db.select({ c: count() }).from(usersTable);
+    const [pendingKyc] = await db.select({ c: count() }).from(usersTable).where(eq(usersTable.kycStatus, "pending"));
+    const [openOrders] = await db.select({ c: count() }).from(ordersTable).where(or(eq(ordersTable.status, "unpaid"), eq(ordersTable.status, "paid"))!);
+    const [openDisputes] = await db.select({ c: count() }).from(appealsTable).where(eq(appealsTable.status, "pending"));
+    const [pendingWithdrawals] = await db.select({ c: count() }).from(transactionsTable).where(and(eq(transactionsTable.type, "withdraw"), eq(transactionsTable.status, "pending")));
+    const [totalVolume] = await db.select({ s: sql<string>`sum(${transactionsTable.amount}::numeric)` }).from(transactionsTable).where(and(eq(transactionsTable.type, "deposit"), eq(transactionsTable.status, "completed")));
+    const [completedOrders] = await db.select({ c: count() }).from(ordersTable).where(eq(ordersTable.status, "completed"));
+
+    const kycRows = await db.select({ status: usersTable.kycStatus, c: count() }).from(usersTable).groupBy(usersTable.kycStatus);
+    const kycStats = Object.fromEntries(kycRows.map(r => [r.status, Number(r.c)]));
+
+    res.json({
+      totalUsers: Number(totalUsers.c),
+      pendingKyc: Number(pendingKyc.c),
+      openOrders: Number(openOrders.c),
+      openDisputes: Number(openDisputes.c),
+      pendingWithdrawals: Number(pendingWithdrawals.c),
+      completedOrders: Number(completedOrders.c),
+      totalVolume: totalVolume.s ?? "0",
+      kycStats,
+    });
+  } catch (err) {
+    req.log.error({ err }, "Admin stats failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.get("/stats/activity", adminAuth, async (req, res) => {
+  try {
+    const logs = await db.select().from(adminLogsTable).orderBy(desc(adminLogsTable.createdAt)).limit(20);
+    const recentUsers = await db.select({ id: usersTable.id, username: usersTable.username, createdAt: usersTable.createdAt })
+      .from(usersTable).orderBy(desc(usersTable.createdAt)).limit(5);
+    const recentOrders = await db.select({ id: ordersTable.id, status: ordersTable.status, amountUsdt: ordersTable.amountUsdt, createdAt: ordersTable.createdAt })
+      .from(ordersTable).orderBy(desc(ordersTable.createdAt)).limit(5);
+    res.json({ logs, recentUsers, recentOrders });
+  } catch (err) {
+    req.log.error({ err }, "Admin activity failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ─── USERS ───────────────────────────────────────────────────────────────────
+
+router.get("/users", adminAuth, async (req, res) => {
+  try {
+    const { search, kycStatus, page = "1" } = req.query as Record<string, string>;
+    const limit = 20;
+    const offset = (parseInt(page) - 1) * limit;
+    let conditions: any[] = [];
+    if (search) {
+      conditions.push(or(ilike(usersTable.username, `%${search}%`), ilike(usersTable.email, `%${search}%`))!);
+    }
+    if (kycStatus && kycStatus !== "all") {
+      conditions.push(eq(usersTable.kycStatus, kycStatus as any));
+    }
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
+    const users = await db.select().from(usersTable).where(where).orderBy(desc(usersTable.createdAt)).limit(limit).offset(offset);
+    const [{ c: total }] = await db.select({ c: count() }).from(usersTable).where(where);
+    res.json({ users, total: Number(total), page: parseInt(page), limit });
+  } catch (err) {
+    req.log.error({ err }, "Admin users list failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.get("/users/:id", adminAuth, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const user = await db.select().from(usersTable).where(eq(usersTable.id, id)).then(r => r[0]);
+    if (!user) return res.status(404).json({ error: "User not found" });
+    const wallet = await db.select().from(walletsTable).where(eq(walletsTable.userId, id)).then(r => r[0]);
+    const [orderCount] = await db.select({ c: count() }).from(ordersTable).where(or(eq(ordersTable.buyerId, id), eq(ordersTable.sellerId, id))!);
+    const kyc = await db.select().from(kycSubmissionsTable).where(eq(kycSubmissionsTable.userId, id)).then(r => r[0]);
+    const txs = await db.select().from(transactionsTable).where(eq(transactionsTable.userId, id)).orderBy(desc(transactionsTable.createdAt)).limit(10);
+    const orders = await db.select().from(ordersTable).where(or(eq(ordersTable.buyerId, id), eq(ordersTable.sellerId, id))!).orderBy(desc(ordersTable.createdAt)).limit(10);
+    const ads = await db.select().from(adsTable).where(eq(adsTable.userId, id)).orderBy(desc(adsTable.createdAt)).limit(10);
+    res.json({ user, wallet: wallet ?? null, orderCount: Number(orderCount.c), kyc: kyc ?? null, transactions: txs, orders, ads });
+  } catch (err) {
+    req.log.error({ err }, "Admin user detail failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.put("/users/:id/suspend", adminAuth, async (req: any, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { reason } = req.body ?? {};
+    await db.update(usersTable).set({ isSuspended: true, suspensionReason: reason ?? null }).where(eq(usersTable.id, id));
+    await log(req.adminEmail, "suspend_user", "user", id, reason);
+    res.json({ success: true });
+  } catch (err) {
+    req.log.error({ err }, "Admin suspend user failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.put("/users/:id/unsuspend", adminAuth, async (req: any, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    await db.update(usersTable).set({ isSuspended: false, suspensionReason: null }).where(eq(usersTable.id, id));
+    await log(req.adminEmail, "unsuspend_user", "user", id);
+    res.json({ success: true });
+  } catch (err) {
+    req.log.error({ err }, "Admin unsuspend user failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.put("/users/:id/merchant", adminAuth, async (req: any, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { isMerchant } = req.body ?? {};
+    await db.update(usersTable).set({ isMerchant: !!isMerchant }).where(eq(usersTable.id, id));
+    await log(req.adminEmail, isMerchant ? "grant_merchant" : "revoke_merchant", "user", id);
+    res.json({ success: true });
+  } catch (err) {
+    req.log.error({ err }, "Admin toggle merchant failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.put("/users/:id/verify", adminAuth, async (req: any, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    await db.update(usersTable).set({ kycStatus: "verified" }).where(eq(usersTable.id, id));
+    await db.update(kycSubmissionsTable).set({ status: "verified" as any, reviewedAt: new Date() }).where(eq(kycSubmissionsTable.userId, id));
+    await log(req.adminEmail, "manual_verify_user", "user", id);
+    res.json({ success: true });
+  } catch (err) {
+    req.log.error({ err }, "Admin verify user failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.delete("/users/:id", adminAuth, async (req: any, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    await log(req.adminEmail, "delete_user", "user", id);
+    await db.delete(usersTable).where(eq(usersTable.id, id));
+    res.json({ success: true });
+  } catch (err) {
+    req.log.error({ err }, "Admin delete user failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ─── KYC ─────────────────────────────────────────────────────────────────────
+
+async function formatKyc(sub: any) {
   const user = await db.select().from(usersTable).where(eq(usersTable.id, sub.userId)).then(r => r[0]);
   return {
-    id: sub.id,
-    userId: sub.userId,
-    username: user?.username ?? "Unknown",
-    email: user?.email ?? "",
-    fullName: sub.fullName,
-    dateOfBirth: sub.dateOfBirth,
-    nationality: sub.nationality,
-    idType: sub.idType,
-    frontImageUrl: sub.frontImageUrl,
-    backImageUrl: sub.backImageUrl ?? null,
-    selfieUrl: sub.selfieUrl,
-    livenessResult: JSON.parse(sub.livenessResult),
-    status: sub.status,
-    rejectionReason: sub.rejectionReason ?? null,
-    adminMessage: sub.adminMessage ?? null,
-    reviewedBy: sub.reviewedBy ?? null,
-    submittedAt: sub.submittedAt,
-    reviewedAt: sub.reviewedAt ?? null,
+    id: sub.id, userId: sub.userId,
+    username: user?.username ?? "Unknown", email: user?.email ?? "",
+    fullName: sub.fullName, dateOfBirth: sub.dateOfBirth, nationality: sub.nationality,
+    idType: sub.idType, frontImageUrl: sub.frontImageUrl, backImageUrl: sub.backImageUrl ?? null,
+    selfieUrl: sub.selfieUrl, livenessResult: (() => { try { return JSON.parse(sub.livenessResult); } catch { return {}; } })(),
+    status: sub.status, rejectionReason: sub.rejectionReason ?? null, adminMessage: sub.adminMessage ?? null,
+    submittedAt: sub.submittedAt, reviewedAt: sub.reviewedAt ?? null,
+    isOld: sub.submittedAt && (Date.now() - new Date(sub.submittedAt).getTime() > 48 * 60 * 60 * 1000),
   };
 }
 
-router.get("/kyc", async (req, res) => {
+router.get("/kyc", adminAuth, async (req, res) => {
+  try {
+    const { status, search } = req.query as Record<string, string>;
+    let subs = await db.select().from(kycSubmissionsTable).orderBy(desc(kycSubmissionsTable.submittedAt));
+    if (status) subs = subs.filter(s => s.status === status);
+    const formatted = await Promise.all(subs.map(formatKyc));
+    const filtered = search ? formatted.filter(f =>
+      f.fullName?.toLowerCase().includes(search.toLowerCase()) ||
+      f.username?.toLowerCase().includes(search.toLowerCase()) ||
+      String(f.userId) === search
+    ) : formatted;
+    res.json(filtered);
+  } catch (err) {
+    req.log.error({ err }, "Admin kyc list failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.get("/kyc/stats", adminAuth, async (req, res) => {
+  try {
+    const all = await db.select({ status: kycSubmissionsTable.status, c: count() })
+      .from(kycSubmissionsTable).groupBy(kycSubmissionsTable.status);
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const approvedToday = await db.select({ c: count() }).from(kycSubmissionsTable)
+      .where(and(eq(kycSubmissionsTable.status, "verified" as any), sql`${kycSubmissionsTable.reviewedAt} >= ${today}`));
+    const rejectedToday = await db.select({ c: count() }).from(kycSubmissionsTable)
+      .where(and(eq(kycSubmissionsTable.status, "rejected" as any), sql`${kycSubmissionsTable.reviewedAt} >= ${today}`));
+    res.json({
+      byStatus: Object.fromEntries(all.map(r => [r.status, Number(r.c)])),
+      approvedToday: Number(approvedToday[0].c),
+      rejectedToday: Number(rejectedToday[0].c),
+    });
+  } catch (err) {
+    req.log.error({ err }, "Admin kyc stats failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.get("/kyc/:userId", adminAuth, async (req, res) => {
+  try {
+    const userId = parseInt(req.params.userId);
+    const sub = await db.select().from(kycSubmissionsTable).where(eq(kycSubmissionsTable.userId, userId)).then(r => r[0]);
+    if (!sub) return res.status(404).json({ error: "KYC not found" });
+    res.json(await formatKyc(sub));
+  } catch (err) {
+    req.log.error({ err }, "Admin kyc detail failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/kyc/:userId/review", adminAuth, async (req: any, res) => {
+  try {
+    const userId = parseInt(req.params.userId);
+    const { decision, rejectionReason, adminMessage } = req.body ?? {};
+    const newStatus = decision === "verified" ? "verified" : decision === "rejected" ? "rejected" : "more_info_required";
+    await db.update(kycSubmissionsTable).set({ status: newStatus as any, rejectionReason: rejectionReason ?? null, adminMessage: adminMessage ?? null, reviewedAt: new Date() }).where(eq(kycSubmissionsTable.userId, userId));
+    await db.update(usersTable).set({ kycStatus: newStatus as any }).where(eq(usersTable.id, userId));
+    await log(req.adminEmail, `kyc_${newStatus}`, "kyc", userId, rejectionReason);
+    const sub = await db.select().from(kycSubmissionsTable).where(eq(kycSubmissionsTable.userId, userId)).then(r => r[0]);
+    res.json(await formatKyc(sub!));
+  } catch (err) {
+    req.log.error({ err }, "Admin kyc review failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ─── ADS ─────────────────────────────────────────────────────────────────────
+
+router.get("/ads", adminAuth, async (req, res) => {
+  try {
+    const { search, status, type, page = "1" } = req.query as Record<string, string>;
+    const limit = 20;
+    const offset = (parseInt(page) - 1) * limit;
+    let conditions: any[] = [];
+    if (status && status !== "all") conditions.push(eq(adsTable.status, status as any));
+    if (type && type !== "all") conditions.push(eq(adsTable.type, type as any));
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
+    const ads = await db.select().from(adsTable).where(where).orderBy(desc(adsTable.createdAt)).limit(limit).offset(offset);
+    const [{ c: total }] = await db.select({ c: count() }).from(adsTable).where(where);
+    const enriched = await Promise.all(ads.map(async ad => {
+      const user = await db.select({ username: usersTable.username }).from(usersTable).where(eq(usersTable.id, ad.userId)).then(r => r[0]);
+      const paymentMethods = (() => { try { return JSON.parse(ad.paymentMethods); } catch { return []; } })();
+      return { ...ad, username: user?.username ?? "Unknown", paymentMethods };
+    }));
+    const filtered = search ? enriched.filter(a => a.username.toLowerCase().includes(search.toLowerCase())) : enriched;
+    res.json({ ads: filtered, total: Number(total), page: parseInt(page), limit });
+  } catch (err) {
+    req.log.error({ err }, "Admin ads list failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.put("/ads/:id/suspend", adminAuth, async (req: any, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    await db.update(adsTable).set({ status: "offline" }).where(eq(adsTable.id, id));
+    await log(req.adminEmail, "suspend_ad", "ad", id);
+    res.json({ success: true });
+  } catch (err) {
+    req.log.error({ err }, "Admin suspend ad failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.put("/ads/:id/reactivate", adminAuth, async (req: any, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    await db.update(adsTable).set({ status: "online" }).where(eq(adsTable.id, id));
+    await log(req.adminEmail, "reactivate_ad", "ad", id);
+    res.json({ success: true });
+  } catch (err) {
+    req.log.error({ err }, "Admin reactivate ad failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.delete("/ads/:id", adminAuth, async (req: any, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    await log(req.adminEmail, "delete_ad", "ad", id);
+    await db.delete(adsTable).where(eq(adsTable.id, id));
+    res.json({ success: true });
+  } catch (err) {
+    req.log.error({ err }, "Admin delete ad failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ─── ORDERS ───────────────────────────────────────────────────────────────────
+
+router.get("/orders", adminAuth, async (req, res) => {
+  try {
+    const { status, search, page = "1" } = req.query as Record<string, string>;
+    const limit = 20;
+    const offset = (parseInt(page) - 1) * limit;
+    let conditions: any[] = [];
+    if (status && status !== "all") conditions.push(eq(ordersTable.status, status as any));
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
+    const orders = await db.select().from(ordersTable).where(where).orderBy(desc(ordersTable.createdAt)).limit(limit).offset(offset);
+    const [{ c: total }] = await db.select({ c: count() }).from(ordersTable).where(where);
+    const enriched = await Promise.all(orders.map(async o => {
+      const buyer = await db.select({ username: usersTable.username }).from(usersTable).where(eq(usersTable.id, o.buyerId)).then(r => r[0]);
+      const seller = await db.select({ username: usersTable.username }).from(usersTable).where(eq(usersTable.id, o.sellerId)).then(r => r[0]);
+      return { ...o, buyerUsername: buyer?.username ?? "Unknown", sellerUsername: seller?.username ?? "Unknown" };
+    }));
+    const filtered = search ? enriched.filter(o => o.buyerUsername.toLowerCase().includes(search.toLowerCase()) || o.sellerUsername.toLowerCase().includes(search.toLowerCase()) || String(o.id).includes(search)) : enriched;
+    res.json({ orders: filtered, total: Number(total), page: parseInt(page), limit });
+  } catch (err) {
+    req.log.error({ err }, "Admin orders list failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.get("/orders/:id", adminAuth, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const order = await db.select().from(ordersTable).where(eq(ordersTable.id, id)).then(r => r[0]);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+    const buyer = await db.select().from(usersTable).where(eq(usersTable.id, order.buyerId)).then(r => r[0]);
+    const seller = await db.select().from(usersTable).where(eq(usersTable.id, order.sellerId)).then(r => r[0]);
+    const messages = await db.select().from(messagesTable).where(eq(messagesTable.orderId, id)).orderBy(messagesTable.createdAt);
+    const appeal = await db.select().from(appealsTable).where(eq(appealsTable.orderId, id)).then(r => r[0]);
+    res.json({ order, buyer: buyer ?? null, seller: seller ?? null, messages, appeal: appeal ?? null });
+  } catch (err) {
+    req.log.error({ err }, "Admin order detail failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.put("/orders/:id/force-complete", adminAuth, async (req: any, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { note } = req.body ?? {};
+    await db.update(ordersTable).set({ status: "completed", completedAt: new Date() }).where(eq(ordersTable.id, id));
+    await log(req.adminEmail, "force_complete_order", "order", id, note);
+    res.json({ success: true });
+  } catch (err) {
+    req.log.error({ err }, "Admin force complete failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.put("/orders/:id/force-cancel", adminAuth, async (req: any, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { note } = req.body ?? {};
+    await db.update(ordersTable).set({ status: "cancelled", cancelReason: note ?? "Admin cancelled" }).where(eq(ordersTable.id, id));
+    await log(req.adminEmail, "force_cancel_order", "order", id, note);
+    res.json({ success: true });
+  } catch (err) {
+    req.log.error({ err }, "Admin force cancel failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ─── DISPUTES ────────────────────────────────────────────────────────────────
+
+router.get("/disputes", adminAuth, async (req, res) => {
   try {
     const { status } = req.query as Record<string, string>;
-    let query = db.select().from(kycSubmissionsTable);
-    const submissions = await query;
-    const filtered = status
-      ? submissions.filter(s => s.status === status)
-      : submissions;
-    const formatted = await Promise.all(filtered.map(formatSubmission));
-    res.json(formatted);
+    let appeals = await db.select().from(appealsTable).orderBy(appealsTable.createdAt);
+    if (status && status !== "all") appeals = appeals.filter(a => a.status === status);
+    const enriched = await Promise.all(appeals.map(async a => {
+      const raiser = await db.select({ username: usersTable.username }).from(usersTable).where(eq(usersTable.id, a.raisedBy)).then(r => r[0]);
+      const evidenceUrls = (() => { try { return JSON.parse(a.evidenceUrls); } catch { return []; } })();
+      return { ...a, raisedByUsername: raiser?.username ?? "Unknown", evidenceCount: evidenceUrls.length, evidenceUrls };
+    }));
+    res.json(enriched);
   } catch (err) {
-    req.log.error({ err }, "Failed to list KYC submissions");
+    req.log.error({ err }, "Admin disputes list failed");
     res.status(500).json({ error: "Internal server error" });
   }
 });
 
-router.get("/kyc/:userId", async (req, res) => {
+router.get("/disputes/:id", adminAuth, async (req, res) => {
   try {
-    const userId = parseInt(req.params.userId);
-    const sub = await db.select().from(kycSubmissionsTable)
-      .where(eq(kycSubmissionsTable.userId, userId)).then(r => r[0]);
-    if (!sub) return res.status(404).json({ error: "KYC submission not found" });
-    res.json(await formatSubmission(sub));
+    const id = parseInt(req.params.id);
+    const appeal = await db.select().from(appealsTable).where(eq(appealsTable.id, id)).then(r => r[0]);
+    if (!appeal) return res.status(404).json({ error: "Dispute not found" });
+    const order = await db.select().from(ordersTable).where(eq(ordersTable.id, appeal.orderId)).then(r => r[0]);
+    const raiser = await db.select().from(usersTable).where(eq(usersTable.id, appeal.raisedBy)).then(r => r[0]);
+    const messages = order ? await db.select().from(messagesTable).where(eq(messagesTable.orderId, order.id)).orderBy(messagesTable.createdAt) : [];
+    const evidenceUrls = (() => { try { return JSON.parse(appeal.evidenceUrls); } catch { return []; } })();
+    let buyer = null; let seller = null;
+    if (order) {
+      buyer = await db.select().from(usersTable).where(eq(usersTable.id, order.buyerId)).then(r => r[0]);
+      seller = await db.select().from(usersTable).where(eq(usersTable.id, order.sellerId)).then(r => r[0]);
+    }
+    res.json({ appeal: { ...appeal, evidenceUrls }, order: order ?? null, raiser: raiser ?? null, buyer: buyer ?? null, seller: seller ?? null, messages });
   } catch (err) {
-    req.log.error({ err }, "Failed to get KYC submission");
+    req.log.error({ err }, "Admin dispute detail failed");
     res.status(500).json({ error: "Internal server error" });
   }
 });
 
-router.post("/kyc/:userId/review", async (req, res) => {
+router.put("/disputes/:id/resolve", adminAuth, async (req: any, res) => {
   try {
-    const userId = parseInt(req.params.userId);
-    const { decision, rejectionReason, adminMessage } = req.body;
-
-    const newKycStatus = decision === "verified" ? "verified"
-      : decision === "rejected" ? "rejected"
-      : "more_info_required";
-
-    await db.update(kycSubmissionsTable).set({
-      status: newKycStatus as any,
-      rejectionReason: rejectionReason ?? null,
-      adminMessage: adminMessage ?? null,
-      reviewedBy: 0, // admin
-      reviewedAt: new Date(),
-    }).where(eq(kycSubmissionsTable.userId, userId));
-
-    await db.update(usersTable).set({ kycStatus: newKycStatus as any })
-      .where(eq(usersTable.id, userId));
-
-    const sub = await db.select().from(kycSubmissionsTable)
-      .where(eq(kycSubmissionsTable.userId, userId)).then(r => r[0]);
-    res.json(await formatSubmission(sub!));
+    const id = parseInt(req.params.id);
+    const { decision, adminNote } = req.body ?? {};
+    await db.update(appealsTable).set({ status: "resolved", adminDecision: decision, resolvedAt: new Date() }).where(eq(appealsTable.id, id));
+    // Update order status if ruling
+    const appeal = await db.select().from(appealsTable).where(eq(appealsTable.id, id)).then(r => r[0]);
+    if (appeal) {
+      const newStatus = decision === "buyer_wins" ? "completed" : "cancelled";
+      await db.update(ordersTable).set({ status: newStatus as any }).where(eq(ordersTable.id, appeal.orderId));
+    }
+    await log(req.adminEmail, "resolve_dispute", "appeal", id, `${decision}: ${adminNote}`);
+    res.json({ success: true });
   } catch (err) {
-    req.log.error({ err }, "Failed to review KYC");
+    req.log.error({ err }, "Admin resolve dispute failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ─── WALLET & TRANSACTIONS ───────────────────────────────────────────────────
+
+router.get("/wallet/overview", adminAuth, async (req, res) => {
+  try {
+    const wallets = await db.select().from(walletsTable);
+    const totalAvailable = wallets.reduce((sum, w) => sum + parseFloat(w.availableBalance || "0"), 0);
+    const totalFrozen = wallets.reduce((sum, w) => sum + parseFloat(w.frozenBalance || "0"), 0);
+    const [pending] = await db.select({ c: count() }).from(transactionsTable).where(and(eq(transactionsTable.type, "withdraw"), eq(transactionsTable.status, "pending")));
+    res.json({ totalAvailable: totalAvailable.toFixed(2), totalFrozen: totalFrozen.toFixed(2), totalUsdt: (totalAvailable + totalFrozen).toFixed(2), pendingWithdrawals: Number(pending.c) });
+  } catch (err) {
+    req.log.error({ err }, "Admin wallet overview failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.get("/wallet/transactions", adminAuth, async (req, res) => {
+  try {
+    const { type, status, page = "1" } = req.query as Record<string, string>;
+    const limit = 20;
+    const offset = (parseInt(page) - 1) * limit;
+    let conditions: any[] = [];
+    if (type && type !== "all") conditions.push(eq(transactionsTable.type, type as any));
+    if (status && status !== "all") conditions.push(eq(transactionsTable.status, status as any));
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
+    const txs = await db.select().from(transactionsTable).where(where).orderBy(desc(transactionsTable.createdAt)).limit(limit).offset(offset);
+    const [{ c: total }] = await db.select({ c: count() }).from(transactionsTable).where(where);
+    const enriched = await Promise.all(txs.map(async tx => {
+      const user = await db.select({ username: usersTable.username, email: usersTable.email }).from(usersTable).where(eq(usersTable.id, tx.userId)).then(r => r[0]);
+      return { ...tx, username: user?.username ?? "Unknown", email: user?.email ?? "" };
+    }));
+    res.json({ transactions: enriched, total: Number(total), page: parseInt(page), limit });
+  } catch (err) {
+    req.log.error({ err }, "Admin transactions list failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.put("/wallet/transactions/:id/approve", adminAuth, async (req: any, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    await db.update(transactionsTable).set({ status: "completed" }).where(eq(transactionsTable.id, id));
+    await log(req.adminEmail, "approve_withdrawal", "transaction", id);
+    res.json({ success: true });
+  } catch (err) {
+    req.log.error({ err }, "Admin approve withdrawal failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.put("/wallet/transactions/:id/reject", adminAuth, async (req: any, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const tx = await db.select().from(transactionsTable).where(eq(transactionsTable.id, id)).then(r => r[0]);
+    if (tx) {
+      await db.update(transactionsTable).set({ status: "failed" }).where(eq(transactionsTable.id, id));
+      const wallet = await db.select().from(walletsTable).where(eq(walletsTable.userId, tx.userId)).then(r => r[0]);
+      if (wallet) {
+        const newBalance = (parseFloat(wallet.availableBalance) + parseFloat(tx.amount)).toFixed(2);
+        await db.update(walletsTable).set({ availableBalance: newBalance }).where(eq(walletsTable.userId, tx.userId));
+      }
+    }
+    await log(req.adminEmail, "reject_withdrawal", "transaction", id);
+    res.json({ success: true });
+  } catch (err) {
+    req.log.error({ err }, "Admin reject withdrawal failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ─── MESSAGES ────────────────────────────────────────────────────────────────
+
+router.get("/messages/conversations", adminAuth, async (req, res) => {
+  try {
+    const orders = await db.select().from(ordersTable).orderBy(desc(ordersTable.createdAt)).limit(50);
+    const enriched = await Promise.all(orders.map(async o => {
+      const buyer = await db.select({ username: usersTable.username }).from(usersTable).where(eq(usersTable.id, o.buyerId)).then(r => r[0]);
+      const seller = await db.select({ username: usersTable.username }).from(usersTable).where(eq(usersTable.id, o.sellerId)).then(r => r[0]);
+      const [{ c: msgCount }] = await db.select({ c: count() }).from(messagesTable).where(eq(messagesTable.orderId, o.id));
+      return { orderId: o.id, status: o.status, buyerUsername: buyer?.username ?? "Unknown", sellerUsername: seller?.username ?? "Unknown", messageCount: Number(msgCount), createdAt: o.createdAt };
+    }));
+    res.json(enriched);
+  } catch (err) {
+    req.log.error({ err }, "Admin conversations list failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.get("/messages/orders/:orderId", adminAuth, async (req, res) => {
+  try {
+    const orderId = parseInt(req.params.orderId);
+    const msgs = await db.select().from(messagesTable).where(eq(messagesTable.orderId, orderId)).orderBy(messagesTable.createdAt);
+    const enriched = await Promise.all(msgs.map(async m => {
+      const sender = await db.select({ username: usersTable.username }).from(usersTable).where(eq(usersTable.id, m.senderId)).then(r => r[0]);
+      return { ...m, senderUsername: sender?.username ?? "System" };
+    }));
+    res.json(enriched);
+  } catch (err) {
+    req.log.error({ err }, "Admin messages failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ─── NOTIFICATIONS ───────────────────────────────────────────────────────────
+
+router.get("/notifications/history", adminAuth, async (req, res) => {
+  try {
+    const history = await db.select().from(notificationHistoryTable).orderBy(desc(notificationHistoryTable.sentAt)).limit(50);
+    res.json(history);
+  } catch (err) {
+    req.log.error({ err }, "Admin notifications history failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/notifications/send", adminAuth, async (req: any, res) => {
+  try {
+    const { target, channel, title, message } = req.body ?? {};
+    if (!title || !message) return res.status(400).json({ error: "Title and message required" });
+    let users: any[] = [];
+    if (target === "all") users = await db.select().from(usersTable);
+    else if (target === "verified") users = await db.select().from(usersTable).where(eq(usersTable.kycStatus, "verified"));
+    else if (target === "unverified") users = await db.select().from(usersTable).where(ne(usersTable.kycStatus, "verified"));
+    else if (target?.startsWith("user:")) {
+      const uid = parseInt(target.split(":")[1]);
+      users = await db.select().from(usersTable).where(eq(usersTable.id, uid));
+    }
+    // Insert in-app notifications for all targets
+    if (users.length > 0 && (channel === "in-app" || channel === "both")) {
+      await db.insert(notificationsTable).values(users.map(u => ({ userId: u.id, type: "system", title, message }))).catch(() => {});
+    }
+    const [history] = await db.insert(notificationHistoryTable).values({ title, message, target, channel, recipientCount: users.length, status: "sent" }).returning();
+    await log(req.adminEmail, "send_notification", "notification", history.id, `${target} via ${channel}`);
+    res.json({ success: true, recipientCount: users.length });
+  } catch (err) {
+    req.log.error({ err }, "Admin send notification failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ─── SETTINGS ────────────────────────────────────────────────────────────────
+
+const DEFAULT_SETTINGS: Record<string, string> = {
+  platformName: "EthioP2P",
+  supportEmail: "support@ethiop2p.com",
+  maintenanceMode: "false",
+  minDeposit: "10",
+  minWithdrawal: "10",
+  maxWithdrawalPerDay: "10000",
+  requireKycForTrading: "true",
+  requireKycForWithdrawal: "true",
+  maxFailedLogins: "5",
+  sessionTimeoutMinutes: "1440",
+  trc20Address: "TKnRqsrBX1VjCq9Tnh2Kp7ENKjnqrj5Ht",
+  erc20Address: "0x1234567890abcdef1234567890abcdef12345678",
+  trc20Enabled: "true",
+  erc20Enabled: "true",
+};
+
+router.get("/settings", adminAuth, async (req, res) => {
+  try {
+    const rows = await db.select().from(systemSettingsTable);
+    const settings = { ...DEFAULT_SETTINGS };
+    for (const row of rows) settings[row.key] = row.value;
+    res.json(settings);
+  } catch (err) {
+    req.log.error({ err }, "Admin settings get failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.put("/settings", adminAuth, async (req: any, res) => {
+  try {
+    const updates = req.body ?? {};
+    for (const [key, value] of Object.entries(updates)) {
+      await db.insert(systemSettingsTable).values({ key, value: String(value), updatedAt: new Date() })
+        .onConflictDoUpdate({ target: systemSettingsTable.key, set: { value: String(value), updatedAt: new Date() } });
+    }
+    await log(req.adminEmail, "update_settings", "settings", undefined, Object.keys(updates).join(", "));
+    res.json({ success: true });
+  } catch (err) {
+    req.log.error({ err }, "Admin settings update failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ─── FEES ────────────────────────────────────────────────────────────────────
+
+const DEFAULT_FEES: Record<string, string> = {
+  makerFee: "0.20",
+  takerFee: "0.10",
+  withdrawFeesTRC20: "1.00",
+  withdrawFeesERC20: "5.00",
+  minOrderAmount: "500",
+  maxOrderAmount: "1000000",
+};
+
+router.get("/fees", adminAuth, async (req, res) => {
+  try {
+    const rows = await db.select().from(systemSettingsTable);
+    const fees = { ...DEFAULT_FEES };
+    for (const row of rows) if (row.key in fees) fees[row.key] = row.value;
+    res.json(fees);
+  } catch (err) {
+    req.log.error({ err }, "Admin fees get failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.put("/fees", adminAuth, async (req: any, res) => {
+  try {
+    const updates = req.body ?? {};
+    for (const [key, value] of Object.entries(updates)) {
+      await db.insert(systemSettingsTable).values({ key, value: String(value), updatedAt: new Date() })
+        .onConflictDoUpdate({ target: systemSettingsTable.key, set: { value: String(value), updatedAt: new Date() } });
+    }
+    await log(req.adminEmail, "update_fees", "fees", undefined, Object.keys(updates).join(", "));
+    res.json({ success: true });
+  } catch (err) {
+    req.log.error({ err }, "Admin fees update failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ─── AUDIT LOGS ───────────────────────────────────────────────────────────────
+
+router.get("/logs", adminAuth, async (req, res) => {
+  try {
+    const { page = "1" } = req.query as Record<string, string>;
+    const limit = 50;
+    const offset = (parseInt(page) - 1) * limit;
+    const logs = await db.select().from(adminLogsTable).orderBy(desc(adminLogsTable.createdAt)).limit(limit).offset(offset);
+    const [{ c: total }] = await db.select({ c: count() }).from(adminLogsTable);
+    res.json({ logs, total: Number(total), page: parseInt(page), limit });
+  } catch (err) {
+    req.log.error({ err }, "Admin logs list failed");
     res.status(500).json({ error: "Internal server error" });
   }
 });

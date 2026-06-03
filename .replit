@@ -63,3 +63,10 @@ externalPort = 80
 [[ports]]
 localPort = 21832
 externalPort = 3000
+
+[userenv]
+
+[userenv.shared]
+ADMIN_JWT_SECRET = "03ba394ac70d9f81b505cc6e44c6d21b09a0150a6bfa454e3c2d1981132e12b8"
+ADMIN_EMAIL = "admin@ethiop2p.com"
+ADMIN_PASSWORD = "Admin@EthioP2P2024"
