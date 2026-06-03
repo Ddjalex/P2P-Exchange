@@ -162,6 +162,35 @@
 .submit-btn:hover::before{top:0;}
 .submit-btn:disabled{opacity:.5;cursor:not-allowed;}
 
+/* ── ADMIN PANEL ── */
+.admin-panel{
+  position:absolute;inset:0;
+  display:flex;align-items:center;justify-content:center;
+  z-index:10;
+  opacity:0;pointer-events:none;
+  transition:opacity .4s ease;
+}
+.admin-panel.visible{opacity:1;pointer-events:all;}
+.admin-panel-inner{
+  width:280px;
+  animation:adminIn .35s ease;
+}
+@keyframes adminIn{from{opacity:0;transform:translateY(14px);}to{opacity:1;transform:translateY(0);}}
+.admin-badge{
+  display:flex;align-items:center;gap:8px;justify-content:center;
+  margin-bottom:12px;
+}
+.admin-badge i{font-size:18px;color:#00d4ff;}
+.admin-badge span{font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#00d4ff;}
+.admin-panel-inner h2{font-size:26px;font-weight:700;text-align:center;margin-bottom:4px;color:#fff;}
+.admin-subtitle{font-size:11px;color:rgba(255,255,255,.45);text-align:center;margin-bottom:0;}
+
+/* Admin toggle link (below wrapper) */
+.admin-toggle-link{margin-top:16px;text-align:center;}
+.admin-toggle-link a{font-size:11px;color:rgba(255,255,255,.3);text-decoration:none;cursor:pointer;transition:.2s;display:inline-flex;align-items:center;gap:5px;}
+.admin-toggle-link a:hover{color:#00d4ff;}
+.admin-toggle-link a i{font-size:10px;}
+
 /* ── SWITCH ── */
 .switch-link{font-size:11px;text-align:center;margin-top:12px;color:#fff;}
 .switch-link a{color:#00d4ff;font-weight:600;text-decoration:none;cursor:pointer;}

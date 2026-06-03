@@ -45,7 +45,7 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
   const logout = () => {
     setAdminToken(null);
     setAdmin(null);
-    window.location.href = '/admin/login';
+    window.location.href = '/auth';
   };
 
   return <Ctx.Provider value={{ admin, loading, login, logout }}>{children}</Ctx.Provider>;

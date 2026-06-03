@@ -21,7 +21,7 @@ export async function adminFetch(path: string, options: RequestInit = {}): Promi
   });
   if (res.status === 401) {
     setAdminToken(null);
-    window.location.href = '/admin/login';
+    window.location.href = '/auth';
     throw new Error('Unauthorized');
   }
   return res;

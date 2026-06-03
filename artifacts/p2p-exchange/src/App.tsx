@@ -83,8 +83,8 @@ function Router() {
       <Route path="/profile/payment-methods"><ProtectedRoute component={PaymentMethodsPage} /></Route>
       <Route path="/kyc"><ProtectedRoute component={KycPage} /></Route>
 
-      {/* Admin auth */}
-      <Route path="/admin/login" component={AdminLoginPage} />
+      {/* Admin auth — login now lives inside /auth */}
+      <Route path="/admin/login"><Redirect to="/auth" /></Route>
       <Route path="/admin"><Redirect to="/admin/dashboard" /></Route>
 
       {/* Admin pages */}

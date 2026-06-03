@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
+import { useAdminAuth } from "@/hooks/use-admin-auth";
 import "./auth.css";
 
 interface Country {
@@ -50,9 +51,11 @@ const ET = COUNTRIES[0];
 
 export default function AuthPage() {
   const { user, isLoading, login } = useAuth();
+  const { login: adminLogin } = useAdminAuth();
   const [, setLocation] = useLocation();
 
   const [toggled, setToggled] = useState(false);
+  const [adminMode, setAdminMode] = useState(false);
 
   // Login state
   const [loginC, setLoginC] = useState<Country>(ET);
@@ -78,6 +81,12 @@ export default function AuthPage() {
   const [regLoading, setRegLoading] = useState(false);
   const [regPhoneFocused, setRegPhoneFocused] = useState(false);
 
+  // Admin login state
+  const [adminEmail, setAdminEmail] = useState("");
+  const [adminPwd, setAdminPwd] = useState("");
+  const [adminErr, setAdminErr] = useState("");
+  const [adminLoading, setAdminLoading] = useState(false);
+
   // Country modal
   const [modalOpen, setModalOpen] = useState(false);
   const [modalCtx, setModalCtx] = useState<"login" | "reg">("login");
@@ -93,10 +102,13 @@ export default function AuthPage() {
     }
   }, [user, isLoading, setLocation]);
 
-  // ESC closes modal
+  // ESC closes modal / admin mode
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") closeModal();
+      if (e.key === "Escape") {
+        closeModal();
+        setAdminMode(false);
+      }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
@@ -229,6 +241,23 @@ export default function AuthPage() {
     }
   }
 
+  async function doAdminLogin() {
+    setAdminErr("");
+    if (!adminEmail || !adminPwd) {
+      setAdminErr("Email and password are required");
+      return;
+    }
+    setAdminLoading(true);
+    try {
+      await adminLogin(adminEmail, adminPwd);
+      setLocation("/admin/dashboard");
+    } catch (err: any) {
+      setAdminErr(err.message || "Login failed");
+    } finally {
+      setAdminLoading(false);
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="auth-root">
@@ -295,9 +324,61 @@ export default function AuthPage() {
       <div className="auth-logo">Ethio<span>P2P</span></div>
 
       {/* Auth Wrapper */}
-      <div className={`auth-wrapper${toggled ? " toggled" : ""}`}>
+      <div className={`auth-wrapper${toggled && !adminMode ? " toggled" : ""}${adminMode ? " admin-mode" : ""}`}>
         <div className="background-shape"></div>
         <div className="secondary-shape"></div>
+
+        {/* ══ ADMIN LOGIN PANEL (overlays when adminMode = true) ══ */}
+        <div className={`admin-panel${adminMode ? " visible" : ""}`}>
+          <div className="admin-panel-inner">
+            <div className="admin-badge">
+              <i className="fa-solid fa-shield-halved"></i>
+              <span>Admin Access</span>
+            </div>
+            <h2>Admin Login</h2>
+            <p className="admin-subtitle">Authorized personnel only</p>
+
+            <div className="field-wrapper" style={{ marginTop: 24 }}>
+              <input
+                type="email"
+                value={adminEmail}
+                onChange={e => setAdminEmail(e.target.value)}
+                required
+              />
+              <label>Admin Email</label>
+              <i className="fa-solid fa-envelope"></i>
+            </div>
+
+            <div className="field-wrapper">
+              <input
+                type="password"
+                value={adminPwd}
+                onChange={e => setAdminPwd(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && doAdminLogin()}
+                required
+              />
+              <label>Password</label>
+              <i className="fa-solid fa-lock"></i>
+            </div>
+
+            <button
+              className="submit-btn"
+              style={{ marginTop: 20 }}
+              onClick={doAdminLogin}
+              disabled={adminLoading}
+            >
+              {adminLoading ? "Signing in…" : "Sign In as Admin"}
+            </button>
+            {adminErr && <div className="server-err">{adminErr}</div>}
+
+            <div className="switch-link" style={{ marginTop: 16 }}>
+              <a onClick={() => { setAdminMode(false); setAdminErr(""); }}>
+                <i className="fa-solid fa-arrow-left" style={{ marginRight: 5, fontSize: 10 }}></i>
+                Back to user login
+              </a>
+            </div>
+          </div>
+        </div>
 
         {/* ══ LOGIN PANEL ══ */}
         <div className="credentials-panel signin">
@@ -544,6 +625,15 @@ export default function AuthPage() {
           <h2 className="slide-element">JOIN<br />ETHIO<br />P2P!</h2>
           <p className="slide-element">Ethiopia's trusted P2P exchange</p>
         </div>
+      </div>
+
+      {/* Admin toggle link */}
+      <div className="admin-toggle-link">
+        {adminMode ? null : (
+          <a onClick={() => { setAdminMode(true); setAdminErr(""); }}>
+            <i className="fa-solid fa-shield-halved"></i> Admin Access
+          </a>
+        )}
       </div>
     </div>
   );
