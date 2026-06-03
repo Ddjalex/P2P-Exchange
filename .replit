@@ -49,7 +49,7 @@ args = "PORT=21832 BASE_PATH=/ pnpm --filter @workspace/p2p-exchange run dev"
 waitForPort = 21832
 
 [agent]
-stack = "PNPM_WORKSPACE"
+stack = "BEST_EFFORT_FALLBACK"
 expertMode = true
 
 [postMerge]
