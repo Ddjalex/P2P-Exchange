@@ -3,18 +3,19 @@ import { Bell, Filter, ShieldCheck, Lock } from "lucide-react";
 import { useListAds } from "@workspace/api-client-react";
 import { useState } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 
 export default function P2PPage() {
   const [type, setType] = useState<"buy" | "sell">("buy");
   const { data: ads, isLoading } = useListAds({ type });
+  const [, setLocation] = useLocation();
 
   return (
     <AppLayout>
       <header className="flex items-center justify-between p-4">
         <div className="flex space-x-4 text-lg">
-          <span className="text-muted-foreground font-medium">Express</span>
-          <span className="text-white font-bold">P2P</span>
+          <button onClick={() => setLocation("/wallet")} className="text-muted-foreground font-medium">Wallet</button>
+          <button className="text-white font-bold">P2P</button>
         </div>
         <div className="flex items-center space-x-3">
           <div className="flex items-center space-x-1 px-2 py-1 rounded bg-secondary text-xs font-semibold">
