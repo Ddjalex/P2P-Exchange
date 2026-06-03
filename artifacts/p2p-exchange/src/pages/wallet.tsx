@@ -26,10 +26,10 @@ export default function WalletPage() {
         {user?.kycStatus !== "verified" && (
           <div
             className={`p-3 rounded-lg border flex flex-col space-y-2 ${
-              user?.kycStatus === "none" || user?.kycStatus === "pending"
-                ? "bg-warning/10 border-warning/20 text-warning"
-                : user?.kycStatus === "rejected"
+              user?.kycStatus === "rejected"
                 ? "bg-destructive/10 border-destructive/20 text-destructive"
+                : user?.kycStatus === "more_info_required"
+                ? "bg-orange/10 border-orange/20 text-orange"
                 : "bg-warning/10 border-warning/20 text-warning"
             }`}
           >
