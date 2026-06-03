@@ -48,6 +48,9 @@ function Router() {
       <Route path="/profile" component={ProfilePage} />
       <Route path="/profile/payment-methods" component={PaymentMethodsPage} />
       <Route path="/kyc" component={KycPage} />
+      <Route path="/admin">
+        <Redirect to="/admin/kyc" />
+      </Route>
       <Route path="/admin/kyc" component={AdminKycPage} />
       <Route component={NotFound} />
     </Switch>
