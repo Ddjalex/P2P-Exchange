@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
-import { useAdminAuth } from "@/hooks/use-admin-auth";
+import { setAdminToken } from "@/lib/admin-api";
 import "./auth.css";
 
 interface Country {
@@ -51,11 +51,9 @@ const ET = COUNTRIES[0];
 
 export default function AuthPage() {
   const { user, isLoading, login } = useAuth();
-  const { login: adminLogin } = useAdminAuth();
   const [, setLocation] = useLocation();
 
   const [toggled, setToggled] = useState(false);
-  const [adminMode, setAdminMode] = useState(false);
 
   // Login state
   const [loginC, setLoginC] = useState<Country>(ET);
@@ -81,19 +79,13 @@ export default function AuthPage() {
   const [regLoading, setRegLoading] = useState(false);
   const [regPhoneFocused, setRegPhoneFocused] = useState(false);
 
-  // OTP / verification state
+  // OTP state
   const [otpStep, setOtpStep] = useState(false);
   const [otpCode, setOtpCode] = useState("");
   const [otpLoading, setOtpLoading] = useState(false);
   const [otpErr, setOtpErr] = useState("");
   const [otpCooldown, setOtpCooldown] = useState(0);
   const cooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  // Admin login state
-  const [adminEmail, setAdminEmail] = useState("");
-  const [adminPwd, setAdminPwd] = useState("");
-  const [adminErr, setAdminErr] = useState("");
-  const [adminLoading, setAdminLoading] = useState(false);
 
   // Country modal
   const [modalOpen, setModalOpen] = useState(false);
@@ -108,22 +100,16 @@ export default function AuthPage() {
   }, [user, isLoading, setLocation]);
 
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") { closeModal(); setAdminMode(false); }
-    };
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") closeModal(); };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
-  // Cooldown timer for resend
   function startCooldown() {
     setOtpCooldown(60);
     if (cooldownRef.current) clearInterval(cooldownRef.current);
     cooldownRef.current = setInterval(() => {
-      setOtpCooldown(v => {
-        if (v <= 1) { clearInterval(cooldownRef.current!); return 0; }
-        return v - 1;
-      });
+      setOtpCooldown(v => { if (v <= 1) { clearInterval(cooldownRef.current!); return 0; } return v - 1; });
     }, 1000);
   }
 
@@ -145,13 +131,8 @@ export default function AuthPage() {
   function pickCountry(code: string) {
     const c = COUNTRIES.find(x => x.code === code)!;
     const isET = c.code === "ET";
-    if (modalCtx === "login") {
-      setLoginC(c);
-      setLoginType(!isET ? "email" : "phone");
-    } else {
-      setRegC(c);
-      setRegType(!isET ? "email" : "phone");
-    }
+    if (modalCtx === "login") { setLoginC(c); setLoginType(!isET ? "email" : "phone"); }
+    else { setRegC(c); setRegType(!isET ? "email" : "phone"); }
     closeModal();
   }
 
@@ -160,10 +141,8 @@ export default function AuthPage() {
     return c.name.toLowerCase().includes(q) || c.code.toLowerCase().includes(q) || c.dial.includes(q);
   });
 
-  // Compute the OTP target (phone with dial code or email)
   function getOtpTarget() {
-    if (regType === "phone") return `${regC.dial}${regPhone}`;
-    return regEmail;
+    return regType === "phone" ? `${regC.dial}${regPhone}` : regEmail;
   }
 
   async function doLogin() {
@@ -175,8 +154,29 @@ export default function AuthPage() {
     setLoginPhoneErr(false);
     const identifier = loginType === "phone" ? loginPhone : loginEmail;
     if (!identifier || !loginPwd) { setLoginErr("Please fill in all fields"); return; }
+
     setLoginLoading(true);
     try {
+      // If email login — silently try admin credentials first
+      if (loginType === "email") {
+        try {
+          const adminRes = await fetch("/api/admin/auth/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email: identifier, password: loginPwd }),
+          });
+          if (adminRes.ok) {
+            const { token } = await adminRes.json();
+            setAdminToken(token);
+            setLocation("/admin/dashboard");
+            return;
+          }
+        } catch {
+          // not admin — continue to user login below
+        }
+      }
+
+      // Normal user login
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -193,7 +193,6 @@ export default function AuthPage() {
     }
   }
 
-  // Step 1 of register: validate form, then send OTP
   async function doSendCode() {
     setRegErr("");
     setOtpErr("");
@@ -209,11 +208,10 @@ export default function AuthPage() {
 
     setOtpLoading(true);
     try {
-      const target = getOtpTarget();
       const res = await fetch("/api/auth/send-code", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ target, type: regType }),
+        body: JSON.stringify({ target: getOtpTarget(), type: regType }),
       });
       const data = await res.json();
       if (!res.ok) { setRegErr(data.error || "Failed to send code"); return; }
@@ -232,33 +230,27 @@ export default function AuthPage() {
     setOtpErr("");
     setOtpLoading(true);
     try {
-      const target = getOtpTarget();
       const res = await fetch("/api/auth/send-code", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ target, type: regType }),
+        body: JSON.stringify({ target: getOtpTarget(), type: regType }),
       });
       if (res.ok) startCooldown();
       else { const d = await res.json(); setOtpErr(d.error || "Failed to resend"); }
-    } catch {
-      setOtpErr("Network error.");
-    } finally {
-      setOtpLoading(false);
-    }
+    } catch { setOtpErr("Network error."); }
+    finally { setOtpLoading(false); }
   }
 
-  // Step 2: verify code then register
   async function doVerifyAndRegister() {
     setOtpErr("");
     if (otpCode.length !== 6) { setOtpErr("Enter the 6-digit code"); return; }
     setRegLoading(true);
     try {
-      const identifier = regType === "phone" ? regPhone : regEmail;
       const res = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          identifier,
+          identifier: regType === "phone" ? regPhone : regEmail,
           password: regPwd,
           username: regUser,
           country: regC.code,
@@ -271,31 +263,13 @@ export default function AuthPage() {
       const data = await res.json();
       if (!res.ok) {
         if (data.error?.toLowerCase().includes("code")) setOtpErr(data.error);
-        else setRegErr(data.error || "Registration failed");
-        if (!data.error?.toLowerCase().includes("code")) setOtpStep(false);
+        else { setRegErr(data.error || "Registration failed"); setOtpStep(false); }
         return;
       }
       login(data.token, data.user);
       setLocation("/wallet");
-    } catch {
-      setOtpErr("Network error. Please try again.");
-    } finally {
-      setRegLoading(false);
-    }
-  }
-
-  async function doAdminLogin() {
-    setAdminErr("");
-    if (!adminEmail || !adminPwd) { setAdminErr("Email and password are required"); return; }
-    setAdminLoading(true);
-    try {
-      await adminLogin(adminEmail, adminPwd);
-      setLocation("/admin/dashboard");
-    } catch (err: any) {
-      setAdminErr(err.message || "Login failed");
-    } finally {
-      setAdminLoading(false);
-    }
+    } catch { setOtpErr("Network error. Please try again."); }
+    finally { setRegLoading(false); }
   }
 
   if (isLoading) {
@@ -305,43 +279,32 @@ export default function AuthPage() {
   return (
     <div className="auth-root">
       {/* Country Modal */}
-      <div
-        className={`country-modal-overlay${modalOpen ? " open" : ""}`}
-        onClick={(e) => { if (e.target === e.currentTarget) closeModal(); }}
-      >
+      <div className={`country-modal-overlay${modalOpen ? " open" : ""}`} onClick={(e) => { if (e.target === e.currentTarget) closeModal(); }}>
         <div className="country-modal">
           <div className="modal-header">
             <h3>Select Country</h3>
-            <button className="modal-close" onClick={closeModal}>
-              <i className="fa-solid fa-xmark"></i>
-            </button>
+            <button className="modal-close" onClick={closeModal}><i className="fa-solid fa-xmark"></i></button>
           </div>
           <div className="modal-search">
             <div className="search-box">
               <i className="fa-solid fa-magnifying-glass"></i>
-              <input
-                ref={searchRef}
-                type="text"
-                placeholder="Search by name or dial code…"
-                value={modalSearch}
-                onChange={e => setModalSearch(e.target.value)}
-              />
+              <input ref={searchRef} type="text" placeholder="Search by name or dial code…" value={modalSearch} onChange={e => setModalSearch(e.target.value)} />
             </div>
           </div>
           <div className="modal-list">
-            {filteredCountries.length === 0 ? (
-              <div style={{ padding: "20px", textAlign: "center", color: "rgba(255,255,255,.4)", fontSize: 13 }}>No countries found</div>
-            ) : filteredCountries.map(c => {
-              const cur = modalCtx === "login" ? loginC : regC;
-              return (
-                <div key={c.code} className={`modal-item${cur.code === c.code ? " active" : ""}`} onClick={() => pickCountry(c.code)}>
-                  <span className="m-flag">{c.flag}</span>
-                  <div className="m-info"><div className="m-name">{c.name}</div><div className="m-iso">{c.code}</div></div>
-                  <span className="m-dial">{c.dial}</span>
-                  <i className="fa-solid fa-check m-check"></i>
-                </div>
-              );
-            })}
+            {filteredCountries.length === 0
+              ? <div style={{ padding: "20px", textAlign: "center", color: "rgba(255,255,255,.4)", fontSize: 13 }}>No countries found</div>
+              : filteredCountries.map(c => {
+                const cur = modalCtx === "login" ? loginC : regC;
+                return (
+                  <div key={c.code} className={`modal-item${cur.code === c.code ? " active" : ""}`} onClick={() => pickCountry(c.code)}>
+                    <span className="m-flag">{c.flag}</span>
+                    <div className="m-info"><div className="m-name">{c.name}</div><div className="m-iso">{c.code}</div></div>
+                    <span className="m-dial">{c.dial}</span>
+                    <i className="fa-solid fa-check m-check"></i>
+                  </div>
+                );
+              })}
           </div>
         </div>
       </div>
@@ -350,49 +313,13 @@ export default function AuthPage() {
       <div className="auth-logo">Ethio<span>P2P</span></div>
 
       {/* Auth Wrapper */}
-      <div className={`auth-wrapper${toggled && !adminMode ? " toggled" : ""}${adminMode ? " admin-mode" : ""}`}>
+      <div className={`auth-wrapper${toggled ? " toggled" : ""}`}>
         <div className="background-shape"></div>
         <div className="secondary-shape"></div>
 
-        {/* ══ ADMIN LOGIN PANEL ══ */}
-        <div className={`admin-panel${adminMode ? " visible" : ""}`}>
-          <div className="admin-panel-inner">
-            <div className="admin-badge">
-              <i className="fa-solid fa-shield-halved"></i>
-              <span>Admin Access</span>
-            </div>
-            <h2>Admin Login</h2>
-            <p className="admin-subtitle">Authorized personnel only</p>
-            <div className="field-wrapper" style={{ marginTop: 24 }}>
-              <input type="email" value={adminEmail} onChange={e => setAdminEmail(e.target.value)} required />
-              <label>Admin Email</label>
-              <i className="fa-solid fa-envelope"></i>
-            </div>
-            <div className="field-wrapper">
-              <input type="password" value={adminPwd} onChange={e => setAdminPwd(e.target.value)} onKeyDown={e => e.key === "Enter" && doAdminLogin()} required />
-              <label>Password</label>
-              <i className="fa-solid fa-lock"></i>
-            </div>
-            <button className="submit-btn" style={{ marginTop: 20 }} onClick={doAdminLogin} disabled={adminLoading}>
-              {adminLoading ? "Signing in…" : "Sign In as Admin"}
-            </button>
-            {adminErr && <div className="server-err">{adminErr}</div>}
-            <div className="switch-link" style={{ marginTop: 16 }}>
-              <a onClick={() => { setAdminMode(false); setAdminErr(""); }}>
-                <i className="fa-solid fa-arrow-left" style={{ marginRight: 5, fontSize: 10 }}></i>Back to user login
-              </a>
-            </div>
-          </div>
-        </div>
-
         {/* ══ LOGIN PANEL ══ */}
         <div className="credentials-panel signin">
-          <div className="login-heading slide-element">
-            <h2>Login</h2>
-            <button className="admin-icon-btn" onClick={() => { setAdminMode(true); setAdminErr(""); }} title="Admin Access">
-              <i className="fa-solid fa-shield-halved"></i>
-            </button>
-          </div>
+          <h2 className="slide-element">Login</h2>
 
           <div className="country-pill-wrap slide-element">
             <div className="country-pill-label">Country</div>
@@ -467,7 +394,6 @@ export default function AuthPage() {
 
         {/* ══ REGISTER PANEL ══ */}
         <div className="credentials-panel signup">
-
           {!otpStep ? (
             <>
               <h2 className="slide-element">Register</h2>
@@ -550,23 +476,13 @@ export default function AuthPage() {
             <>
               <h2 className="slide-element">Verify</h2>
               <p className="slide-element" style={{ fontSize: 12, color: "rgba(255,255,255,.5)", marginBottom: 8 }}>
-                {regType === "phone"
-                  ? `We sent a 6-digit code to ${regC.dial} ${regPhone}`
-                  : `We sent a 6-digit code to ${regEmail}`}
+                {regType === "phone" ? `Code sent to ${regC.dial} ${regPhone}` : `Code sent to ${regEmail}`}
               </p>
 
               <div className="otp-input-wrap slide-element">
-                <input
-                  className="otp-input"
-                  type="text"
-                  inputMode="numeric"
-                  maxLength={6}
-                  placeholder="000000"
-                  value={otpCode}
-                  onChange={e => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                  onKeyDown={e => e.key === "Enter" && doVerifyAndRegister()}
-                  autoFocus
-                />
+                <input className="otp-input" type="text" inputMode="numeric" maxLength={6} placeholder="000000"
+                  value={otpCode} onChange={e => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  onKeyDown={e => e.key === "Enter" && doVerifyAndRegister()} autoFocus />
               </div>
 
               <div className="slide-element">
@@ -577,10 +493,7 @@ export default function AuthPage() {
               </div>
 
               <div className="otp-resend slide-element">
-                {otpCooldown > 0
-                  ? <span>Resend code in {otpCooldown}s</span>
-                  : <a onClick={doResendCode}>Resend code</a>
-                }
+                {otpCooldown > 0 ? <span>Resend in {otpCooldown}s</span> : <a onClick={doResendCode}>Resend code</a>}
               </div>
 
               <div className="switch-link slide-element">
@@ -598,7 +511,6 @@ export default function AuthPage() {
           <p className="slide-element">Ethiopia's trusted P2P exchange</p>
         </div>
       </div>
-
     </div>
   );
 }
