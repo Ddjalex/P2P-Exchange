@@ -58,7 +58,12 @@ export function AdminLayout({ children, title }: { children: React.ReactNode; ti
   const { admin, logout } = useAdminAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [expanded, setExpanded] = useState<string[]>(() => {
-    const active = navItems.find(n => n.children && location.startsWith(n.href));
+    const active = navItems.find(n =>
+      n.children && (
+        location.startsWith(n.href) ||
+        n.children.some(c => location === c.href.split("?")[0])
+      )
+    );
     return active ? [active.href] : [];
   });
 
