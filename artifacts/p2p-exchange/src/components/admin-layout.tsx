@@ -70,9 +70,9 @@ export function AdminLayout({ children, title }: { children: React.ReactNode; ti
       {/* Sidebar */}
       <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-card border-r border-border flex flex-col transition-transform duration-200 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 lg:static lg:flex`}>
         <div className="p-5 border-b border-border flex items-center justify-between flex-shrink-0">
-          <div>
-            <div className="font-bold text-lg text-primary">EthioP2P</div>
-            <div className="text-xs text-muted-foreground">Admin Panel</div>
+          <div className="flex items-center gap-2.5">
+            <img src="/src/assets/logo-icon.svg" alt="EthioP2P" width={36} height={36} />
+            <div className="text-xs text-muted-foreground font-medium">Admin Panel</div>
           </div>
           <button className="lg:hidden" onClick={() => setSidebarOpen(false)}>
             <X className="w-5 h-5" />

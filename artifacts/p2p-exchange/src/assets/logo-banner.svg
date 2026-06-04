@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 60">
+  <!-- Minimum width: 160px. Always on dark background. Never change colors. Clear space: 8px all sides. -->
+  <!-- Shield icon -->
+  <path d="M26,6 L50,15 L50,36 Q50,52 26,60 Q2,52 2,36 L2,15 Z"
+        fill="none" stroke="#00d4ff" stroke-width="2"/>
+  <path d="M26,11 L45,19 L45,36 Q45,49 26,56 Q7,49 7,36 L7,19 Z"
+        fill="#00d4ff" opacity="0.08"/>
+  <text x="26" y="42" text-anchor="middle" font-family="'Poppins',sans-serif"
+        font-size="22" font-weight="800" fill="#00d4ff">E</text>
+  <rect x="36" y="44" width="22" height="12" rx="6" fill="#00d4ff"/>
+  <text x="47" y="53" text-anchor="middle" font-family="'Poppins',sans-serif"
+        font-size="7" font-weight="700" fill="#1a1a2e">P2P</text>
+  <!-- Wordmark -->
+  <text x="66" y="32" font-family="'Poppins',sans-serif"
+        font-size="26" font-weight="800" fill="#ffffff">Ethio<tspan fill="#00d4ff">P2P</tspan></text>
+  <text x="67" y="47" font-family="'Poppins',sans-serif"
+        font-size="8.5" fill="rgba(255,255,255,0.4)" letter-spacing="2.5">ETHIOPIA'S P2P CRYPTO EXCHANGE</text>
+</svg>

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <!-- Minimum size: 32px. Always on dark background. Never change colors. Clear space: 8px all sides. -->
+  <rect width="200" height="200" rx="40" fill="#0f1929"/>
+  <rect width="200" height="200" rx="40" fill="none" stroke="#00d4ff" stroke-width="3" opacity="0.6"/>
+  <path d="M100,40 L148,58 L148,105 Q148,145 100,165 Q52,145 52,105 L52,58 Z"
+        fill="none" stroke="#00d4ff" stroke-width="3"/>
+  <path d="M100,50 L140,66 L140,105 Q140,138 100,155 Q60,138 60,105 L60,66 Z"
+        fill="#00d4ff" opacity="0.08"/>
+  <text x="100" y="118" text-anchor="middle" font-family="'Poppins',sans-serif"
+        font-size="52" font-weight="800" fill="#00d4ff">E</text>
+  <rect x="118" y="130" width="44" height="22" rx="11" fill="#00d4ff"/>
+  <text x="140" y="145" text-anchor="middle" font-family="'Poppins',sans-serif"
+        font-size="12" font-weight="700" fill="#1a1a2e">P2P</text>
+</svg>

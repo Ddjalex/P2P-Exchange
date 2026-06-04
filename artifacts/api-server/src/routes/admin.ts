@@ -789,9 +789,9 @@ router.post("/test-sms", adminAuth, async (req: any, res) => {
     if (!apiKey) return res.status(400).json({ ok: false, error: "FastSMS API key not configured." });
     const { phone } = req.body ?? {};
     if (!phone) return res.status(400).json({ ok: false, error: "phone is required" });
-    const r = await fetch("https://fastsms.dev/api/v1/messages", {
+    const r = await fetch("https://fastsms.dev/api/p/sms/send", {
       method: "POST",
-      headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      headers: { "API-Key": apiKey, "Content-Type": "application/json" },
       body: JSON.stringify({ to: phone, message: "EthioP2P test message — your API key is working!" }),
     });
     const body = await r.text().catch(() => "");

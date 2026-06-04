@@ -303,7 +303,7 @@ export default function AuthPage() {
       </div>
 
       {/* Logo */}
-      <div className="auth-logo">Ethio<span>P2P</span></div>
+      <div className="auth-logo"><img src="/src/assets/logo-banner.svg" alt="EthioP2P" height={44} style={{ display: 'block' }} /></div>
 
       {/* Auth Wrapper */}
       <div className={`auth-wrapper${toggled ? " toggled" : ""}`}>

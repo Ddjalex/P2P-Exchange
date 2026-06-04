@@ -46,10 +46,10 @@ async function getSetting(key: string): Promise<string | null> {
 }
 
 async function sendSms(phone: string, message: string, apiKey: string): Promise<void> {
-  const res = await fetch("https://fastsms.dev/api/v1/messages", {
+  const res = await fetch("https://fastsms.dev/api/p/sms/send", {
     method: "POST",
     headers: {
-      "Authorization": `Bearer ${apiKey}`,
+      "API-Key": apiKey,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ to: phone, message }),
