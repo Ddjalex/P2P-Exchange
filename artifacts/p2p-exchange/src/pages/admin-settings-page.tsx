@@ -246,7 +246,7 @@ export default function AdminSettingsPage() {
           <div className="bg-card border border-border rounded-xl p-5">
             <h3 className="font-semibold mb-4">Supported Networks</h3>
             <div className="space-y-3">
-              {[{ label: "TRC20 (TRON)", key: "trc20Enabled" }, { label: "ERC20 (Ethereum)", key: "erc20Enabled" }].map(n => (
+              {[{ label: "BEP20 (BSC)", key: "bep20Enabled" }, { label: "TRC20 (TRON)", key: "trc20Enabled" }].map(n => (
                 <div key={n.key} className="flex items-center justify-between">
                   <span className="text-sm">{n.label}</span>
                   <Toggle k={n.key} />
@@ -282,16 +282,18 @@ export default function AdminSettingsPage() {
 
           {/* Deposit Addresses */}
           <div className="bg-card border border-border rounded-xl p-5">
-            <h3 className="font-semibold mb-4">Platform Deposit Addresses</h3>
+            <h3 className="font-semibold mb-1">Platform Deposit Addresses</h3>
+            <p className="text-xs text-muted-foreground mb-4">Users deposit USDT to these addresses. They verify their TX hash to get credited automatically.</p>
             <div className="space-y-4">
               {[
-                { label: "TRC20 Address", key: "trc20Address" },
-                { label: "ERC20 Address", key: "erc20Address" },
+                { label: "BEP20 Address (BSC)", key: "bep20Address", placeholder: "0x..." },
+                { label: "TRC20 Address (TRON)", key: "trc20Address", placeholder: "T..." },
               ].map(f => (
                 <div key={f.key}>
                   <label className="text-xs text-muted-foreground block mb-1">{f.label}</label>
                   <input value={settings[f.key] ?? ""} onChange={e => update(f.key, e.target.value)}
-                    className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm font-mono outline-none focus:border-primary" />
+                    placeholder={f.placeholder}
+                    className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm font-mono outline-none focus:border-primary placeholder:text-muted-foreground/50" />
                 </div>
               ))}
             </div>

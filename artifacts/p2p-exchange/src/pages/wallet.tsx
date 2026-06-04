@@ -1,6 +1,6 @@
 import { useAuth } from "@/hooks/use-auth";
 import { AppLayout } from "@/components/layout";
-import { Bell, Settings, Eye, EyeOff, ArrowDownToLine, ArrowUpFromLine, X, Copy, Check, Loader2, AlertCircle, ChevronDown, SendHorizonal } from "lucide-react";
+import { Bell, Settings, Eye, EyeOff, ArrowDownToLine, ArrowUpFromLine, X, Copy, Check, Loader2, AlertCircle, ChevronDown } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useGetWallet, getGetWalletQueryKey } from "@workspace/api-client-react";
 import { useState, useEffect } from "react";
@@ -14,18 +14,26 @@ function getToken() { return localStorage.getItem(TOKEN_KEY); }
 
 // ─── Deposit Modal ───────────────────────────────────────────────────────────
 
-function DepositModal({ onClose }: { onClose: () => void }) {
-  const [network, setNetwork] = useState<"TRC20" | "ERC20">("TRC20");
+type DepositNetwork = "TRC20" | "BEP20";
+
+function DepositModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
+  const [network, setNetwork] = useState<DepositNetwork>("BEP20");
   const [address, setAddress] = useState("");
   const [minDeposit, setMinDeposit] = useState("1");
-  const [loading, setLoading] = useState(false);
+  const [addrLoading, setAddrLoading] = useState(false);
+  const [addrError, setAddrError] = useState("");
   const [copied, setCopied] = useState(false);
-  const [error, setError] = useState("");
+
+  const [txHash, setTxHash] = useState("");
+  const [verifying, setVerifying] = useState(false);
+  const [verifyError, setVerifyError] = useState("");
+  const [verified, setVerified] = useState<{ amount: string; message: string } | null>(null);
+
   const { toast } = useToast();
 
-  const fetchAddress = async (net: "TRC20" | "ERC20") => {
-    setLoading(true);
-    setError("");
+  const fetchAddress = async (net: DepositNetwork) => {
+    setAddrLoading(true);
+    setAddrError("");
     setAddress("");
     try {
       const res = await fetch(`/api/wallet/deposit-address?network=${net}`, {
@@ -36,9 +44,9 @@ function DepositModal({ onClose }: { onClose: () => void }) {
       setAddress(data.address);
       setMinDeposit(data.minDeposit ?? "1");
     } catch (e: any) {
-      setError(e.message);
+      setAddrError(e.message);
     } finally {
-      setLoading(false);
+      setAddrLoading(false);
     }
   };
 
@@ -52,14 +60,42 @@ function DepositModal({ onClose }: { onClose: () => void }) {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const handleVerify = async () => {
+    setVerifyError("");
+    if (!txHash.trim() || txHash.trim().length < 10) {
+      setVerifyError("Paste the full transaction hash from your exchange.");
+      return;
+    }
+    setVerifying(true);
+    try {
+      const res = await fetch("/api/wallet/deposit/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
+        body: JSON.stringify({ txHash: txHash.trim(), network }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Verification failed");
+      setVerified({ amount: data.amount, message: data.message });
+      onSuccess();
+    } catch (e: any) {
+      setVerifyError(e.message);
+    } finally {
+      setVerifying(false);
+    }
+  };
+
+  const networkLabel = network === "BEP20" ? "BEP20 (BSC)" : "TRC20 (TRON)";
+  const networkExplorer = network === "BEP20" ? "bscscan.com" : "tronscan.org";
+
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={onClose}>
       <div className="absolute inset-0 bg-black/60" />
       <div
-        className="relative w-full max-w-[480px] bg-card rounded-t-2xl overflow-y-auto max-h-[88vh]"
+        className="relative w-full max-w-[480px] bg-card rounded-t-2xl overflow-y-auto max-h-[90vh]"
         onClick={e => e.stopPropagation()}
       >
         <div className="p-6 space-y-5">
+          {/* Header */}
           <div className="flex items-center justify-between">
             <h2 className="font-bold text-lg">Deposit USDT</h2>
             <button onClick={onClose} className="p-1 rounded-lg hover:bg-secondary/50">
@@ -67,128 +103,133 @@ function DepositModal({ onClose }: { onClose: () => void }) {
             </button>
           </div>
 
+          {/* Network selector */}
           <div>
             <label className="text-xs text-muted-foreground mb-2 block">Select Network</label>
             <div className="grid grid-cols-2 gap-2">
-              {(["TRC20", "ERC20"] as const).map(net => (
+              {(["BEP20", "TRC20"] as const).map(net => (
                 <button
                   key={net}
-                  onClick={() => setNetwork(net)}
+                  onClick={() => { setNetwork(net); setVerified(null); setVerifyError(""); setTxHash(""); }}
                   className={`py-2.5 rounded-xl text-sm font-semibold border transition-colors ${network === net ? "bg-primary/10 border-primary text-primary" : "bg-secondary border-border text-muted-foreground hover:bg-secondary/80"}`}
                 >
-                  {net}
+                  {net === "BEP20" ? "BEP20 (BSC)" : "TRC20 (TRON)"}
                 </button>
               ))}
             </div>
           </div>
 
-          <div>
-            <label className="text-xs text-muted-foreground mb-2 block">Deposit Address ({network})</label>
-            {loading ? (
-              <div className="flex items-center justify-center h-20 bg-secondary rounded-xl">
+          {/* Step 1: Show deposit address */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="w-5 h-5 rounded-full bg-primary text-black text-xs font-bold flex items-center justify-center flex-shrink-0">1</span>
+              <label className="text-sm font-medium">Send USDT ({networkLabel}) to this address</label>
+            </div>
+
+            {addrLoading ? (
+              <div className="flex items-center justify-center h-16 bg-secondary rounded-xl">
                 <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
               </div>
-            ) : error ? (
-              <div className="flex items-start space-x-2 p-4 bg-destructive/10 border border-destructive/20 rounded-xl">
+            ) : addrError ? (
+              <div className="flex items-start gap-2 p-4 bg-destructive/10 border border-destructive/20 rounded-xl">
                 <AlertCircle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
-                <p className="text-sm text-destructive">{error}</p>
+                <p className="text-sm text-destructive">{addrError}</p>
               </div>
             ) : (
               <div className="bg-secondary rounded-xl p-4 space-y-3">
-                <p className="text-sm font-mono break-all leading-relaxed">{address}</p>
+                <p className="text-sm font-mono break-all leading-relaxed select-all">{address}</p>
                 <button
                   onClick={copyAddress}
-                  className="w-full flex items-center justify-center space-x-2 py-2 bg-primary/10 hover:bg-primary/20 text-primary rounded-lg text-sm font-medium transition-colors"
+                  className="w-full flex items-center justify-center gap-2 py-2 bg-primary/10 hover:bg-primary/20 text-primary rounded-lg text-sm font-medium transition-colors"
                 >
                   {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
                   <span>{copied ? "Copied!" : "Copy Address"}</span>
                 </button>
               </div>
             )}
+
+            <div className="bg-warning/10 border border-warning/20 rounded-xl p-3 space-y-1">
+              <p className="text-xs font-semibold text-warning">⚠️ Important</p>
+              <ul className="text-xs text-muted-foreground space-y-0.5 list-disc list-inside">
+                <li>Only send <strong>USDT ({network})</strong> — other tokens will be lost</li>
+                <li>Minimum deposit: <strong>{minDeposit} USDT</strong></li>
+                <li>Use the <strong>correct network</strong> ({networkLabel})</li>
+              </ul>
+            </div>
           </div>
 
-          <div className="bg-warning/10 border border-warning/20 rounded-xl p-4 space-y-1">
-            <p className="text-xs font-semibold text-warning">⚠️ Important</p>
-            <ul className="text-xs text-muted-foreground space-y-1 list-disc list-inside">
-              <li>Only send <strong>USDT ({network})</strong> to this address</li>
-              <li>Minimum deposit: <strong>{minDeposit} USDT</strong></li>
-              <li>Sending other tokens may result in permanent loss</li>
-              <li>Deposits are credited after admin verification</li>
-            </ul>
+          {/* Step 2: Paste TX hash and verify */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="w-5 h-5 rounded-full bg-primary text-black text-xs font-bold flex items-center justify-center flex-shrink-0">2</span>
+              <label className="text-sm font-medium">After sending, paste the transaction hash</label>
+            </div>
+
+            <p className="text-xs text-muted-foreground ml-7">
+              After your transfer is confirmed, copy the transaction hash (TX ID) from your exchange or {networkExplorer} and paste it below.
+            </p>
+
+            {verified ? (
+              <div className="bg-success/10 border border-success/20 rounded-xl p-4 text-center space-y-1">
+                <p className="text-lg font-bold text-success">✓ Deposit Verified!</p>
+                <p className="text-sm text-foreground font-semibold">{parseFloat(verified.amount).toFixed(2)} USDT credited to your wallet</p>
+                <p className="text-xs text-muted-foreground">{verified.message}</p>
+              </div>
+            ) : (
+              <>
+                <input
+                  value={txHash}
+                  onChange={e => { setTxHash(e.target.value); setVerifyError(""); }}
+                  placeholder={network === "BEP20" ? "0x... (BSCScan TX hash)" : "TX hash from TronScan"}
+                  className="w-full px-3 py-3 bg-secondary border border-border rounded-xl text-sm font-mono outline-none focus:border-primary transition-colors placeholder:text-muted-foreground/60"
+                />
+
+                {verifyError && (
+                  <div className="flex items-start gap-2 p-3 bg-destructive/10 border border-destructive/20 rounded-xl">
+                    <AlertCircle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
+                    <p className="text-xs text-destructive">{verifyError}</p>
+                  </div>
+                )}
+
+                <button
+                  onClick={handleVerify}
+                  disabled={verifying || !txHash.trim()}
+                  className="w-full py-3 bg-primary text-black font-bold rounded-xl text-sm disabled:opacity-50 flex items-center justify-center gap-2 transition-opacity"
+                >
+                  {verifying ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                  {verifying ? "Verifying on blockchain..." : "Verify & Credit My Wallet"}
+                </button>
+              </>
+            )}
           </div>
 
-          <ReportMissedDeposit />
+          {/* Accordion: didn't receive */}
+          {!verified && <MissedDepositAccordion />}
         </div>
       </div>
     </div>
   );
 }
 
-function ReportMissedDeposit() {
+function MissedDepositAccordion() {
   const [open, setOpen] = useState(false);
-  const [txid, setTxid] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
-
-  const submit = async () => {
-    if (!txid.trim()) return;
-    setSubmitting(true);
-    setResult(null);
-    try {
-      const res = await fetch("/api/wallet/deposit/report", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
-        body: JSON.stringify({ txid: txid.trim() }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setResult({ ok: false, message: data.error ?? "Failed to submit" });
-      } else {
-        setResult({ ok: true, message: data.message ?? "Submitted for review" });
-        setTxid("");
-      }
-    } catch {
-      setResult({ ok: false, message: "Network error. Please try again." });
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
   return (
     <div className="border border-border rounded-xl overflow-hidden">
       <button
         onClick={() => setOpen(v => !v)}
         className="w-full flex items-center justify-between px-4 py-3 text-sm text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors"
       >
-        <span>Didn't receive your deposit?</span>
+        <span>Sent but still not credited?</span>
         <ChevronDown className={`w-4 h-4 transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
       {open && (
-        <div className="px-4 pb-4 space-y-3 border-t border-border pt-3">
-          <p className="text-xs text-muted-foreground">
-            If your deposit was sent over 10 minutes ago and hasn't arrived, paste the transaction hash (txid) from your exchange below. An admin will verify and credit your wallet within 24 hours.
-          </p>
-          <div className="flex gap-2">
-            <input
-              value={txid}
-              onChange={e => setTxid(e.target.value)}
-              placeholder="Paste transaction hash (txid)..."
-              className="flex-1 px-3 py-2 bg-background border border-border rounded-lg text-xs font-mono outline-none focus:border-primary"
-            />
-            <button
-              onClick={submit}
-              disabled={!txid.trim() || submitting}
-              className="flex items-center gap-1.5 px-3 py-2 bg-primary text-primary-foreground rounded-lg text-xs font-semibold disabled:opacity-40 transition-opacity"
-            >
-              {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <SendHorizonal className="w-3.5 h-3.5" />}
-              Submit
-            </button>
-          </div>
-          {result && (
-            <div className={`text-xs p-3 rounded-lg ${result.ok ? "bg-success/10 text-success border border-success/20" : "bg-destructive/10 text-destructive border border-destructive/20"}`}>
-              {result.message}
-            </div>
-          )}
+        <div className="px-4 pb-4 pt-3 border-t border-border text-xs text-muted-foreground space-y-1">
+          <p>If your transaction is confirmed on-chain but the hash gives an error:</p>
+          <ul className="list-disc list-inside space-y-0.5">
+            <li>Make sure you selected the correct network (BEP20 vs TRC20)</li>
+            <li>Double-check the hash — copy it directly from your exchange history</li>
+            <li>Contact support with your TX hash and we will credit you manually</li>
+          </ul>
         </div>
       )}
     </div>
@@ -206,7 +247,7 @@ function WithdrawModal({
   onClose: () => void;
   onSuccess: () => void;
 }) {
-  const [network, setNetwork] = useState<"TRC20" | "ERC20">("TRC20");
+  const [network] = useState<"TRC20">("TRC20");
   const [address, setAddress] = useState("");
   const [amount, setAmount] = useState("");
   const [loading, setLoading] = useState(false);
@@ -261,25 +302,17 @@ function WithdrawModal({
           </div>
 
           <div>
-            <label className="text-xs text-muted-foreground mb-2 block">Select Network</label>
-            <div className="grid grid-cols-2 gap-2">
-              {(["TRC20", "ERC20"] as const).map(net => (
-                <button
-                  key={net}
-                  onClick={() => setNetwork(net)}
-                  className={`py-2.5 rounded-xl text-sm font-semibold border transition-colors ${network === net ? "bg-primary/10 border-primary text-primary" : "bg-secondary border-border text-muted-foreground hover:bg-secondary/80"}`}
-                >
-                  {net}
-                </button>
-              ))}
+            <label className="text-xs text-muted-foreground mb-2 block">Network</label>
+            <div className="py-2.5 px-4 rounded-xl text-sm font-semibold border bg-primary/10 border-primary text-primary w-fit">
+              TRC20 (TRON)
             </div>
           </div>
 
           <div>
-            <label className="text-xs text-muted-foreground mb-2 block">Destination Address ({network})</label>
+            <label className="text-xs text-muted-foreground mb-2 block">Destination Address (TRC20)</label>
             <input
               type="text"
-              placeholder="Paste wallet address"
+              placeholder="T... (TRON address)"
               value={address}
               onChange={e => setAddress(e.target.value)}
               className="w-full bg-secondary border border-border rounded-xl px-4 py-3 text-sm font-mono focus:outline-none focus:border-primary placeholder:text-muted-foreground"
@@ -364,6 +397,10 @@ export default function WalletPage() {
   const [showDeposit, setShowDeposit] = useState(false);
   const [showWithdraw, setShowWithdraw] = useState(false);
   const queryClient = useQueryClient();
+
+  const handleDepositSuccess = () => {
+    queryClient.invalidateQueries({ queryKey: getGetWalletQueryKey() });
+  };
 
   const handleWithdrawSuccess = () => {
     setShowWithdraw(false);
@@ -469,7 +506,12 @@ export default function WalletPage() {
         </div>
       </div>
 
-      {showDeposit && <DepositModal onClose={() => setShowDeposit(false)} />}
+      {showDeposit && (
+        <DepositModal
+          onClose={() => setShowDeposit(false)}
+          onSuccess={handleDepositSuccess}
+        />
+      )}
       {showWithdraw && (
         <WithdrawModal
           availableBalance={wallet?.availableBalance ?? "0"}

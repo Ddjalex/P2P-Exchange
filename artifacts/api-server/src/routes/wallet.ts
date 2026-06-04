@@ -2,8 +2,9 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { walletsTable, transactionsTable, systemSettingsTable } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
-import { sendUsdt, privateKeyToTronAddress, deriveUserDepositAddress, getTrc20TxDetails } from "../lib/tron.js";
+import { sendUsdt, privateKeyToTronAddress, getTrc20TxDetails } from "../lib/tron.js";
 import { depositVerificationsTable } from "@workspace/db";
+import { getBscUsdtTx } from "../lib/bsc.js";
 
 const router = Router();
 
@@ -50,19 +51,15 @@ router.get("/", async (req, res) => {
   }
 });
 
-// GET /api/wallet/deposit-address?network=TRC20
+// GET /api/wallet/deposit-address?network=TRC20|BEP20
 router.get("/deposit-address", async (req, res) => {
-  const network = req.query.network as string;
-  if (!["TRC20", "ERC20"].includes(network)) {
-    return res.status(400).json({ error: "Invalid network" });
-  }
-  if (network === "ERC20") {
-    return res.status(503).json({ error: "ERC20 deposits not yet supported. Use TRC20." });
+  const network = (req.query.network as string)?.toUpperCase();
+  if (!["TRC20", "BEP20"].includes(network)) {
+    return res.status(400).json({ error: "Invalid network. Supported: TRC20, BEP20" });
   }
 
   try {
-    // All users deposit to the business owner's single address (set in Admin → Settings)
-    const settingKey = network === "TRC20" ? "trc20Address" : "erc20Address";
+    const settingKey = network === "BEP20" ? "bep20Address" : "trc20Address";
     const address = await getSetting(settingKey, "");
     if (!address) {
       return res.status(503).json({
@@ -77,104 +74,128 @@ router.get("/deposit-address", async (req, res) => {
   }
 });
 
-// POST /api/wallet/deposit/report — user reports a missed deposit by submitting their txid
-router.post("/deposit/report", async (req, res) => {
+// POST /api/wallet/deposit/verify — user submits TX hash; backend verifies on-chain and credits instantly
+router.post("/deposit/verify", async (req, res) => {
   try {
-    const { txid } = req.body;
+    const { txHash, network } = req.body;
     const userId = (req as any).userId;
-    if (!txid || typeof txid !== "string" || txid.trim().length < 10) {
-      return res.status(400).json({ error: "A valid transaction ID (txid) is required" });
-    }
-    const cleanTxid = txid.trim();
 
-    // Check if already processed
-    const already = await db.select().from(transactionsTable).where(
-      and(eq(transactionsTable.txid, cleanTxid), eq(transactionsTable.type, "deposit"))
-    );
-    if (already.length > 0 && already[0].status === "completed") {
-      return res.status(409).json({ error: "This transaction has already been credited to your wallet." });
+    if (!txHash || typeof txHash !== "string" || txHash.trim().length < 10) {
+      return res.status(400).json({ error: "A valid transaction hash is required." });
+    }
+    if (!network || !["TRC20", "BEP20"].includes((network as string).toUpperCase())) {
+      return res.status(400).json({ error: "Network must be TRC20 or BEP20." });
     }
 
-    // Check if already pending review
-    const existingReview = await db.select().from(depositVerificationsTable).where(
-      eq(depositVerificationsTable.txid, cleanTxid)
-    );
-    if (existingReview.length > 0) {
-      return res.status(409).json({ error: "This transaction is already under review. Please wait for admin approval.", status: existingReview[0].status });
+    const cleanHash = txHash.trim();
+    const net = (network as string).toUpperCase();
+
+    // Check if this TX has already been credited
+    const [existingTx, existingVerif] = await Promise.all([
+      db.select().from(transactionsTable).where(
+        and(eq(transactionsTable.txid, cleanHash), eq(transactionsTable.type, "deposit"))
+      ),
+      db.select().from(depositVerificationsTable).where(
+        eq(depositVerificationsTable.txid, cleanHash)
+      ),
+    ]);
+
+    if (existingTx.length > 0 && existingTx[0].status === "completed") {
+      return res.status(409).json({ error: "This transaction has already been credited to a wallet." });
+    }
+    if (existingVerif.length > 0 && existingVerif[0].status === "completed") {
+      return res.status(409).json({ error: "This transaction has already been processed." });
     }
 
-    // Try to verify on-chain
-    const details = await getTrc20TxDetails(cleanTxid).catch(() => null);
-
-    // Get user's deposit address for cross-check
-    const masterSeed = process.env["DEPOSIT_MASTER_SEED"];
-    let depositAddress: string | null = null;
-    if (masterSeed) {
-      depositAddress = deriveUserDepositAddress(masterSeed, userId);
+    // Get the business deposit address for this network
+    const settingKey = net === "BEP20" ? "bep20Address" : "trc20Address";
+    const businessAddress = await getSetting(settingKey);
+    if (!businessAddress) {
+      return res.status(503).json({ error: `${net} deposit address not configured. Please contact support.` });
     }
 
-    const [review] = await db.insert(depositVerificationsTable).values({
+    // Verify transaction on the blockchain
+    let txDetails: { confirmed: boolean; from: string; to: string; amount: string } | null = null;
+
+    if (net === "BEP20") {
+      txDetails = await getBscUsdtTx(cleanHash).catch(() => null);
+    } else {
+      const tron = await getTrc20TxDetails(cleanHash).catch(() => null);
+      if (tron) {
+        txDetails = {
+          confirmed: tron.confirmed ?? true,
+          from: tron.from,
+          to: tron.to,
+          amount: tron.amount,
+        };
+      }
+    }
+
+    if (!txDetails) {
+      return res.status(422).json({
+        error: "Transaction not found on blockchain. Make sure the TX hash is correct and matches the selected network.",
+      });
+    }
+    if (!txDetails.confirmed) {
+      return res.status(422).json({
+        error: "Transaction is not confirmed yet. Please wait a minute and try again.",
+      });
+    }
+
+    // Verify the USDT was sent TO our business address
+    if (txDetails.to.toLowerCase() !== businessAddress.toLowerCase()) {
+      return res.status(422).json({
+        error: "This transaction was not sent to our deposit address. Please check you selected the correct network.",
+      });
+    }
+
+    const amount = parseFloat(txDetails.amount);
+    if (isNaN(amount) || amount <= 0) {
+      return res.status(422).json({ error: "Invalid amount in transaction." });
+    }
+
+    // Credit the user's wallet
+    const wallet = await getOrCreateWallet(userId);
+    const newBalance = (parseFloat(wallet.availableBalance) + amount).toFixed(6);
+
+    await db.update(walletsTable)
+      .set({ availableBalance: newBalance, updatedAt: new Date() })
+      .where(eq(walletsTable.id, wallet.id));
+
+    // Record in transactions
+    await db.insert(transactionsTable).values({
       userId,
-      txid: cleanTxid,
-      amount: details?.amount ?? null,
-      fromAddress: details?.from ?? null,
-      toAddress: details?.to ?? depositAddress,
-      network: "TRC20",
-      status: "pending",
-      source: "user_report",
-    }).returning();
+      type: "deposit",
+      amount: txDetails.amount,
+      network: net,
+      status: "completed",
+      txid: cleanHash,
+      address: txDetails.from,
+    });
+
+    // Record in deposit_verifications for admin audit trail
+    await db.insert(depositVerificationsTable).values({
+      userId,
+      txid: cleanHash,
+      amount: txDetails.amount,
+      fromAddress: txDetails.from,
+      toAddress: businessAddress,
+      network: net,
+      status: "completed",
+      source: "user_verify",
+      adminNote: `Auto-credited via user TX hash verification. ${txDetails.amount} USDT from ${txDetails.from}`,
+    }).onConflictDoNothing();
+
+    req.log.info({ userId, txHash: cleanHash, amount: txDetails.amount, net }, "Deposit verified and credited");
 
     res.json({
-      id: review.id,
-      status: "pending",
-      message: "Your deposit report has been submitted. An admin will review and credit your wallet within 24 hours.",
-      amount: review.amount,
+      success: true,
+      amount: txDetails.amount,
+      network: net,
+      message: `${parseFloat(txDetails.amount).toFixed(2)} USDT has been added to your wallet!`,
     });
   } catch (err) {
-    req.log.error({ err }, "Failed to report deposit");
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-// POST /api/wallet/deposit/initiate — user registers their sending address so the monitor can auto-match
-router.post("/deposit/initiate", async (req, res) => {
-  try {
-    const { amount, fromAddress } = req.body;
-    const userId = (req as any).userId;
-    const amt = parseFloat(amount);
-    if (!amt || amt <= 0) return res.status(400).json({ error: "Invalid amount" });
-    if (!fromAddress || typeof fromAddress !== "string" || fromAddress.trim().length < 10) {
-      return res.status(400).json({ error: "Your sending wallet address (fromAddress) is required so we can automatically credit your deposit." });
-    }
-
-    const cleanFrom = fromAddress.trim();
-
-    // Get the business deposit address to show the user
-    const businessAddress = await getSetting("trc20Address", "");
-
-    // Store as pending_match so the monitor can match this deposit when it arrives
-    const [record] = await db.insert(depositVerificationsTable).values({
-      userId,
-      txid: `pending-${userId}-${Date.now()}`,
-      amount: amt.toFixed(6),
-      fromAddress: cleanFrom,
-      toAddress: businessAddress || null,
-      network: "TRC20",
-      status: "pending_match",
-      source: "user_report",
-      adminNote: `User initiated deposit of ${amt.toFixed(6)} USDT from ${cleanFrom}`,
-    }).returning();
-
-    res.json({
-      id: record.id,
-      status: "pending_match",
-      depositAddress: businessAddress,
-      amount: amt.toFixed(6),
-      fromAddress: cleanFrom,
-      message: `Send exactly ${amt.toFixed(6)} USDT (TRC20) to the deposit address from ${cleanFrom}. Your balance will be credited automatically once the transaction is confirmed on-chain.`,
-    });
-  } catch (err) {
-    req.log.error({ err }, "Failed to initiate deposit");
+    req.log.error({ err }, "Deposit verify error");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -205,7 +226,6 @@ router.post("/withdraw", async (req, res) => {
       return res.status(503).json({ error: "Withdrawal service not configured" });
     }
 
-    // Check hot wallet has enough balance (optional sanity check)
     const fee = (amt * 0.001);
     const netAmount = amt - fee;
 
@@ -226,7 +246,7 @@ router.post("/withdraw", async (req, res) => {
       fee: fee.toFixed(6),
     }).returning();
 
-    // Broadcast to blockchain (async — respond immediately, update tx after)
+    // Broadcast to blockchain
     sendUsdt(privateKey, address, netAmount)
       .then(async (txid) => {
         await db.update(transactionsTable)
@@ -236,7 +256,6 @@ router.post("/withdraw", async (req, res) => {
       })
       .catch(async (err) => {
         req.log.error({ err, txId: tx.id }, "Withdrawal broadcast failed — refunding");
-        // Refund balance on failure
         const currentWallet = await getOrCreateWallet(userId);
         const refunded = (parseFloat(currentWallet.availableBalance) + amt).toFixed(6);
         await db.update(walletsTable)
@@ -292,7 +311,7 @@ router.get("/transactions", async (req, res) => {
   }
 });
 
-// GET /api/wallet/hot-wallet-address — for admin info
+// GET /api/wallet/hot-wallet-info — for admin info
 router.get("/hot-wallet-info", async (req, res) => {
   try {
     const privateKey = process.env["HOT_WALLET_PRIVATE_KEY"];
