@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
-import { setAdminToken } from "@/lib/admin-api";
+import { useAdminAuth } from "@/hooks/use-admin-auth";
 import "./auth.css";
 
 interface Country {
@@ -51,6 +51,7 @@ const ET = COUNTRIES[0];
 
 export default function AuthPage() {
   const { user, isLoading, login } = useAuth();
+  const { login: adminLogin } = useAdminAuth();
   const [, setLocation] = useLocation();
 
   const [toggled, setToggled] = useState(false);
@@ -160,17 +161,9 @@ export default function AuthPage() {
       // If email login — silently try admin credentials first
       if (loginType === "email") {
         try {
-          const adminRes = await fetch("/api/admin/auth/login", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ email: identifier, password: loginPwd }),
-          });
-          if (adminRes.ok) {
-            const { token } = await adminRes.json();
-            setAdminToken(token);
-            setLocation("/admin/dashboard");
-            return;
-          }
+          await adminLogin(identifier, loginPwd);
+          setLocation("/admin/dashboard");
+          return;
         } catch {
           // not admin — continue to user login below
         }
