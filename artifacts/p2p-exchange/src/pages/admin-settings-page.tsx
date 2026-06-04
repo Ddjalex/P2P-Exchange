@@ -98,6 +98,7 @@ export default function AdminSettingsPage() {
               {[
                 { label: "Platform Name", key: "platformName", type: "text" },
                 { label: "Support Email", key: "supportEmail", type: "email" },
+                { label: "ETB Rate (1 USDT = ? ETB)", key: "etbRate", type: "number" },
                 { label: "Min Deposit (USDT)", key: "minDeposit", type: "number" },
                 { label: "Min Withdrawal (USDT)", key: "minWithdrawal", type: "number" },
                 { label: "Max Withdrawal/Day (USDT)", key: "maxWithdrawalPerDay", type: "number" },

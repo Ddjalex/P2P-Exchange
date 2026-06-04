@@ -1,10 +1,13 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { walletsTable, transactionsTable } from "@workspace/db";
+import { walletsTable, transactionsTable, systemSettingsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 const router = Router();
 
-const ETB_RATE = "179.50";
+async function getSetting(key: string, fallback = ""): Promise<string> {
+  const rows = await db.select().from(systemSettingsTable).where(eq(systemSettingsTable.key, key));
+  return rows[0]?.value ?? fallback;
+}
 
 function getOrCreateWallet(userId: number) {
   return db.select().from(walletsTable).where(
@@ -27,7 +30,8 @@ router.get("/", async (req, res) => {
     const avail = parseFloat(wallet.availableBalance);
     const frozen = parseFloat(wallet.frozenBalance);
     const total = avail + frozen;
-    const etbValue = (total * parseFloat(ETB_RATE)).toFixed(2);
+    const etbRate = await getSetting("etbRate", "0.00");
+    const etbValue = (total * parseFloat(etbRate || "0")).toFixed(2);
     res.json({
       userId: wallet.userId,
       asset: wallet.asset,
@@ -35,7 +39,7 @@ router.get("/", async (req, res) => {
       frozenBalance: wallet.frozenBalance,
       totalBalance: total.toFixed(2),
       etbValue,
-      etbRate: ETB_RATE,
+      etbRate,
     });
   } catch (err) {
     req.log.error({ err }, "Failed to get wallet");
@@ -48,14 +52,16 @@ router.get("/deposit-address", async (req, res) => {
   if (!["TRC20", "ERC20"].includes(network)) {
     return res.status(400).json({ error: "Invalid network" });
   }
-  const addresses: Record<string, string> = {
-    TRC20: "TQnkMn8vANr6Qv9bK2X8sZ3wEpM7aFcYJ",
-    ERC20: "0x742d35Cc6634C0532925a3b8D4C9f4E5b8A1234",
-  };
+  const key = network === "TRC20" ? "trc20Address" : "erc20Address";
+  const address = await getSetting(key, "");
+  if (!address) {
+    return res.status(503).json({ error: "Deposit address not configured. Please contact support." });
+  }
+  const minDeposit = await getSetting("minDeposit", "1");
   res.json({
-    address: addresses[network],
+    address,
     network,
-    minDeposit: "1.00",
+    minDeposit,
   });
 });
 

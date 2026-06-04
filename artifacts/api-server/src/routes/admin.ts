@@ -700,22 +700,23 @@ router.post("/notifications/send", adminAuth, async (req: any, res) => {
 
 const DEFAULT_SETTINGS: Record<string, string> = {
   platformName: "EthioP2P",
-  supportEmail: "support@ethiop2p.com",
+  supportEmail: "",
   maintenanceMode: "false",
-  minDeposit: "10",
+  etbRate: "",
+  minDeposit: "1",
   minWithdrawal: "10",
   maxWithdrawalPerDay: "10000",
   requireKycForTrading: "true",
   requireKycForWithdrawal: "true",
   maxFailedLogins: "5",
   sessionTimeoutMinutes: "1440",
-  trc20Address: "TKnRqsrBX1VjCq9Tnh2Kp7ENKjnqrj5Ht",
-  erc20Address: "0x1234567890abcdef1234567890abcdef12345678",
+  trc20Address: "",
+  erc20Address: "",
   trc20Enabled: "true",
   erc20Enabled: "true",
   fastsmsApiKey: "",
   brevoApiKey: "",
-  brevoSenderEmail: "noreply@ethiop2p.com",
+  brevoSenderEmail: "",
   brevoSenderName: "EthioP2P",
 };
 

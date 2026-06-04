@@ -255,7 +255,7 @@ export default function KycPage() {
           frontImageUrl: frontUrl,
           backImageUrl: backUrl,
           selfieUrl,
-          livenessResult: { score: 0.98, passed: true },
+          livenessResult: { passed: true },
         },
       },
       {
