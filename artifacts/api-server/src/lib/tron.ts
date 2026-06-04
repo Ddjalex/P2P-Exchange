@@ -311,6 +311,26 @@ export async function sendUsdt(
   return unsignedTx.txID as string;
 }
 
+/**
+ * Normalize any TRON address representation to base58.
+ * TronGrid event result fields can return addresses as:
+ *   - Base58 already ("Txxxx", length 34)
+ *   - 20-byte hex (40 chars, no prefix) — need "41" prepended
+ *   - 21-byte hex (42 chars, starts with "41") — already has prefix
+ *   - ABI-encoded 32-byte hex (64 chars) — take last 40 chars, prepend "41"
+ */
+function normalizeTronAddress(addr: string): string {
+  if (!addr) return "";
+  // Already base58 TRON address (starts with T, 33-35 chars)
+  if (/^T[A-Za-z0-9]{32,34}$/.test(addr)) return addr;
+  // Strip 0x prefix
+  const h = addr.replace(/^0x/, "");
+  if (h.length === 64) return hexToTronAddress("41" + h.slice(-40)); // ABI 32-byte
+  if (h.length === 42 && h.startsWith("41")) return hexToTronAddress(h); // 21-byte with prefix
+  if (h.length === 40) return hexToTronAddress("41" + h); // 20-byte bare
+  return addr; // fallback: return as-is
+}
+
 /** Fetch TRC20 USDT transfer details for a given txid via TronGrid event log */
 export async function getTrc20TxDetails(txid: string): Promise<{ from: string; to: string; amount: string; confirmed: boolean } | null> {
   try {
@@ -318,13 +338,17 @@ export async function getTrc20TxDetails(txid: string): Promise<{ from: string; t
     if (!res.ok) return null;
     const data = await res.json() as any;
     const events: any[] = data?.data ?? [];
+
+    // Match the Transfer event from the USDT contract.
+    // TronGrid returns contract_address as base58 in the events API.
     const transfer = events.find((e: any) =>
-      e.contract_address === tronAddressToHex(USDT_CONTRACT).replace(/^41/, "0x") ||
-      e.contract_address?.toLowerCase() === USDT_CONTRACT.toLowerCase() ||
-      (e.event_name === "Transfer" && e.result?.value)
+      e.event_name === "Transfer" &&
+      (e.contract_address === USDT_CONTRACT ||
+       e.contract_address?.toLowerCase() === USDT_CONTRACT.toLowerCase())
     );
+
     if (!transfer) {
-      // Try raw tx lookup as fallback
+      // Fallback: confirm the tx exists on-chain at all
       const txRes = await fetch(`${TRON_GRID}/wallet/gettransactionbyid`, {
         method: "POST",
         headers: apiHeaders(),
@@ -332,13 +356,22 @@ export async function getTrc20TxDetails(txid: string): Promise<{ from: string; t
       });
       if (!txRes.ok) return null;
       const tx = await txRes.json() as any;
+      // TX exists but is not a USDT transfer (wrong contract, wrong token, etc.)
       if (!tx?.txID) return null;
-      return { from: "", to: "", amount: "unknown", confirmed: true };
+      return null;
     }
+
     const rawAmount = transfer.result?.value ?? transfer.result?.amount ?? "0";
+
+    // Normalize addresses — TronGrid may return hex or base58 depending on API version
+    const toAddress = normalizeTronAddress(transfer.result?.to || transfer.result?.["1"] || "");
+    const fromAddress = normalizeTronAddress(
+      transfer.result?.from || transfer.result?.["0"] || transfer.caller_contract_address || ""
+    );
+
     return {
-      from: transfer.caller_contract_address || transfer.result?.from || "",
-      to: transfer.result?.to || "",
+      from: fromAddress,
+      to: toAddress,
       amount: rawToUsdt(rawAmount),
       confirmed: true,
     };
