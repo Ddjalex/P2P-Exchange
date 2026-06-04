@@ -14,9 +14,9 @@ export interface BscTxResult {
   amount: string;
 }
 
-export async function getBscUsdtTx(txHash: string): Promise<BscTxResult | null> {
-  const apiKey = process.env["BSCSCAN_API_KEY"];
-  const apiKeyParam = apiKey ? `&apikey=${apiKey}` : "";
+export async function getBscUsdtTx(txHash: string, apiKey?: string): Promise<BscTxResult | null> {
+  const key = apiKey || process.env["BSCSCAN_API_KEY"] || "";
+  const apiKeyParam = key ? `&apikey=${key}` : "";
   const url = `https://api.bscscan.com/api?module=proxy&action=eth_getTransactionReceipt&txhash=${encodeURIComponent(txHash)}${apiKeyParam}`;
 
   const res = await fetch(url, { signal: AbortSignal.timeout(15_000) });

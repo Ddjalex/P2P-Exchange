@@ -9,6 +9,8 @@ export default function AdminSettingsPage() {
   const [loading, setLoading] = useState(true);
   const [showFastsms, setShowFastsms] = useState(false);
   const [showBrevo, setShowBrevo] = useState(false);
+  const [showTrongrid, setShowTrongrid] = useState(false);
+  const [showBscscan, setShowBscscan] = useState(false);
 
   const [testPhone, setTestPhone] = useState("");
   const [testEmail, setTestEmail] = useState("");
@@ -220,6 +222,63 @@ export default function AdminSettingsPage() {
                       {emailTestStatus.ok ? "✅ " : "❌ "}{emailTestStatus.msg}
                     </div>
                   )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Blockchain API Keys */}
+          <div className="bg-card border border-border rounded-xl p-5">
+            <div className="flex items-center gap-2 mb-1">
+              <h3 className="font-semibold">Blockchain API Keys</h3>
+              <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium">Integrations</span>
+            </div>
+            <p className="text-xs text-muted-foreground mb-5">
+              Used to verify deposits on-chain when users paste a TX hash. Keys stored here take priority over environment variables.
+            </p>
+
+            <div className="space-y-4">
+              {/* TronGrid */}
+              <div className="border border-border rounded-lg p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium">⛓ TronGrid</span>
+                    <span className="text-xs text-muted-foreground">— TRC20 (TRON) verification</span>
+                  </div>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${settings["trongridApiKey"] ? "bg-success/10 text-success" : "bg-warning/10 text-warning"}`}>
+                    {settings["trongridApiKey"] ? "Configured" : "Not set"}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-4">
+                  <label className="text-sm text-muted-foreground flex-shrink-0 w-28">API Key</label>
+                  <SecretInput k="trongridApiKey" show={showTrongrid} onToggle={() => setShowTrongrid(v => !v)} />
+                </div>
+                <div className="text-xs text-muted-foreground/60">
+                  Free tier: 2,000 req/day · Get your key at{" "}
+                  <a href="https://www.trongrid.io" target="_blank" rel="noreferrer" className="text-primary hover:underline">trongrid.io</a>
+                  {" "}→ Sign up → Dashboard → Create API Key
+                </div>
+              </div>
+
+              {/* BSCScan */}
+              <div className="border border-border rounded-lg p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium">⛓ BSCScan</span>
+                    <span className="text-xs text-muted-foreground">— BEP20 (BSC) verification</span>
+                  </div>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${settings["bscscanApiKey"] ? "bg-success/10 text-success" : "bg-warning/10 text-warning"}`}>
+                    {settings["bscscanApiKey"] ? "Configured" : "Not set"}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-4">
+                  <label className="text-sm text-muted-foreground flex-shrink-0 w-28">API Key</label>
+                  <SecretInput k="bscscanApiKey" show={showBscscan} onToggle={() => setShowBscscan(v => !v)} />
+                </div>
+                <div className="text-xs text-muted-foreground/60">
+                  Free tier: 100,000 req/day · Get your key at{" "}
+                  <a href="https://bscscan.com/register" target="_blank" rel="noreferrer" className="text-primary hover:underline">bscscan.com</a>
+                  {" "}→ Register → Log in → Username (top-right) → API Keys → Add
                 </div>
               </div>
             </div>

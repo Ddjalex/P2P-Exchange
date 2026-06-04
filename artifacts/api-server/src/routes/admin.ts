@@ -719,6 +719,8 @@ const DEFAULT_SETTINGS: Record<string, string> = {
   brevoApiKey: "",
   brevoSenderEmail: "",
   brevoSenderName: "EthioP2P",
+  trongridApiKey: "",
+  bscscanApiKey: "",
 };
 
 router.get("/settings", adminAuth, async (req, res) => {

@@ -13,8 +13,8 @@ const TRON_GRID = "https://api.trongrid.io";
 const USDT_CONTRACT = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t";
 const USDT_DECIMALS = 6; // USDT on TRON has 6 decimals
 
-function apiHeaders(): Record<string, string> {
-  const key = process.env["TRONGRID_API_KEY"] ?? "";
+function apiHeaders(overrideKey?: string): Record<string, string> {
+  const key = overrideKey || process.env["TRONGRID_API_KEY"] || "";
   const h: Record<string, string> = { "Content-Type": "application/json" };
   if (key) h["TRON-PRO-API-KEY"] = key;
   return h;
@@ -332,9 +332,10 @@ function normalizeTronAddress(addr: string): string {
 }
 
 /** Fetch TRC20 USDT transfer details for a given txid via TronGrid event log */
-export async function getTrc20TxDetails(txid: string): Promise<{ from: string; to: string; amount: string; confirmed: boolean } | null> {
+export async function getTrc20TxDetails(txid: string, apiKey?: string): Promise<{ from: string; to: string; amount: string; confirmed: boolean } | null> {
   try {
-    const res = await fetch(`${TRON_GRID}/v1/transactions/${txid}/events`, { headers: apiHeaders() });
+    const headers = apiHeaders(apiKey);
+    const res = await fetch(`${TRON_GRID}/v1/transactions/${txid}/events`, { headers });
     if (!res.ok) return null;
     const data = await res.json() as any;
     const events: any[] = data?.data ?? [];
@@ -351,7 +352,7 @@ export async function getTrc20TxDetails(txid: string): Promise<{ from: string; t
       // Fallback: confirm the tx exists on-chain at all
       const txRes = await fetch(`${TRON_GRID}/wallet/gettransactionbyid`, {
         method: "POST",
-        headers: apiHeaders(),
+        headers,
         body: JSON.stringify({ value: txid }),
       });
       if (!txRes.ok) return null;
