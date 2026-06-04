@@ -1,6 +1,6 @@
 import { useAuth } from "@/hooks/use-auth";
 import { AppLayout } from "@/components/layout";
-import { Bell, Settings, Eye, EyeOff, ArrowDownToLine, ArrowUpFromLine, X, Copy, Check, Loader2, AlertCircle } from "lucide-react";
+import { Bell, Settings, Eye, EyeOff, ArrowDownToLine, ArrowUpFromLine, X, Copy, Check, Loader2, AlertCircle, ChevronDown, SendHorizonal } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useGetWallet, getGetWalletQueryKey } from "@workspace/api-client-react";
 import { useState, useEffect } from "react";
@@ -113,11 +113,84 @@ function DepositModal({ onClose }: { onClose: () => void }) {
               <li>Only send <strong>USDT ({network})</strong> to this address</li>
               <li>Minimum deposit: <strong>{minDeposit} USDT</strong></li>
               <li>Sending other tokens may result in permanent loss</li>
-              <li>Deposits are credited after blockchain confirmation</li>
+              <li>Deposits are credited after blockchain confirmation (~60s)</li>
             </ul>
           </div>
+
+          <ReportMissedDeposit />
         </div>
       </div>
+    </div>
+  );
+}
+
+function ReportMissedDeposit() {
+  const [open, setOpen] = useState(false);
+  const [txid, setTxid] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
+
+  const submit = async () => {
+    if (!txid.trim()) return;
+    setSubmitting(true);
+    setResult(null);
+    try {
+      const res = await fetch("/api/wallet/deposit/report", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
+        body: JSON.stringify({ txid: txid.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setResult({ ok: false, message: data.error ?? "Failed to submit" });
+      } else {
+        setResult({ ok: true, message: data.message ?? "Submitted for review" });
+        setTxid("");
+      }
+    } catch {
+      setResult({ ok: false, message: "Network error. Please try again." });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="border border-border rounded-xl overflow-hidden">
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="w-full flex items-center justify-between px-4 py-3 text-sm text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors"
+      >
+        <span>Didn't receive your deposit?</span>
+        <ChevronDown className={`w-4 h-4 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && (
+        <div className="px-4 pb-4 space-y-3 border-t border-border pt-3">
+          <p className="text-xs text-muted-foreground">
+            If your deposit was sent over 10 minutes ago and hasn't arrived, paste the transaction hash (txid) from your exchange below. An admin will verify and credit your wallet within 24 hours.
+          </p>
+          <div className="flex gap-2">
+            <input
+              value={txid}
+              onChange={e => setTxid(e.target.value)}
+              placeholder="Paste transaction hash (txid)..."
+              className="flex-1 px-3 py-2 bg-background border border-border rounded-lg text-xs font-mono outline-none focus:border-primary"
+            />
+            <button
+              onClick={submit}
+              disabled={!txid.trim() || submitting}
+              className="flex items-center gap-1.5 px-3 py-2 bg-primary text-primary-foreground rounded-lg text-xs font-semibold disabled:opacity-40 transition-opacity"
+            >
+              {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <SendHorizonal className="w-3.5 h-3.5" />}
+              Submit
+            </button>
+          </div>
+          {result && (
+            <div className={`text-xs p-3 rounded-lg ${result.ok ? "bg-success/10 text-success border border-success/20" : "bg-destructive/10 text-destructive border border-destructive/20"}`}>
+              {result.message}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

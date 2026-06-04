@@ -6,6 +6,7 @@ import {
   usersTable, adsTable, ordersTable, kycSubmissionsTable, appealsTable,
   transactionsTable, walletsTable, messagesTable, notificationsTable,
   adminLogsTable, systemSettingsTable, notificationHistoryTable, fraudFlagsTable,
+  depositVerificationsTable,
 } from "@workspace/db";
 import { eq, desc, and, or, ilike, sql, ne, count } from "drizzle-orm";
 
@@ -841,6 +842,118 @@ router.post("/test-email", adminAuth, async (req: any, res) => {
     res.json({ ok: true, message: "Test email sent successfully!" });
   } catch (err: any) {
     res.status(500).json({ ok: false, error: err?.message || "Internal error" });
+  }
+});
+
+// ─── DEPOSIT VERIFICATIONS ───────────────────────────────────────────────────
+
+router.get("/deposits/verifications", adminAuth, async (req, res) => {
+  try {
+    const { status = "pending", page = "1" } = req.query as Record<string, string>;
+    const limit = 20;
+    const offset = (parseInt(page) - 1) * limit;
+
+    const rows = await db
+      .select({
+        v: depositVerificationsTable,
+        user: {
+          id: usersTable.id,
+          username: usersTable.username,
+          email: usersTable.email,
+          phone: usersTable.phone,
+          kycStatus: usersTable.kycStatus,
+        },
+        wallet: {
+          availableBalance: walletsTable.availableBalance,
+          depositAddress: walletsTable.depositAddress,
+        },
+      })
+      .from(depositVerificationsTable)
+      .leftJoin(usersTable, eq(depositVerificationsTable.userId, usersTable.id))
+      .leftJoin(walletsTable, and(
+        eq(walletsTable.userId, depositVerificationsTable.userId),
+        eq(walletsTable.asset, "USDT"),
+      ))
+      .where(status === "all" ? undefined : eq(depositVerificationsTable.status, status))
+      .orderBy(desc(depositVerificationsTable.createdAt))
+      .limit(limit)
+      .offset(offset);
+
+    const [{ c: total }] = await db
+      .select({ c: count() })
+      .from(depositVerificationsTable)
+      .where(status === "all" ? undefined : eq(depositVerificationsTable.status, status));
+
+    res.json({ verifications: rows, total: Number(total), page: parseInt(page) });
+  } catch (err) {
+    req.log.error({ err }, "Admin deposit verifications list failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/deposits/verifications/:id/approve", adminAuth, async (req: any, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { note } = req.body ?? {};
+
+    const rows = await db.select().from(depositVerificationsTable).where(eq(depositVerificationsTable.id, id));
+    if (!rows[0]) return res.status(404).json({ error: "Verification not found" });
+    const v = rows[0];
+    if (v.status !== "pending") return res.status(400).json({ error: `Already ${v.status}` });
+
+    // Credit the wallet
+    let walletRows = await db.select().from(walletsTable).where(
+      and(eq(walletsTable.userId, v.userId), eq(walletsTable.asset, "USDT"))
+    );
+    let wallet = walletRows[0];
+    if (!wallet) {
+      const [w] = await db.insert(walletsTable).values({
+        userId: v.userId, asset: "USDT", availableBalance: "0.00", frozenBalance: "0.00",
+      }).returning();
+      wallet = w;
+    }
+    const amount = parseFloat(v.amount ?? "0");
+    if (amount <= 0) return res.status(400).json({ error: "Cannot approve: amount is zero or unknown. Use manual credit instead." });
+
+    const newBalance = (parseFloat(wallet.availableBalance) + amount).toFixed(6);
+    await db.update(walletsTable)
+      .set({ availableBalance: newBalance, updatedAt: new Date() })
+      .where(eq(walletsTable.id, wallet.id));
+
+    await db.insert(transactionsTable).values({
+      userId: v.userId, type: "deposit", amount: v.amount!,
+      network: v.network, status: "completed", txid: v.txid,
+    }).onConflictDoNothing();
+
+    await db.update(depositVerificationsTable)
+      .set({ status: "approved", reviewedAt: new Date(), reviewedBy: req.adminEmail, adminNote: note ?? null })
+      .where(eq(depositVerificationsTable.id, id));
+
+    await log(req.adminEmail, "deposit_approved", "deposit_verification", id, `Approved ${v.amount} USDT — txid: ${v.txid}`);
+    res.json({ ok: true, newBalance });
+  } catch (err) {
+    req.log.error({ err }, "Admin deposit approve failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/deposits/verifications/:id/reject", adminAuth, async (req: any, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { note } = req.body ?? {};
+    const rows = await db.select().from(depositVerificationsTable).where(eq(depositVerificationsTable.id, id));
+    if (!rows[0]) return res.status(404).json({ error: "Not found" });
+    if (rows[0].status !== "pending") return res.status(400).json({ error: `Already ${rows[0].status}` });
+
+    await db.update(depositVerificationsTable)
+      .set({ status: "rejected", reviewedAt: new Date(), reviewedBy: req.adminEmail, adminNote: note ?? null })
+      .where(eq(depositVerificationsTable.id, id));
+
+    await log(req.adminEmail, "deposit_rejected", "deposit_verification", id, note ?? "No reason given");
+    res.json({ ok: true });
+  } catch (err) {
+    req.log.error({ err }, "Admin deposit reject failed");
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 

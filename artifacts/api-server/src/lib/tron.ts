@@ -311,6 +311,42 @@ export async function sendUsdt(
   return unsignedTx.txID as string;
 }
 
+/** Fetch TRC20 USDT transfer details for a given txid via TronGrid event log */
+export async function getTrc20TxDetails(txid: string): Promise<{ from: string; to: string; amount: string; confirmed: boolean } | null> {
+  try {
+    const res = await fetch(`${TRON_GRID}/v1/transactions/${txid}/events`, { headers: apiHeaders() });
+    if (!res.ok) return null;
+    const data = await res.json() as any;
+    const events: any[] = data?.data ?? [];
+    const transfer = events.find((e: any) =>
+      e.contract_address === tronAddressToHex(USDT_CONTRACT).replace(/^41/, "0x") ||
+      e.contract_address?.toLowerCase() === USDT_CONTRACT.toLowerCase() ||
+      (e.event_name === "Transfer" && e.result?.value)
+    );
+    if (!transfer) {
+      // Try raw tx lookup as fallback
+      const txRes = await fetch(`${TRON_GRID}/wallet/gettransactionbyid`, {
+        method: "POST",
+        headers: apiHeaders(),
+        body: JSON.stringify({ value: txid }),
+      });
+      if (!txRes.ok) return null;
+      const tx = await txRes.json() as any;
+      if (!tx?.txID) return null;
+      return { from: "", to: "", amount: "unknown", confirmed: true };
+    }
+    const rawAmount = transfer.result?.value ?? transfer.result?.amount ?? "0";
+    return {
+      from: transfer.caller_contract_address ?? transfer.result?.from ?? "",
+      to: transfer.result?.to ?? "",
+      amount: rawToUsdt(rawAmount),
+      confirmed: true,
+    };
+  } catch {
+    return null;
+  }
+}
+
 /** Check if a txid is confirmed on-chain */
 export async function getTxInfo(txid: string): Promise<{ confirmed: boolean; amount: string; to: string; from: string } | null> {
   const res = await fetch(`${TRON_GRID}/v1/transactions/${txid}`, { headers: apiHeaders() });

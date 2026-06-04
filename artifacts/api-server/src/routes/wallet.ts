@@ -2,7 +2,8 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { walletsTable, transactionsTable, systemSettingsTable } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
-import { sendUsdt, privateKeyToTronAddress, deriveUserDepositAddress } from "../lib/tron.js";
+import { sendUsdt, privateKeyToTronAddress, deriveUserDepositAddress, getTrc20TxDetails } from "../lib/tron.js";
+import { depositVerificationsTable } from "@workspace/db";
 
 const router = Router();
 
@@ -80,6 +81,65 @@ router.get("/deposit-address", async (req, res) => {
     res.json({ address, network, minDeposit });
   } catch (err) {
     req.log.error({ err }, "Failed to get deposit address");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// POST /api/wallet/deposit/report — user reports a missed deposit by submitting their txid
+router.post("/deposit/report", async (req, res) => {
+  try {
+    const { txid } = req.body;
+    const userId = (req as any).userId;
+    if (!txid || typeof txid !== "string" || txid.trim().length < 10) {
+      return res.status(400).json({ error: "A valid transaction ID (txid) is required" });
+    }
+    const cleanTxid = txid.trim();
+
+    // Check if already processed
+    const already = await db.select().from(transactionsTable).where(
+      and(eq(transactionsTable.txid, cleanTxid), eq(transactionsTable.type, "deposit"))
+    );
+    if (already.length > 0 && already[0].status === "completed") {
+      return res.status(409).json({ error: "This transaction has already been credited to your wallet." });
+    }
+
+    // Check if already pending review
+    const existingReview = await db.select().from(depositVerificationsTable).where(
+      eq(depositVerificationsTable.txid, cleanTxid)
+    );
+    if (existingReview.length > 0) {
+      return res.status(409).json({ error: "This transaction is already under review. Please wait for admin approval.", status: existingReview[0].status });
+    }
+
+    // Try to verify on-chain
+    const details = await getTrc20TxDetails(cleanTxid).catch(() => null);
+
+    // Get user's deposit address for cross-check
+    const masterSeed = process.env["DEPOSIT_MASTER_SEED"];
+    let depositAddress: string | null = null;
+    if (masterSeed) {
+      depositAddress = deriveUserDepositAddress(masterSeed, userId);
+    }
+
+    const [review] = await db.insert(depositVerificationsTable).values({
+      userId,
+      txid: cleanTxid,
+      amount: details?.amount ?? null,
+      fromAddress: details?.from ?? null,
+      toAddress: details?.to ?? depositAddress,
+      network: "TRC20",
+      status: "pending",
+      source: "user_report",
+    }).returning();
+
+    res.json({
+      id: review.id,
+      status: "pending",
+      message: "Your deposit report has been submitted. An admin will review and credit your wallet within 24 hours.",
+      amount: review.amount,
+    });
+  } catch (err) {
+    req.log.error({ err }, "Failed to report deposit");
     res.status(500).json({ error: "Internal server error" });
   }
 });

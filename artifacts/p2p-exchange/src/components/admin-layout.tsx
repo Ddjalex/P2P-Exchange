@@ -43,6 +43,7 @@ const navItems: NavItem[] = [
       { href: "/admin/wallet", label: "Platform Wallet" },
       { href: "/admin/wallet?tab=withdrawals", label: "Pending Withdrawals" },
       { href: "/admin/wallet?tab=frozen", label: "Frozen Balances" },
+      { href: "/admin/deposits", label: "Deposit Verifications" },
     ],
   },
   { href: "/admin/messages", icon: MessageSquare, label: "Messages Monitor" },
