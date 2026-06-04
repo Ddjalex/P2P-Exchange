@@ -15,40 +15,26 @@ function getToken() { return localStorage.getItem(TOKEN_KEY); }
 // ─── Deposit Modal ───────────────────────────────────────────────────────────
 
 function DepositModal({ onClose }: { onClose: () => void }) {
-  const [step, setStep] = useState<"initiate" | "send">("initiate");
-  const [network] = useState<"TRC20">("TRC20");
-  const [fromAddress, setFromAddress] = useState("");
-  const [amount, setAmount] = useState("");
-  const [businessAddress, setBusinessAddress] = useState("");
+  const [network, setNetwork] = useState<"TRC20" | "ERC20">("TRC20");
+  const [address, setAddress] = useState("");
   const [minDeposit, setMinDeposit] = useState("1");
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState("");
   const { toast } = useToast();
 
-  const handleInitiate = async () => {
-    setError("");
-    if (!fromAddress.trim() || fromAddress.trim().length < 10) {
-      setError("Please enter your sending wallet address (the TRC20 address you will send FROM).");
-      return;
-    }
-    const amt = parseFloat(amount);
-    if (!amt || amt <= 0) {
-      setError("Please enter the amount you want to deposit.");
-      return;
-    }
+  const fetchAddress = async (net: "TRC20" | "ERC20") => {
     setLoading(true);
+    setError("");
+    setAddress("");
     try {
-      const res = await fetch("/api/wallet/deposit/initiate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
-        body: JSON.stringify({ fromAddress: fromAddress.trim(), amount: amt }),
+      const res = await fetch(`/api/wallet/deposit-address?network=${net}`, {
+        headers: { Authorization: `Bearer ${getToken()}` },
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to register deposit");
-      setBusinessAddress(data.depositAddress ?? "");
-      setMinDeposit(minDeposit);
-      setStep("send");
+      if (!res.ok) throw new Error(data.error || "Failed to load address");
+      setAddress(data.address);
+      setMinDeposit(data.minDeposit ?? "1");
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -56,9 +42,11 @@ function DepositModal({ onClose }: { onClose: () => void }) {
     }
   };
 
+  useEffect(() => { fetchAddress(network); }, [network]);
+
   const copyAddress = async () => {
-    if (!businessAddress) return;
-    await navigator.clipboard.writeText(businessAddress);
+    if (!address) return;
+    await navigator.clipboard.writeText(address);
     setCopied(true);
     toast({ title: "Address copied!" });
     setTimeout(() => setCopied(false), 2000);
@@ -73,121 +61,63 @@ function DepositModal({ onClose }: { onClose: () => void }) {
       >
         <div className="p-6 space-y-5">
           <div className="flex items-center justify-between">
-            <div>
-              <h2 className="font-bold text-lg">Deposit USDT</h2>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {step === "initiate" ? "Step 1 of 2 — Register your deposit" : "Step 2 of 2 — Send your USDT"}
-              </p>
-            </div>
+            <h2 className="font-bold text-lg">Deposit USDT</h2>
             <button onClick={onClose} className="p-1 rounded-lg hover:bg-secondary/50">
               <X className="w-5 h-5" />
             </button>
           </div>
 
-          {/* Step 1: User enters their sending address + amount */}
-          {step === "initiate" && (
-            <>
-              <div className="bg-primary/5 border border-primary/20 rounded-xl p-4 text-xs text-muted-foreground space-y-1">
-                <p className="font-semibold text-foreground">How it works</p>
-                <p>Enter your TRC20 wallet address (the one you will send <strong>from</strong>) and the amount. We will register this so your deposit is automatically credited when it arrives on-chain.</p>
+          <div>
+            <label className="text-xs text-muted-foreground mb-2 block">Select Network</label>
+            <div className="grid grid-cols-2 gap-2">
+              {(["TRC20", "ERC20"] as const).map(net => (
+                <button
+                  key={net}
+                  onClick={() => setNetwork(net)}
+                  className={`py-2.5 rounded-xl text-sm font-semibold border transition-colors ${network === net ? "bg-primary/10 border-primary text-primary" : "bg-secondary border-border text-muted-foreground hover:bg-secondary/80"}`}
+                >
+                  {net}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs text-muted-foreground mb-2 block">Deposit Address ({network})</label>
+            {loading ? (
+              <div className="flex items-center justify-center h-20 bg-secondary rounded-xl">
+                <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
               </div>
-
-              <div className="space-y-4">
-                <div>
-                  <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
-                    Your Sending Wallet Address (TRC20) *
-                  </label>
-                  <input
-                    value={fromAddress}
-                    onChange={e => setFromAddress(e.target.value)}
-                    placeholder="T... (the address you will send FROM)"
-                    className="w-full px-3 py-3 bg-secondary border border-border rounded-xl text-sm font-mono outline-none focus:border-primary transition-colors"
-                  />
-                  <p className="text-xs text-muted-foreground mt-1">This is your wallet address on Binance, OKX, or any exchange/wallet.</p>
-                </div>
-
-                <div>
-                  <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
-                    Amount to Deposit (USDT) *
-                  </label>
-                  <input
-                    type="number"
-                    value={amount}
-                    onChange={e => setAmount(e.target.value)}
-                    placeholder="e.g. 100"
-                    min="1"
-                    className="w-full px-3 py-3 bg-secondary border border-border rounded-xl text-sm outline-none focus:border-primary transition-colors"
-                  />
-                </div>
+            ) : error ? (
+              <div className="flex items-start space-x-2 p-4 bg-destructive/10 border border-destructive/20 rounded-xl">
+                <AlertCircle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
+                <p className="text-sm text-destructive">{error}</p>
               </div>
-
-              {error && (
-                <div className="flex items-start gap-2 p-3 bg-destructive/10 border border-destructive/20 rounded-xl">
-                  <AlertCircle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
-                  <p className="text-xs text-destructive">{error}</p>
-                </div>
-              )}
-
-              <button
-                onClick={handleInitiate}
-                disabled={loading}
-                className="w-full py-3 bg-primary text-black font-bold rounded-xl text-sm disabled:opacity-50 flex items-center justify-center gap-2 transition-opacity"
-              >
-                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-                {loading ? "Registering..." : "Continue →"}
-              </button>
-            </>
-          )}
-
-          {/* Step 2: Show business address to send to */}
-          {step === "send" && (
-            <>
-              <div className="bg-success/10 border border-success/20 rounded-xl p-4 text-xs space-y-1">
-                <p className="font-semibold text-success">✓ Deposit registered</p>
-                <p className="text-muted-foreground">Send exactly <span className="font-mono font-bold text-foreground">{amount} USDT (TRC20)</span> from <span className="font-mono break-all">{fromAddress}</span> to the address below. Your balance will be credited automatically.</p>
+            ) : (
+              <div className="bg-secondary rounded-xl p-4 space-y-3">
+                <p className="text-sm font-mono break-all leading-relaxed">{address}</p>
+                <button
+                  onClick={copyAddress}
+                  className="w-full flex items-center justify-center space-x-2 py-2 bg-primary/10 hover:bg-primary/20 text-primary rounded-lg text-sm font-medium transition-colors"
+                >
+                  {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                  <span>{copied ? "Copied!" : "Copy Address"}</span>
+                </button>
               </div>
+            )}
+          </div>
 
-              <div>
-                <label className="text-xs text-muted-foreground mb-2 block">Send USDT ({network}) to this address</label>
-                {businessAddress ? (
-                  <div className="bg-secondary rounded-xl p-4 space-y-3">
-                    <p className="text-sm font-mono break-all leading-relaxed">{businessAddress}</p>
-                    <button
-                      onClick={copyAddress}
-                      className="w-full flex items-center justify-center space-x-2 py-2 bg-primary/10 hover:bg-primary/20 text-primary rounded-lg text-sm font-medium transition-colors"
-                    >
-                      {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                      <span>{copied ? "Copied!" : "Copy Address"}</span>
-                    </button>
-                  </div>
-                ) : (
-                  <div className="flex items-start gap-2 p-4 bg-destructive/10 border border-destructive/20 rounded-xl">
-                    <AlertCircle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
-                    <p className="text-sm text-destructive">Deposit address not configured. Please contact support.</p>
-                  </div>
-                )}
-              </div>
+          <div className="bg-warning/10 border border-warning/20 rounded-xl p-4 space-y-1">
+            <p className="text-xs font-semibold text-warning">⚠️ Important</p>
+            <ul className="text-xs text-muted-foreground space-y-1 list-disc list-inside">
+              <li>Only send <strong>USDT ({network})</strong> to this address</li>
+              <li>Minimum deposit: <strong>{minDeposit} USDT</strong></li>
+              <li>Sending other tokens may result in permanent loss</li>
+              <li>Deposits are credited after admin verification</li>
+            </ul>
+          </div>
 
-              <div className="bg-warning/10 border border-warning/20 rounded-xl p-4 space-y-1">
-                <p className="text-xs font-semibold text-warning">⚠️ Important</p>
-                <ul className="text-xs text-muted-foreground space-y-1 list-disc list-inside">
-                  <li>Only send <strong>USDT (TRC20)</strong> to this address</li>
-                  <li>Send from <strong>exactly the address you registered</strong> above</li>
-                  <li>Send <strong>exactly {amount} USDT</strong> for automatic matching</li>
-                  <li>Credited after blockchain confirmation (~1–3 min)</li>
-                </ul>
-              </div>
-
-              <button
-                onClick={() => setStep("initiate")}
-                className="w-full py-2.5 border border-border rounded-xl text-sm text-muted-foreground hover:text-foreground transition-colors"
-              >
-                ← Start over with different address/amount
-              </button>
-
-              <ReportMissedDeposit />
-            </>
-          )}
+          <ReportMissedDeposit />
         </div>
       </div>
     </div>

@@ -2,11 +2,8 @@
  * Background deposit monitor — polls TronGrid every 60s for incoming USDT TRC20
  * deposits to the business owner's single deposit address (Admin → Settings → trc20Address).
  *
- * Matching logic:
- *  1. User initiates a deposit via POST /api/wallet/deposit/initiate (provides their sending address)
- *     → stored in deposit_verifications with status="pending_match"
- *  2. Monitor detects TX to business address, matches by fromAddress → auto-credits user
- *  3. If no match found → queued as "pending" for admin to assign manually
+ * All detected deposits are queued in deposit_verifications for the admin to review
+ * and assign to the correct user via Admin → Deposits.
  */
 
 import { db } from "@workspace/db";
@@ -47,35 +44,6 @@ async function getProcessedTxIds(): Promise<Set<string>> {
   return ids;
 }
 
-async function creditDeposit(userId: number, amountUsdt: string, txid: string, network: string) {
-  let walletRows = await db
-    .select()
-    .from(walletsTable)
-    .where(and(eq(walletsTable.userId, userId), eq(walletsTable.asset, "USDT")));
-  let wallet = walletRows[0];
-  if (!wallet) {
-    const [w] = await db
-      .insert(walletsTable)
-      .values({ userId, asset: "USDT", availableBalance: "0.00", frozenBalance: "0.00" })
-      .returning();
-    wallet = w;
-  }
-  const newBalance = (parseFloat(wallet.availableBalance) + parseFloat(amountUsdt)).toFixed(6);
-  await db
-    .update(walletsTable)
-    .set({ availableBalance: newBalance, updatedAt: new Date() })
-    .where(eq(walletsTable.id, wallet.id));
-  await db.insert(transactionsTable).values({
-    userId,
-    type: "deposit",
-    amount: amountUsdt,
-    network,
-    status: "completed",
-    txid,
-  });
-  logger.info({ userId, amountUsdt, txid }, "Deposit auto-credited");
-}
-
 async function poll() {
   if (isRunning) return;
   isRunning = true;
@@ -97,17 +65,6 @@ async function poll() {
       return;
     }
 
-    // Load all pending_match records for matching
-    const pendingMatches = await db
-      .select()
-      .from(depositVerificationsTable)
-      .where(
-        and(
-          eq(depositVerificationsTable.status, "pending_match"),
-          isNotNull(depositVerificationsTable.fromAddress)
-        )
-      );
-
     for (const tx of txs) {
       if (!tx.confirmed) continue;
       if (processed.has(tx.txid)) continue;
@@ -117,72 +74,27 @@ async function poll() {
       const amountFloat = parseFloat(amountUsdt);
       if (amountFloat <= 0) continue;
 
-      // Match by fromAddress
-      const matched = pendingMatches.find(
-        (r) =>
-          r.fromAddress?.toLowerCase() === tx.from.toLowerCase() && r.userId !== null
-      );
+      // Queue every deposit for admin to assign to the correct user
+      await db
+        .insert(depositVerificationsTable)
+        .values({
+          userId: null,
+          txid: tx.txid,
+          amount: amountUsdt,
+          fromAddress: tx.from,
+          toAddress: businessAddress,
+          network: "TRC20",
+          status: "pending",
+          source: "monitor_failure",
+          adminNote: "Incoming deposit detected on-chain. Assign to the correct user to credit their balance.",
+        })
+        .onConflictDoNothing();
 
-      if (matched && matched.userId !== null) {
-        try {
-          await creditDeposit(matched.userId, amountUsdt, tx.txid, "TRC20");
-          await db
-            .update(depositVerificationsTable)
-            .set({
-              status: "approved",
-              txid: tx.txid,
-              amount: amountUsdt,
-              toAddress: businessAddress,
-              reviewedAt: new Date(),
-              reviewedBy: "auto-monitor",
-              adminNote: "Auto-credited by deposit monitor — sender address matched",
-            })
-            .where(eq(depositVerificationsTable.id, matched.id));
-          processed.add(tx.txid);
-          logger.info(
-            { userId: matched.userId, amountUsdt, txid: tx.txid, fromAddress: tx.from },
-            "Deposit auto-credited via fromAddress match"
-          );
-        } catch (creditErr) {
-          await db
-            .update(depositVerificationsTable)
-            .set({
-              status: "pending",
-              txid: tx.txid,
-              amount: amountUsdt,
-              toAddress: businessAddress,
-              adminNote: `Auto-credit failed: ${(creditErr as Error)?.message}`,
-            })
-            .where(eq(depositVerificationsTable.id, matched.id));
-          processed.add(tx.txid);
-          logger.warn(
-            { userId: matched.userId, txid: tx.txid },
-            "Deposit matched but credit failed — queued for admin"
-          );
-        }
-      } else {
-        // No match — queue as unassigned for admin to manually assign to a user
-        await db
-          .insert(depositVerificationsTable)
-          .values({
-            userId: null,
-            txid: tx.txid,
-            amount: amountUsdt,
-            fromAddress: tx.from,
-            toAddress: businessAddress,
-            network: "TRC20",
-            status: "pending",
-            source: "monitor_failure",
-            adminNote:
-              "Incoming deposit detected — sender not matched to any user. Please assign to a user manually.",
-          })
-          .onConflictDoNothing();
-        processed.add(tx.txid);
-        logger.warn(
-          { txid: tx.txid, amountUsdt, fromAddress: tx.from },
-          "Unmatched deposit queued for admin assignment"
-        );
-      }
+      processed.add(tx.txid);
+      logger.info(
+        { txid: tx.txid, amountUsdt, fromAddress: tx.from },
+        "Deposit detected — queued for admin assignment"
+      );
     }
   } catch (err) {
     logger.error({ err }, "Deposit monitor poll error");
