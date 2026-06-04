@@ -17,8 +17,20 @@ function getToken() { return localStorage.getItem(TOKEN_KEY); }
 
 type DepositNetwork = "TRC20" | "BEP20";
 
+/** Detect blockchain from tx hash format:
+ *  - 0x + 64 hex chars → BEP20 (EVM / BSC)
+ *  - 64 hex chars, no 0x prefix → TRC20 (TRON)
+ */
+function detectNetwork(hash: string): DepositNetwork | null {
+  const h = hash.trim();
+  if (/^0x[0-9a-fA-F]{64}$/.test(h)) return "BEP20";
+  if (/^[0-9a-fA-F]{64}$/.test(h)) return "TRC20";
+  return null;
+}
+
 function DepositModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
   const [network, setNetwork] = useState<DepositNetwork>("BEP20");
+  const [autoDetected, setAutoDetected] = useState<DepositNetwork | null>(null);
   const [address, setAddress] = useState("");
   const [minDeposit, setMinDeposit] = useState("1");
   const [addrLoading, setAddrLoading] = useState(false);
@@ -59,6 +71,17 @@ function DepositModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
     setCopied(true);
     toast({ title: "Address copied!" });
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleTxHashChange = (val: string) => {
+    setTxHash(val);
+    setVerifyError("");
+    const detected = detectNetwork(val);
+    setAutoDetected(detected);
+    if (detected && detected !== network) {
+      setNetwork(detected);
+      setVerified(null);
+    }
   };
 
   const handleVerify = async () => {
@@ -108,12 +131,19 @@ function DepositModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
         <div className="overflow-y-auto flex-1 px-6 pb-8 space-y-5" style={{ WebkitOverflowScrolling: "touch" }}>
           {/* Network selector */}
           <div>
-            <label className="text-xs text-muted-foreground mb-2 block">Select Network</label>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-xs text-muted-foreground">Select Network</label>
+              {autoDetected && (
+                <span className="text-xs font-medium text-success bg-success/10 px-2 py-0.5 rounded-full">
+                  ✓ Auto-detected: {autoDetected === "BEP20" ? "BEP20 (BSC)" : "TRC20 (TRON)"}
+                </span>
+              )}
+            </div>
             <div className="grid grid-cols-2 gap-2">
               {(["BEP20", "TRC20"] as const).map(net => (
                 <button
                   key={net}
-                  onClick={() => { setNetwork(net); setVerified(null); setVerifyError(""); setTxHash(""); }}
+                  onClick={() => { setNetwork(net); setAutoDetected(null); setVerified(null); setVerifyError(""); setTxHash(""); }}
                   className={`py-2.5 rounded-xl text-sm font-semibold border transition-colors ${network === net ? "bg-primary/10 border-primary text-primary" : "bg-secondary border-border text-muted-foreground hover:bg-secondary/80"}`}
                 >
                   {net === "BEP20" ? "BEP20 (BSC)" : "TRC20 (TRON)"}
@@ -176,12 +206,19 @@ function DepositModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
               </div>
             ) : (
               <>
-                <input
-                  value={txHash}
-                  onChange={e => { setTxHash(e.target.value); setVerifyError(""); }}
-                  placeholder={network === "BEP20" ? "0x... (BSCScan TX hash)" : "TX hash from TronScan"}
-                  className="w-full px-3 py-3 bg-secondary border border-border rounded-xl text-sm font-mono outline-none focus:border-primary transition-colors placeholder:text-muted-foreground/60"
-                />
+                <div className="relative">
+                  <input
+                    value={txHash}
+                    onChange={e => handleTxHashChange(e.target.value)}
+                    placeholder="Paste TX hash — network auto-detected"
+                    className="w-full px-3 py-3 bg-secondary border border-border rounded-xl text-sm font-mono outline-none focus:border-primary transition-colors placeholder:text-muted-foreground/60"
+                  />
+                  {txHash && !autoDetected && txHash.trim().length >= 10 && (
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-warning">
+                      ?
+                    </span>
+                  )}
+                </div>
 
                 {verifyError && (
                   <div className="flex items-start gap-2 p-3 bg-destructive/10 border border-destructive/20 rounded-xl">

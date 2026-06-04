@@ -83,12 +83,22 @@ router.post("/deposit/verify", async (req, res) => {
     if (!txHash || typeof txHash !== "string" || txHash.trim().length < 10) {
       return res.status(400).json({ error: "A valid transaction hash is required." });
     }
-    if (!network || !["TRC20", "BEP20"].includes((network as string).toUpperCase())) {
-      return res.status(400).json({ error: "Network must be TRC20 or BEP20." });
+    if (network && !["TRC20", "BEP20", "AUTO"].includes((network as string).toUpperCase())) {
+      return res.status(400).json({ error: "Network must be TRC20, BEP20, or AUTO." });
     }
 
     const cleanHash = txHash.trim();
-    const net = (network as string).toUpperCase();
+
+    // Auto-detect network from hash format if not specified or "AUTO"
+    const rawNet = (network as string).toUpperCase();
+    let net: string;
+    if (!rawNet || rawNet === "AUTO") {
+      if (/^0x[0-9a-fA-F]{64}$/.test(cleanHash)) net = "BEP20";
+      else if (/^[0-9a-fA-F]{64}$/.test(cleanHash)) net = "TRC20";
+      else return res.status(400).json({ error: "Could not detect network from this hash. Select TRC20 or BEP20 manually." });
+    } else {
+      net = rawNet;
+    }
 
     // Check if this TX has already been credited
     const [existingTx, existingVerif] = await Promise.all([
