@@ -3,7 +3,7 @@ import { Edit2, ShieldCheck, HelpCircle, Info, LogOut, ChevronRight, CheckCircle
 import { useGetProfile, getGetProfileQueryKey } from "@workspace/api-client-react";
 import { useState, useEffect } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Link, useLocation } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
@@ -262,8 +262,12 @@ export default function ProfilePage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [, navigate] = useLocation();
+  const search = useSearch();
 
-  const [tab, setTab] = useState<"trade" | "notifications" | "others">("trade");
+  const tabFromUrl = new URLSearchParams(search).get("tab");
+  const initialTab: "trade" | "notifications" | "others" =
+    tabFromUrl === "notifications" || tabFromUrl === "others" ? tabFromUrl : "trade";
+  const [tab, setTab] = useState<"trade" | "notifications" | "others">(initialTab);
   const [notifSettings, setNotifSettings] = useState<Record<string, boolean>>({});
   const [savingNotif, setSavingNotif] = useState<string | null>(null);
   const [showAddEmail, setShowAddEmail] = useState(false);

@@ -426,8 +426,12 @@ export default function WalletPage() {
           <button onClick={() => setLocation("/p2p")} className="text-muted-foreground font-medium">P2P</button>
         </div>
         <div className="flex items-center space-x-4 text-muted-foreground">
-          <Bell className="w-5 h-5" />
-          <Settings className="w-5 h-5" />
+          <Link href="/profile?tab=notifications">
+            <Bell className="w-5 h-5 hover:text-foreground transition-colors cursor-pointer" />
+          </Link>
+          <Link href="/profile?tab=others">
+            <Settings className="w-5 h-5 hover:text-foreground transition-colors cursor-pointer" />
+          </Link>
         </div>
       </header>
 

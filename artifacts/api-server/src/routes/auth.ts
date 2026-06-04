@@ -73,7 +73,7 @@ async function sendBrevoEmail(to: string, code: string, senderEmail: string, sen
     body: JSON.stringify({
       sender: { name: senderName || "EthioP2P", email: senderEmail || "noreply@ethiop2p.com" },
       to: [{ email: to }],
-      subject: "Your EthioP2P Verification Code",
+      subject: "Your Verification Code",
       htmlContent: `
         <div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;background:#1a1a2e;color:#fff;border-radius:12px;padding:32px;">
           <div style="text-align:center;margin-bottom:24px;">
@@ -108,7 +108,7 @@ router.post("/send-code", async (req, res) => {
     if (type === "phone") {
       const apiKey = await getSetting("fastsmsApiKey");
       if (!apiKey) return res.status(503).json({ error: "SMS service not configured. Contact admin." });
-      await sendSms(target, `Your EthioP2P verification code is: ${code}. Valid for 10 minutes.`, apiKey);
+      await sendSms(target, `Your verification code is: ${code}. Valid for 10 minutes.`, apiKey);
     } else {
       const apiKey = await getSetting("brevoApiKey");
       const senderEmail = await getSetting("brevoSenderEmail");
