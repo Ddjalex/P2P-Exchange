@@ -8,7 +8,6 @@ import { mkdirSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 
 const router = Router();
-const DEV_USER_ID = 1;
 
 const uploadsDir = path.resolve(process.cwd(), "uploads", "kyc");
 mkdirSync(uploadsDir, { recursive: true });
@@ -42,11 +41,11 @@ router.post("/upload", upload.single("file"), (req, res) => {
 router.get("/status", async (req, res) => {
   try {
     const submission = await db.select().from(kycSubmissionsTable)
-      .where(eq(kycSubmissionsTable.userId, DEV_USER_ID))
+      .where(eq(kycSubmissionsTable.userId, (req as any).userId))
       .then(r => r[0]);
 
     if (!submission) {
-      const user = await db.select().from(usersTable).where(eq(usersTable.id, DEV_USER_ID)).then(r => r[0]);
+      const user = await db.select().from(usersTable).where(eq(usersTable.id, (req as any).userId)).then(r => r[0]);
       return res.json({
         status: user?.kycStatus ?? "none",
         rejectionReason: null,
@@ -74,7 +73,7 @@ router.post("/submit", async (req, res) => {
     const { fullName, dateOfBirth, nationality, idType, frontImageUrl, backImageUrl, selfieUrl, livenessResult } = req.body;
 
     const existing = await db.select().from(kycSubmissionsTable)
-      .where(eq(kycSubmissionsTable.userId, DEV_USER_ID)).then(r => r[0]);
+      .where(eq(kycSubmissionsTable.userId, (req as any).userId)).then(r => r[0]);
 
     if (existing) {
       await db.update(kycSubmissionsTable).set({
@@ -91,10 +90,10 @@ router.post("/submit", async (req, res) => {
         adminMessage: null,
         reviewedBy: null,
         reviewedAt: null,
-      }).where(eq(kycSubmissionsTable.userId, DEV_USER_ID));
+      }).where(eq(kycSubmissionsTable.userId, (req as any).userId));
     } else {
       await db.insert(kycSubmissionsTable).values({
-        userId: DEV_USER_ID,
+        userId: (req as any).userId,
         fullName,
         dateOfBirth,
         nationality,
@@ -107,7 +106,7 @@ router.post("/submit", async (req, res) => {
       });
     }
 
-    await db.update(usersTable).set({ kycStatus: "pending" }).where(eq(usersTable.id, DEV_USER_ID));
+    await db.update(usersTable).set({ kycStatus: "pending" }).where(eq(usersTable.id, (req as any).userId));
 
     res.status(201).json({
       status: "pending",

@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import { userAuth } from "../middleware/user-auth";
 import healthRouter from "./health";
 import authRouter from "./auth";
 import walletRouter from "./wallet";
@@ -17,16 +18,19 @@ const router: IRouter = Router();
 
 router.use(healthRouter);
 router.use("/auth", authRouter);
-router.use("/wallet", walletRouter);
-router.use("/transactions", transactionsRouter);
-router.use("/ads", adsRouter);
-router.use("/orders", ordersRouter);
-router.use("/messages", messagesRouter);
-router.use("/profile", profileRouter);
-router.use("/kyc", kycRouter);
-router.use("/notifications", notificationsRouter);
-router.use("/stats", statsRouter);
-router.use("/admin", adminRouter);
+
+// All routes below require a valid user JWT
+router.use("/wallet", userAuth, walletRouter);
+router.use("/transactions", userAuth, transactionsRouter);
+router.use("/ads", userAuth, adsRouter);
+router.use("/orders", userAuth, ordersRouter);
+router.use("/messages", userAuth, messagesRouter);
+router.use("/profile", userAuth, profileRouter);
+router.use("/kyc", userAuth, kycRouter);
+router.use("/notifications", userAuth, notificationsRouter);
+router.use("/stats", userAuth, statsRouter);
 router.use("/sse", sseRouter);
+
+router.use("/admin", adminRouter);
 
 export default router;

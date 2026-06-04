@@ -4,7 +4,6 @@ import { transactionsTable } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
 
 const router = Router();
-const DEV_USER_ID = 1;
 
 router.get("/", async (req, res) => {
   try {
@@ -12,7 +11,7 @@ router.get("/", async (req, res) => {
     const lim = Math.min(parseInt(limit) || 20, 100);
     const off = parseInt(offset) || 0;
 
-    const conditions = [eq(transactionsTable.userId, DEV_USER_ID)];
+    const conditions = [eq(transactionsTable.userId, (req as any).userId)];
     if (type && ["deposit", "withdraw", "transfer"].includes(type)) {
       conditions.push(eq(transactionsTable.type, type as any));
     }

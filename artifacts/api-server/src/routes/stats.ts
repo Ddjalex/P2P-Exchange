@@ -4,12 +4,11 @@ import { ordersTable, adsTable } from "@workspace/db";
 import { eq, and, or, gte } from "drizzle-orm";
 
 const router = Router();
-const DEV_USER_ID = 1;
 
 router.get("/overview", async (req, res) => {
   try {
     const allOrders = await db.select().from(ordersTable).where(
-      or(eq(ordersTable.buyerId, DEV_USER_ID), eq(ordersTable.sellerId, DEV_USER_ID))!
+      or(eq(ordersTable.buyerId, (req as any).userId), eq(ordersTable.sellerId, (req as any).userId))!
     );
 
     const completed = allOrders.filter(o => o.status === "completed");
@@ -25,7 +24,7 @@ router.get("/overview", async (req, res) => {
     const completedToday = completed.filter(o => o.completedAt && o.completedAt >= today).length;
 
     const activeAds = await db.select().from(adsTable).where(
-      and(eq(adsTable.userId, DEV_USER_ID), eq(adsTable.status, "online"))
+      and(eq(adsTable.userId, (req as any).userId), eq(adsTable.status, "online"))
     ).then(r => r.length);
 
     res.json({

@@ -4,7 +4,6 @@ import { walletsTable, transactionsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 const router = Router();
 
-const DEV_USER_ID = 1;
 const ETB_RATE = "179.50";
 
 function getOrCreateWallet(userId: number) {
@@ -24,7 +23,7 @@ function getOrCreateWallet(userId: number) {
 
 router.get("/", async (req, res) => {
   try {
-    const wallet = await getOrCreateWallet(DEV_USER_ID);
+    const wallet = await getOrCreateWallet((req as any).userId);
     const avail = parseFloat(wallet.availableBalance);
     const frozen = parseFloat(wallet.frozenBalance);
     const total = avail + frozen;
@@ -66,14 +65,14 @@ router.post("/withdraw", async (req, res) => {
     if (!address || !network || !amount) return res.status(400).json({ error: "Invalid input" });
     if (!["TRC20", "ERC20"].includes(network)) return res.status(400).json({ error: "Invalid network" });
 
-    const wallet = await getOrCreateWallet(DEV_USER_ID);
+    const wallet = await getOrCreateWallet((req as any).userId);
     const avail = parseFloat(wallet.availableBalance);
     const amt = parseFloat(amount);
     if (amt > avail) return res.status(400).json({ error: "Insufficient balance" });
 
     const fee = (amt * 0.001).toFixed(2);
     const [tx] = await db.insert(transactionsTable).values({
-      userId: DEV_USER_ID,
+      userId: (req as any).userId,
       type: "withdraw",
       amount,
       network,

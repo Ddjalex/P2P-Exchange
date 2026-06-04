@@ -4,7 +4,6 @@ import { adsTable, usersTable, ordersTable } from "@workspace/db";
 import { eq, and, or, gte, lte, desc, ne } from "drizzle-orm";
 
 const router = Router();
-const DEV_USER_ID = 1;
 
 async function formatAd(ad: any) {
   const user = await db.select().from(usersTable).where(eq(usersTable.id, ad.userId)).then(r => r[0]);
@@ -47,9 +46,9 @@ router.get("/", async (req, res) => {
 
     const conditions = [];
     if (mine === "true") {
-      conditions.push(eq(adsTable.userId, DEV_USER_ID));
+      conditions.push(eq(adsTable.userId, (req as any).userId));
     } else {
-      conditions.push(ne(adsTable.userId, DEV_USER_ID));
+      conditions.push(ne(adsTable.userId, (req as any).userId));
       if (!status) conditions.push(eq(adsTable.status, "online"));
     }
     if (type && ["buy", "sell"].includes(type)) {
@@ -85,7 +84,7 @@ router.post("/", async (req, res) => {
     } = req.body;
 
     const [ad] = await db.insert(adsTable).values({
-      userId: DEV_USER_ID,
+      userId: (req as any).userId,
       type,
       priceType: priceType || "fixed",
       price,

@@ -4,16 +4,15 @@ import { messagesTable, ordersTable, usersTable } from "@workspace/db";
 import { eq, and, or, desc, ne } from "drizzle-orm";
 
 const router = Router();
-const DEV_USER_ID = 1;
 
 router.get("/conversations", async (req, res) => {
   try {
     const myOrders = await db.select().from(ordersTable).where(
-      or(eq(ordersTable.buyerId, DEV_USER_ID), eq(ordersTable.sellerId, DEV_USER_ID))!
+      or(eq(ordersTable.buyerId, (req as any).userId), eq(ordersTable.sellerId, (req as any).userId))!
     ).orderBy(desc(ordersTable.createdAt));
 
     const conversations = await Promise.all(myOrders.map(async order => {
-      const traderId = order.buyerId === DEV_USER_ID ? order.sellerId : order.buyerId;
+      const traderId = order.buyerId === (req as any).userId ? order.sellerId : order.buyerId;
       const trader = await db.select().from(usersTable).where(eq(usersTable.id, traderId)).then(r => r[0]);
       const lastMsg = await db.select().from(messagesTable)
         .where(eq(messagesTable.orderId, order.id))
@@ -21,7 +20,7 @@ router.get("/conversations", async (req, res) => {
         .limit(1)
         .then(r => r[0]);
       const unreadCount = await db.select().from(messagesTable).where(
-        and(eq(messagesTable.orderId, order.id), eq(messagesTable.receiverId, DEV_USER_ID), eq(messagesTable.isRead, false))
+        and(eq(messagesTable.orderId, order.id), eq(messagesTable.receiverId, (req as any).userId), eq(messagesTable.isRead, false))
       ).then(r => r.length);
 
       return {
@@ -81,18 +80,18 @@ router.post("/:orderId", async (req, res) => {
     const order = await db.select().from(ordersTable).where(eq(ordersTable.id, orderId)).then(r => r[0]);
     if (!order) return res.status(404).json({ error: "Order not found" });
 
-    const receiverId = order.buyerId === DEV_USER_ID ? order.sellerId : order.buyerId;
+    const receiverId = order.buyerId === (req as any).userId ? order.sellerId : order.buyerId;
 
     const [msg] = await db.insert(messagesTable).values({
       orderId,
-      senderId: DEV_USER_ID,
+      senderId: (req as any).userId,
       receiverId,
       content,
       type,
       isRead: false,
     }).returning();
 
-    const sender = await db.select().from(usersTable).where(eq(usersTable.id, DEV_USER_ID)).then(r => r[0]);
+    const sender = await db.select().from(usersTable).where(eq(usersTable.id, (req as any).userId)).then(r => r[0]);
 
     res.status(201).json({
       id: msg.id,
@@ -116,7 +115,7 @@ router.post("/:orderId/read", async (req, res) => {
     const orderId = parseInt(req.params.orderId);
     await db.update(messagesTable)
       .set({ isRead: true })
-      .where(and(eq(messagesTable.orderId, orderId), eq(messagesTable.receiverId, DEV_USER_ID)));
+      .where(and(eq(messagesTable.orderId, orderId), eq(messagesTable.receiverId, (req as any).userId)));
     res.json({ success: true });
   } catch (err) {
     req.log.error({ err }, "Failed to mark messages read");

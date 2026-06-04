@@ -4,7 +4,6 @@ import { usersTable, paymentMethodsTable, ordersTable, feedbackTable } from "@wo
 import { eq, and, or, gte, desc } from "drizzle-orm";
 
 const router = Router();
-const DEV_USER_ID = 1;
 
 async function getProfileData(userId: number) {
   const user = await db.select().from(usersTable).where(eq(usersTable.id, userId)).then(r => r[0]);
@@ -57,7 +56,7 @@ async function getProfileData(userId: number) {
 
 router.get("/", async (req, res) => {
   try {
-    const profile = await getProfileData(DEV_USER_ID);
+    const profile = await getProfileData((req as any).userId);
     if (!profile) return res.status(404).json({ error: "Profile not found" });
     res.json(profile);
   } catch (err) {
@@ -72,8 +71,8 @@ router.patch("/", async (req, res) => {
     const updates: Record<string, any> = {};
     if (username) updates.username = username;
 
-    await db.update(usersTable).set(updates).where(eq(usersTable.id, DEV_USER_ID));
-    const profile = await getProfileData(DEV_USER_ID);
+    await db.update(usersTable).set(updates).where(eq(usersTable.id, (req as any).userId));
+    const profile = await getProfileData((req as any).userId);
     res.json(profile);
   } catch (err) {
     req.log.error({ err }, "Failed to update profile");
@@ -84,7 +83,7 @@ router.patch("/", async (req, res) => {
 router.get("/payment-methods", async (req, res) => {
   try {
     const methods = await db.select().from(paymentMethodsTable)
-      .where(eq(paymentMethodsTable.userId, DEV_USER_ID))
+      .where(eq(paymentMethodsTable.userId, (req as any).userId))
       .orderBy(desc(paymentMethodsTable.createdAt));
 
     res.json(methods.map(m => ({
@@ -105,7 +104,7 @@ router.post("/payment-methods", async (req, res) => {
   try {
     const { type, accountName, accountNumber } = req.body;
     const [method] = await db.insert(paymentMethodsTable).values({
-      userId: DEV_USER_ID,
+      userId: (req as any).userId,
       type,
       accountName,
       accountNumber,
@@ -129,7 +128,7 @@ router.delete("/payment-methods/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     await db.delete(paymentMethodsTable).where(
-      and(eq(paymentMethodsTable.id, id), eq(paymentMethodsTable.userId, DEV_USER_ID))
+      and(eq(paymentMethodsTable.id, id), eq(paymentMethodsTable.userId, (req as any).userId))
     );
     res.status(204).send();
   } catch (err) {

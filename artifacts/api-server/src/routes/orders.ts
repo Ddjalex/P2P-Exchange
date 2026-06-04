@@ -4,7 +4,6 @@ import { ordersTable, adsTable, usersTable, messagesTable, appealsTable, feedbac
 import { eq, and, or, desc } from "drizzle-orm";
 
 const router = Router();
-const DEV_USER_ID = 1;
 
 // ── Wallet helpers ────────────────────────────────────────────────────────────
 
@@ -63,7 +62,7 @@ async function formatOrder(order: any) {
   const buyer = await db.select().from(usersTable).where(eq(usersTable.id, order.buyerId)).then(r => r[0]);
   const seller = await db.select().from(usersTable).where(eq(usersTable.id, order.sellerId)).then(r => r[0]);
   const unreadCount = await db.select().from(messagesTable).where(
-    and(eq(messagesTable.orderId, order.id), eq(messagesTable.receiverId, DEV_USER_ID), eq(messagesTable.isRead, false))
+    and(eq(messagesTable.orderId, order.id), eq(messagesTable.receiverId, (req as any).userId), eq(messagesTable.isRead, false))
   ).then(r => r.length);
 
   return {
@@ -100,7 +99,7 @@ router.get("/", async (req, res) => {
     const { tab, status } = req.query as Record<string, string>;
 
     const conditions = [
-      or(eq(ordersTable.buyerId, DEV_USER_ID), eq(ordersTable.sellerId, DEV_USER_ID))!
+      or(eq(ordersTable.buyerId, (req as any).userId), eq(ordersTable.sellerId, (req as any).userId))!
     ];
 
     if (status && ["unpaid", "paid", "completed", "cancelled", "appeal"].includes(status)) {
@@ -137,8 +136,8 @@ router.post("/", async (req, res) => {
     if (!ad) return res.status(404).json({ error: "Ad not found" });
 
     const isBuying = ad.type === "sell";
-    const buyerId = isBuying ? DEV_USER_ID : ad.userId;
-    const sellerId = isBuying ? ad.userId : DEV_USER_ID;
+    const buyerId = isBuying ? (req as any).userId : ad.userId;
+    const sellerId = isBuying ? ad.userId : (req as any).userId;
 
     const now = new Date();
     const appealAvailableAt = new Date(now.getTime() + ad.paymentTimeLimit * 60 * 1000 + 30 * 60 * 1000);
@@ -296,7 +295,7 @@ router.post("/:id/appeal", async (req, res) => {
 
     const [appeal] = await db.insert(appealsTable).values({
       orderId: id,
-      raisedBy: DEV_USER_ID,
+      raisedBy: (req as any).userId,
       reason,
       description,
       evidenceUrls: JSON.stringify(evidenceUrls),
@@ -306,7 +305,7 @@ router.post("/:id/appeal", async (req, res) => {
     await db.insert(messagesTable).values({
       orderId: id,
       senderId: 0,
-      receiverId: DEV_USER_ID,
+      receiverId: (req as any).userId,
       content: "An appeal has been raised. Admin is reviewing the dispute. USDT is frozen until resolved.",
       type: "system",
       isRead: false,
@@ -338,10 +337,10 @@ router.post("/:id/feedback", async (req, res) => {
     const order = await db.select().from(ordersTable).where(eq(ordersTable.id, id)).then(r => r[0]);
     if (!order) return res.status(404).json({ error: "Order not found" });
 
-    const toUserId = DEV_USER_ID === order.buyerId ? order.sellerId : order.buyerId;
+    const toUserId = (req as any).userId === order.buyerId ? order.sellerId : order.buyerId;
     const [fb] = await db.insert(feedbackTable).values({
       orderId: id,
-      fromUserId: DEV_USER_ID,
+      fromUserId: (req as any).userId,
       toUserId,
       type,
       comment: comment ?? null,
