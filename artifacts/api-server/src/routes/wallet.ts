@@ -114,17 +114,15 @@ router.post("/deposit/verify", async (req, res) => {
       return res.status(503).json({ error: `${net} deposit address not configured. Please contact support.` });
     }
 
-    // Read blockchain API keys — DB setting takes priority, env var as fallback
-    const [trongridKey, bscscanKey] = await Promise.all([
-      getSetting("trongridApiKey"),
-      getSetting("bscscanApiKey"),
-    ]);
+    // Read TronGrid API key — DB setting takes priority, env var as fallback
+    // BEP20 uses free public BSC RPC — no key needed
+    const trongridKey = await getSetting("trongridApiKey");
 
     // Verify transaction on the blockchain
     let txDetails: { confirmed: boolean; from: string; to: string; amount: string } | null = null;
 
     if (net === "BEP20") {
-      txDetails = await getBscUsdtTx(cleanHash, bscscanKey || undefined).catch(() => null);
+      txDetails = await getBscUsdtTx(cleanHash).catch(() => null);
     } else {
       const tron = await getTrc20TxDetails(cleanHash, trongridKey || undefined).catch(() => null);
       if (tron) {

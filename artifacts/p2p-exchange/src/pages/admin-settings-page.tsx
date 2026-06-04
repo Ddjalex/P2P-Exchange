@@ -295,39 +295,33 @@ export default function AdminSettingsPage() {
                 </div>
               </div>
 
-              {/* BSCScan */}
+              {/* BSC — no key needed */}
               <div className="border border-border rounded-lg p-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium">⛓ BSCScan</span>
+                    <span className="text-sm font-medium">⛓ BNB Smart Chain</span>
                     <span className="text-xs text-muted-foreground">— BEP20 (BSC) verification</span>
                   </div>
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${settings["bscscanApiKey"] ? "bg-success/10 text-success" : "bg-warning/10 text-warning"}`}>
-                    {settings["bscscanApiKey"] ? "Configured" : "Not set"}
+                  <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-success/10 text-success">
+                    Free — no key needed
                   </span>
                 </div>
-                <div className="flex items-center justify-between gap-4">
-                  <label className="text-sm text-muted-foreground flex-shrink-0 w-28">API Key</label>
-                  <SecretInput k="bscscanApiKey" show={showBscscan} onToggle={() => setShowBscscan(v => !v)} />
-                </div>
+                <p className="text-xs text-muted-foreground">
+                  BEP20 deposits are verified directly via Binance's free public RPC nodes (<code className="text-primary/80">bsc-dataseed.binance.org</code>). No API key or account required.
+                </p>
                 <div className="flex items-center gap-3">
                   <button
                     onClick={() => testBlockchain("bscscan")}
-                    disabled={bscscanTestLoading || !settings["bscscanApiKey"]?.trim()}
+                    disabled={bscscanTestLoading}
                     className="text-xs px-3 py-1.5 rounded-lg border border-primary/40 text-primary hover:bg-primary/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                   >
-                    {bscscanTestLoading ? "Testing…" : "Test Connection"}
+                    {bscscanTestLoading ? "Testing…" : "Test RPC"}
                   </button>
                   {bscscanTestStatus && (
                     <span className={`text-xs font-medium ${bscscanTestStatus.ok ? "text-success" : "text-destructive"}`}>
                       {bscscanTestStatus.ok ? "✓" : "✗"} {bscscanTestStatus.msg}
                     </span>
                   )}
-                </div>
-                <div className="text-xs text-muted-foreground/60">
-                  Free tier: 100,000 req/day · Get your key at{" "}
-                  <a href="https://bscscan.com/register" target="_blank" rel="noreferrer" className="text-primary hover:underline">bscscan.com</a>
-                  {" "}→ Register → Log in → Username (top-right) → API Keys → Add
                 </div>
               </div>
             </div>

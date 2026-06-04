@@ -1,7 +1,15 @@
 /**
- * BSC (BNB Smart Chain) USDT transaction verification via BSCScan API.
+ * BSC (BNB Smart Chain) USDT transaction verification via public BSC RPC.
+ * Uses free public RPC nodes — no API key required.
  * USDT BEP20 contract: 0x55d398326f99059fF775485246999027B3197955 (18 decimals)
  */
+
+const BSC_RPC_ENDPOINTS = [
+  "https://bsc-dataseed.binance.org/",
+  "https://bsc-dataseed1.binance.org/",
+  "https://bsc-dataseed2.binance.org/",
+  "https://bsc-dataseed3.binance.org/",
+];
 
 const BSC_USDT_CONTRACT = "0x55d398326f99059ff775485246999027b3197955";
 const TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
@@ -14,25 +22,35 @@ export interface BscTxResult {
   amount: string;
 }
 
-export async function getBscUsdtTx(txHash: string, apiKey?: string): Promise<BscTxResult | null> {
-  const key = apiKey || process.env["BSCSCAN_API_KEY"] || "";
-  const apiKeyParam = key ? `&apikey=${key}` : "";
-  // Etherscan unified V2 API with chainid=56 for BNB Smart Chain (BSCScan v1 is deprecated)
-  const url = `https://api.etherscan.io/v2/api?chainid=56&module=proxy&action=eth_getTransactionReceipt&txhash=${encodeURIComponent(txHash)}${apiKeyParam}`;
+async function rpcCall(method: string, params: unknown[]): Promise<unknown> {
+  for (const endpoint of BSC_RPC_ENDPOINTS) {
+    try {
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", method, params, id: 1 }),
+        signal: AbortSignal.timeout(12_000),
+      });
+      if (!res.ok) continue;
+      const data = await res.json() as any;
+      if (data?.error) throw new Error(data.error.message ?? "RPC error");
+      return data?.result ?? null;
+    } catch {
+      continue;
+    }
+  }
+  throw new Error("All BSC RPC endpoints failed");
+}
 
-  const res = await fetch(url, { signal: AbortSignal.timeout(15_000) });
-  if (!res.ok) return null;
-
-  const data = await res.json();
-  const receipt = data?.result;
-  if (!receipt || typeof receipt !== "object") return null;
+export async function getBscUsdtTx(txHash: string): Promise<BscTxResult | null> {
+  const receipt = await rpcCall("eth_getTransactionReceipt", [txHash]) as any;
+  if (!receipt) return null;
 
   // status "0x1" = success, "0x0" = reverted
   if (receipt.status !== "0x1") return null;
 
   const logs: any[] = Array.isArray(receipt.logs) ? receipt.logs : [];
 
-  // Find the USDT Transfer(from, to, value) log
   const transferLog = logs.find(
     (log) =>
       log.address?.toLowerCase() === BSC_USDT_CONTRACT &&
@@ -55,7 +73,6 @@ export async function getBscUsdtTx(txHash: string, apiKey?: string): Promise<Bsc
     return null;
   }
 
-  // Convert to USDT with 6 decimal places for display
   const divisor = BigInt(10 ** USDT_DECIMALS);
   const whole = rawAmount / divisor;
   const frac = rawAmount % divisor;
@@ -63,4 +80,14 @@ export async function getBscUsdtTx(txHash: string, apiKey?: string): Promise<Bsc
   const amount = `${whole}.${fracStr}`;
 
   return { confirmed: true, from, to, amount };
+}
+
+/** Ping the BSC RPC to confirm connectivity — used by admin test endpoint */
+export async function pingBscRpc(): Promise<{ ok: boolean; blockNumber?: string }> {
+  try {
+    const result = await rpcCall("eth_blockNumber", []) as string;
+    return { ok: true, blockNumber: result };
+  } catch {
+    return { ok: false };
+  }
 }
