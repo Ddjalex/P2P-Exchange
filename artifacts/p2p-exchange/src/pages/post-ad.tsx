@@ -187,13 +187,16 @@ export default function PostAdPage() {
               <label className="text-sm font-medium">Payment Methods</label>
               <div className="flex flex-wrap gap-2">
                 {["CBE", "Telebirr", "Awash", "Dashen"].map(pm => {
-                  const isSelected = ad.paymentMethods?.includes(pm);
+                  const isSelected = (ad.paymentMethods ?? []).includes(pm);
                   return (
                     <button
                       key={pm}
                       onClick={() => {
-                        const m = ad.paymentMethods || [];
-                        setAd({ ...ad, paymentMethods: isSelected ? m.filter(x => x !== pm) : [...m, pm] });
+                        setAd(prev => {
+                          const m = prev.paymentMethods ?? [];
+                          const selected = m.includes(pm);
+                          return { ...prev, paymentMethods: selected ? m.filter(x => x !== pm) : [...m, pm] };
+                        });
                       }}
                       className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${isSelected ? "bg-primary/20 border-primary text-primary" : "bg-secondary border-border text-muted-foreground"}`}
                     >
