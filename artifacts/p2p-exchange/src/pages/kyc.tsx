@@ -5,6 +5,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { Link, useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 
 async function uploadFile(file: File): Promise<string> {
   const fd = new FormData();
@@ -120,6 +121,7 @@ function UploadBox({
 
 export default function KycPage() {
   const { data: me } = useGetMe();
+  const { refreshUser } = useAuth();
 
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState({
@@ -129,7 +131,6 @@ export default function KycPage() {
     idType: "national_id" as "national_id" | "passport" | "drivers_license" | "kebele_id",
   });
 
-  // Pre-fill name from user profile once loaded
   useEffect(() => {
     if (me && !formData.fullName) {
       const prefill = (me as any).fullName || "";
@@ -139,9 +140,11 @@ export default function KycPage() {
 
   const frontUpload = useFileUpload();
   const backUpload = useFileUpload();
-  const selfieUpload = useFileUpload();
 
   const [livenessStep, setLivenessStep] = useState(0);
+  const [capturedSelfieUrl, setCapturedSelfieUrl] = useState<string | null>(null);
+  const [selfiePreview, setSelfiePreview] = useState<string | null>(null);
+  const [selfieUploading, setSelfieUploading] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
@@ -158,24 +161,77 @@ export default function KycPage() {
     "Verifying...",
   ];
 
+  const captureFrame = useCallback(async () => {
+    const video = videoRef.current;
+    if (!video || !streamRef.current) return;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 480;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    ctx.translate(canvas.width, 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    const preview = canvas.toDataURL("image/jpeg", 0.92);
+    setSelfiePreview(preview);
+
+    setSelfieUploading(true);
+    canvas.toBlob(async (blob) => {
+      if (!blob) { setSelfieUploading(false); return; }
+      const file = new File([blob], "selfie.jpg", { type: "image/jpeg" });
+      try {
+        const url = await uploadFile(file);
+        setCapturedSelfieUrl(url);
+      } catch {
+        toast({ title: "Selfie upload failed", description: "Please try again", variant: "destructive" });
+      } finally {
+        setSelfieUploading(false);
+      }
+    }, "image/jpeg", 0.92);
+  }, [toast]);
+
   useEffect(() => {
     if (step === 3 && livenessStep < 4) {
       navigator.mediaDevices
-        .getUserMedia({ video: { facingMode: "user" } })
+        .getUserMedia({ video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } } })
         .then(stream => {
           streamRef.current = stream;
           if (videoRef.current) videoRef.current.srcObject = stream;
         })
-        .catch(() => {});
+        .catch(() => {
+          toast({ title: "Camera access denied", description: "Please allow camera access for face verification", variant: "destructive" });
+        });
 
-      const timer = setTimeout(() => setLivenessStep(s => s + 1), 3000);
+      const timer = setTimeout(() => {
+        setLivenessStep(s => {
+          const next = s + 1;
+          if (next === 3) {
+            setTimeout(() => captureFrame(), 600);
+          }
+          return next;
+        });
+      }, 3000);
       return () => clearTimeout(timer);
     }
     if (step !== 3 && streamRef.current) {
       streamRef.current.getTracks().forEach(t => t.stop());
       streamRef.current = null;
     }
-  }, [step, livenessStep]);
+  }, [step, livenessStep, captureFrame, toast]);
+
+  const stopCamera = useCallback(() => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => stopCamera();
+  }, [stopCamera]);
 
   const canContinueStep2 =
     frontUpload.state.status === "done" &&
@@ -184,10 +240,14 @@ export default function KycPage() {
   const handleSubmit = () => {
     const frontUrl = frontUpload.state.status === "done" ? frontUpload.state.url : "";
     const backUrl = backUpload.state.status === "done" ? backUpload.state.url : undefined;
-    const selfieUrl =
-      selfieUpload.state.status === "done"
-        ? selfieUpload.state.url
-        : "https://example.com/mock-selfie.jpg";
+    const selfieUrl = capturedSelfieUrl ?? "";
+
+    if (!selfieUrl) {
+      toast({ title: "Selfie not ready", description: "Please wait for face capture to complete", variant: "destructive" });
+      return;
+    }
+
+    stopCamera();
 
     submitKyc.mutate(
       {
@@ -200,9 +260,10 @@ export default function KycPage() {
         },
       },
       {
-        onSuccess: () => {
-          toast({ title: "KYC submitted successfully" });
+        onSuccess: async () => {
+          toast({ title: "KYC submitted successfully", description: "We'll review your documents shortly" });
           queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
+          await refreshUser();
           setLocation("/wallet");
         },
         onError: (e: any) => {
@@ -212,7 +273,6 @@ export default function KycPage() {
     );
   };
 
-  // Derived phone/email for identity reference banner
   const userPhone = (me as any)?.phone ?? "";
   const userEmail = (me as any)?.email ?? "";
 
@@ -224,7 +284,7 @@ export default function KycPage() {
             <ArrowLeft className="w-5 h-5" />
           </Link>
         ) : (
-          <button onClick={() => setStep(s => s - 1)} className="text-muted-foreground">
+          <button onClick={() => { if (step === 3) stopCamera(); setStep(s => s - 1); }} className="text-muted-foreground">
             <ArrowLeft className="w-5 h-5" />
           </button>
         )}
@@ -254,7 +314,6 @@ export default function KycPage() {
           <div className="space-y-4 animate-in fade-in">
             <h2 className="text-xl font-bold">Personal Information</h2>
 
-            {/* Identity reference banner */}
             {(userPhone || userEmail) && (
               <div className="bg-primary/10 border border-primary/20 rounded-xl p-3 text-sm">
                 <p className="text-xs text-muted-foreground mb-1 font-medium uppercase tracking-wide">Registered Account</p>
@@ -369,20 +428,49 @@ export default function KycPage() {
               </p>
             </div>
 
-            <div className="relative w-64 h-80 bg-secondary rounded-[100px] overflow-hidden border-4 border-primary shadow-[0_0_30px_rgba(0,212,255,0.3)]">
-              <video
-                ref={videoRef}
-                autoPlay
-                playsInline
-                muted
-                className="w-full h-full object-cover transform -scale-x-100"
-              />
-              <div className="absolute inset-0 border-[20px] border-background/80 rounded-[100px] pointer-events-none"></div>
-            </div>
+            {/* Camera oval — hidden once selfie is captured */}
+            {livenessStep < 4 ? (
+              <div className="relative w-64 h-80 bg-secondary rounded-[100px] overflow-hidden border-4 border-primary shadow-[0_0_30px_rgba(0,212,255,0.3)]">
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  className="w-full h-full object-cover transform -scale-x-100"
+                />
+                <div className="absolute inset-0 border-[20px] border-background/80 rounded-[100px] pointer-events-none"></div>
+              </div>
+            ) : (
+              /* Show captured selfie after liveness is done */
+              <div className="relative w-64 h-80 rounded-[100px] overflow-hidden border-4 border-primary shadow-[0_0_30px_rgba(0,212,255,0.3)]">
+                {selfiePreview ? (
+                  <img src={selfiePreview} alt="Captured selfie" className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full bg-secondary flex items-center justify-center">
+                    <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                  </div>
+                )}
+                {selfieUploading && (
+                  <div className="absolute inset-0 bg-background/60 flex items-center justify-center">
+                    <div className="text-center space-y-2">
+                      <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto" />
+                      <p className="text-xs text-primary font-medium">Uploading selfie…</p>
+                    </div>
+                  </div>
+                )}
+                {!selfieUploading && capturedSelfieUrl && (
+                  <div className="absolute bottom-0 inset-x-0 bg-primary/90 py-1.5 text-center text-xs font-bold text-background">
+                    ✓ Face captured
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="text-center space-y-4 w-full">
               <div className="text-lg font-bold text-primary min-h-[28px]">
-                {livenessInstructions[livenessStep]}
+                {livenessStep >= 4 && capturedSelfieUrl
+                  ? "✓ Verification complete"
+                  : livenessInstructions[Math.min(livenessStep, 4)]}
               </div>
               <div className="flex justify-center space-x-2">
                 {[0, 1, 2, 3].map(i => (
@@ -403,11 +491,15 @@ export default function KycPage() {
             {livenessStep >= 4 && (
               <button
                 onClick={handleSubmit}
-                disabled={submitKyc.isPending}
-                className="w-full py-4 bg-primary text-background font-bold rounded-xl mt-6 flex items-center justify-center gap-2"
+                disabled={submitKyc.isPending || selfieUploading || !capturedSelfieUrl}
+                className="w-full py-4 bg-primary text-background font-bold rounded-xl mt-6 flex items-center justify-center gap-2 disabled:opacity-50"
               >
-                {submitKyc.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
-                {submitKyc.isPending ? "Submitting…" : "Submit Verification"}
+                {(submitKyc.isPending || selfieUploading) && <Loader2 className="w-4 h-4 animate-spin" />}
+                {selfieUploading
+                  ? "Uploading selfie…"
+                  : submitKyc.isPending
+                  ? "Submitting…"
+                  : "Submit Verification"}
               </button>
             )}
           </div>
