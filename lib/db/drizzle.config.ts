@@ -1,10 +1,12 @@
 import { defineConfig } from "drizzle-kit";
 import path from "path";
 
-const connectionString = process.env.NEON_DATABASE_URL || process.env.DATABASE_URL;
+const connectionString = process.env.NEON_DATABASE_URL;
 
 if (!connectionString) {
-  throw new Error("DATABASE_URL, ensure the database is provisioned");
+  throw new Error(
+    "NEON_DATABASE_URL is not set. Set it to your Neon PostgreSQL connection string.",
+  );
 }
 
 export default defineConfig({

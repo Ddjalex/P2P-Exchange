@@ -10,8 +10,8 @@ A Binance-style peer-to-peer cryptocurrency exchange for Ethiopia — mobile-fir
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- `pnpm --filter @workspace/scripts run seed` — seed demo data (users, ads, wallets, notifications)
-- Required env: `DATABASE_URL` — Postgres connection string
+- `pnpm --filter @workspace/scripts run cleanup` — remove seeded demo data from Neon
+- Required env: `NEON_DATABASE_URL` — Neon PostgreSQL connection string (never falls back to local DB)
 
 ## Stack
 
@@ -34,10 +34,10 @@ A Binance-style peer-to-peer cryptocurrency exchange for Ethiopia — mobile-fir
 
 ## Architecture decisions
 
-- **DEV_USER_ID = 1** hardcoded in all API routes — auth pages with real sessions to be added later
 - **All monetary amounts stored as TEXT** to avoid float precision issues (parseFloat only for arithmetic)
-- **ETB exchange rate hardcoded at 179.50** in wallet route — to be replaced with live feed
+- **ETB exchange rate and deposit addresses** stored in `system_settings` table, configured via Admin → Settings
 - **Payment methods stored as JSON text** in ads table (array of bank/wallet names), not FK relations
+- **Database is always Neon** — `NEON_DATABASE_URL` is required; local `DATABASE_URL` is never used
 - **API routes mounted under `/api/`** via the global proxy; frontend uses relative URLs
 
 ## Product
