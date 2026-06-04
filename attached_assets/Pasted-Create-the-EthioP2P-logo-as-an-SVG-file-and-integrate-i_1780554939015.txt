@@ -1,0 +1,91 @@
+Create the EthioP2P logo as an SVG file and integrate it across the app. The design is Option C (Shield) + Banner format. Dark theme: #1a1a2e background, #00d4ff neon cyan accent.
+
+File 1 — src/assets/logo-icon.svg (Square App Icon)
+
+Dark rounded square background: #0f1929, border: 1.5px solid #00d4ff, border-radius: 16px
+Center: Shield shape outline in #00d4ff, stroke-width 2px
+Inside shield: bold letter "E" in #00d4ff, font-weight 800
+Bottom-right corner of shield: small cyan pill badge with text "P2P" in dark #1a1a2e
+Size: 200×200px viewBox
+
+Exact SVG code:
+svg<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <rect width="200" height="200" rx="40" fill="#0f1929"/>
+  <rect width="200" height="200" rx="40" fill="none" stroke="#00d4ff" stroke-width="3" opacity="0.6"/>
+  <path d="M100,40 L148,58 L148,105 Q148,145 100,165 Q52,145 52,105 L52,58 Z"
+        fill="none" stroke="#00d4ff" stroke-width="3"/>
+  <path d="M100,50 L140,66 L140,105 Q140,138 100,155 Q60,138 60,105 L60,66 Z"
+        fill="#00d4ff" opacity="0.08"/>
+  <text x="100" y="118" text-anchor="middle" font-family="'Poppins',sans-serif"
+        font-size="52" font-weight="800" fill="#00d4ff">E</text>
+  <rect x="118" y="130" width="44" height="22" rx="11" fill="#00d4ff"/>
+  <text x="140" y="145" text-anchor="middle" font-family="'Poppins',sans-serif"
+        font-size="12" font-weight="700" fill="#1a1a2e">P2P</text>
+</svg>
+
+File 2 — src/assets/logo-banner.svg (Horizontal Banner)
+
+Transparent background (no background fill)
+Left: Shield icon (same as above, 52×52px)
+Right of icon: Wordmark "Ethio" in white + "P2P" in #00d4ff, font Poppins 800
+Below wordmark: tagline "ETHIOPIA'S P2P CRYPTO EXCHANGE" in muted white, font-size 10px, letter-spacing 3px
+Size: 280×60px viewBox
+
+Exact SVG code:
+svg<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 60">
+  <!-- Shield icon -->
+  <path d="M26,6 L50,15 L50,36 Q50,52 26,60 Q2,52 2,36 L2,15 Z"
+        fill="none" stroke="#00d4ff" stroke-width="2"/>
+  <path d="M26,11 L45,19 L45,36 Q45,49 26,56 Q7,49 7,36 L7,19 Z"
+        fill="#00d4ff" opacity="0.08"/>
+  <text x="26" y="42" text-anchor="middle" font-family="'Poppins',sans-serif"
+        font-size="22" font-weight="800" fill="#00d4ff">E</text>
+  <rect x="36" y="44" width="22" height="12" rx="6" fill="#00d4ff"/>
+  <text x="47" y="53" text-anchor="middle" font-family="'Poppins',sans-serif"
+        font-size="7" font-weight="700" fill="#1a1a2e">P2P</text>
+  <!-- Wordmark -->
+  <text x="66" y="32" font-family="'Poppins',sans-serif"
+        font-size="26" font-weight="800" fill="#ffffff">Ethio<tspan fill="#00d4ff">P2P</tspan></text>
+  <text x="67" y="47" font-family="'Poppins',sans-serif"
+        font-size="8.5" fill="rgba(255,255,255,0.4)" letter-spacing="2.5">ETHIOPIA'S P2P CRYPTO EXCHANGE</text>
+</svg>
+
+File 3 — src/assets/favicon.svg (Browser Tab Icon)
+
+32×32px
+Dark background #0f1929
+Bold "E" in #00d4ff
+
+svg<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <rect width="32" height="32" rx="6" fill="#0f1929"/>
+  <text x="16" y="23" text-anchor="middle" font-family="'Poppins',sans-serif"
+        font-size="20" font-weight="800" fill="#00d4ff">E</text>
+</svg>
+
+Step 4 — Use logo across the app
+In index.html:
+html<link rel="icon" type="image/svg+xml" href="/src/assets/favicon.svg">
+<title>EthioP2P — Ethiopia's P2P Crypto Exchange</title>
+In every page header/navbar — replace any text logo with:
+tsximport LogoBanner from "@/assets/logo-banner.svg";
+
+<img src={LogoBanner} alt="EthioP2P" height={44} />
+In the Auth page (auth_v2.html) — replace the text logo div:
+html<!-- Remove this: -->
+<div class="logo">Ethio<span>P2P</span></div>
+
+<!-- Replace with: -->
+<img src="/src/assets/logo-banner.svg" alt="EthioP2P" height="52" style="margin-bottom:24px;">
+In the Admin panel sidebar — use icon only:
+tsximport LogoIcon from "@/assets/logo-icon.svg";
+
+<img src={LogoIcon} alt="EthioP2P" width={40} height={40} />
+In the browser tab:
+html<link rel="apple-touch-icon" href="/src/assets/logo-icon.svg">
+
+Logo Usage Rules (add as comments in the SVG files)
+- Minimum size: banner 160px wide, icon 32px
+- Always on dark background (#1a1a2e or #0f1929)
+- Never change colors — always #00d4ff cyan + white
+- Never stretch or distort
+- Clear space: minimum 8px around all sides

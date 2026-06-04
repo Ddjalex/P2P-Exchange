@@ -56,7 +56,10 @@ async function sendSms(phone: string, message: string, apiKey: string): Promise<
   });
   if (!res.ok) {
     const body = await res.text().catch(() => "");
-    throw new Error(`FastSMS error ${res.status}: ${body}`);
+    if (res.status === 401) {
+      throw new Error("SMS service authentication failed. Please update your FastSMS API key in Admin → Settings.");
+    }
+    throw new Error(`SMS service error (${res.status})${body ? ": " + body : ""}. Contact admin.`);
   }
 }
 

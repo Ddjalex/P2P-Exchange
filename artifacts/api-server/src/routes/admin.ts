@@ -778,6 +778,65 @@ router.put("/fees", adminAuth, async (req: any, res) => {
   }
 });
 
+// ─── TEST INTEGRATIONS ────────────────────────────────────────────────────────
+
+router.post("/test-sms", adminAuth, async (req: any, res) => {
+  try {
+    const rows = await db.select().from(systemSettingsTable);
+    const settings: Record<string, string> = {};
+    for (const row of rows) settings[row.key] = row.value;
+    const apiKey = settings["fastsmsApiKey"];
+    if (!apiKey) return res.status(400).json({ ok: false, error: "FastSMS API key not configured." });
+    const { phone } = req.body ?? {};
+    if (!phone) return res.status(400).json({ ok: false, error: "phone is required" });
+    const r = await fetch("https://fastsms.dev/api/v1/messages", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ to: phone, message: "EthioP2P test message — your API key is working!" }),
+    });
+    const body = await r.text().catch(() => "");
+    if (!r.ok) {
+      if (r.status === 401) return res.json({ ok: false, error: "Authentication failed (401) — your API key is invalid or expired. Get a new key at fastsms.dev." });
+      return res.json({ ok: false, error: `FastSMS returned ${r.status}: ${body}` });
+    }
+    res.json({ ok: true, message: "Test SMS sent successfully!" });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err?.message || "Internal error" });
+  }
+});
+
+router.post("/test-email", adminAuth, async (req: any, res) => {
+  try {
+    const rows = await db.select().from(systemSettingsTable);
+    const settings: Record<string, string> = {};
+    for (const row of rows) settings[row.key] = row.value;
+    const apiKey = settings["brevoApiKey"];
+    const senderEmail = settings["brevoSenderEmail"] || "noreply@ethiop2p.com";
+    const senderName = settings["brevoSenderName"] || "EthioP2P";
+    if (!apiKey) return res.status(400).json({ ok: false, error: "Brevo API key not configured." });
+    const { email } = req.body ?? {};
+    if (!email) return res.status(400).json({ ok: false, error: "email is required" });
+    const r = await fetch("https://api.brevo.com/v3/smtp/email", {
+      method: "POST",
+      headers: { "api-key": apiKey, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sender: { name: senderName, email: senderEmail },
+        to: [{ email }],
+        subject: "EthioP2P — Email Integration Test",
+        htmlContent: `<div style="font-family:Arial;background:#1a1a2e;color:#fff;padding:32px;border-radius:12px;"><h2 style="color:#00d4ff;">✅ Brevo is working!</h2><p>Your email integration is configured correctly for EthioP2P.</p></div>`,
+      }),
+    });
+    const body = await r.text().catch(() => "");
+    if (!r.ok) {
+      if (r.status === 401) return res.json({ ok: false, error: "Authentication failed (401) — your Brevo API key is invalid." });
+      return res.json({ ok: false, error: `Brevo returned ${r.status}: ${body}` });
+    }
+    res.json({ ok: true, message: "Test email sent successfully!" });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err?.message || "Internal error" });
+  }
+});
+
 // ─── AUDIT LOGS ───────────────────────────────────────────────────────────────
 
 router.get("/logs", adminAuth, async (req, res) => {

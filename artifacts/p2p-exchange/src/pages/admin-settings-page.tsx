@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { AdminLayout, AdminGuard } from "@/components/admin-layout";
-import { adminGet, adminPut } from "@/lib/admin-api";
+import { adminGet, adminPut, adminPost } from "@/lib/admin-api";
 
 export default function AdminSettingsPage() {
   const [settings, setSettings] = useState<Record<string, string>>({});
@@ -9,6 +9,13 @@ export default function AdminSettingsPage() {
   const [loading, setLoading] = useState(true);
   const [showFastsms, setShowFastsms] = useState(false);
   const [showBrevo, setShowBrevo] = useState(false);
+
+  const [testPhone, setTestPhone] = useState("");
+  const [testEmail, setTestEmail] = useState("");
+  const [smsTestStatus, setSmsTestStatus] = useState<{ ok: boolean; msg: string } | null>(null);
+  const [emailTestStatus, setEmailTestStatus] = useState<{ ok: boolean; msg: string } | null>(null);
+  const [smsTestLoading, setSmsTestLoading] = useState(false);
+  const [emailTestLoading, setEmailTestLoading] = useState(false);
 
   useEffect(() => {
     adminGet<Record<string, string>>("/settings").then(setSettings).catch(() => {}).finally(() => setLoading(false));
@@ -23,6 +30,34 @@ export default function AdminSettingsPage() {
     setSaving(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
+  };
+
+  const testSms = async () => {
+    if (!testPhone) return;
+    setSmsTestLoading(true);
+    setSmsTestStatus(null);
+    try {
+      const data = await adminPost<{ ok: boolean; message?: string; error?: string }>("/test-sms", { phone: testPhone });
+      setSmsTestStatus({ ok: data.ok, msg: data.ok ? (data.message ?? "Sent!") : (data.error ?? "Failed") });
+    } catch {
+      setSmsTestStatus({ ok: false, msg: "Network error" });
+    } finally {
+      setSmsTestLoading(false);
+    }
+  };
+
+  const testBrevo = async () => {
+    if (!testEmail) return;
+    setEmailTestLoading(true);
+    setEmailTestStatus(null);
+    try {
+      const data = await adminPost<{ ok: boolean; message?: string; error?: string }>("/test-email", { email: testEmail });
+      setEmailTestStatus({ ok: data.ok, msg: data.ok ? (data.message ?? "Sent!") : (data.error ?? "Failed") });
+    } catch {
+      setEmailTestStatus({ ok: false, msg: "Network error" });
+    } finally {
+      setEmailTestLoading(false);
+    }
   };
 
   if (loading) return <AdminGuard><AdminLayout title="System Settings"><div className="text-muted-foreground">Loading...</div></AdminLayout></AdminGuard>;
@@ -99,9 +134,33 @@ export default function AdminSettingsPage() {
                   <label className="text-sm text-muted-foreground flex-shrink-0 w-28">API Key</label>
                   <SecretInput k="fastsmsApiKey" show={showFastsms} onToggle={() => setShowFastsms(v => !v)} />
                 </div>
-                <div className="text-xs text-muted-foreground/60 mt-1">
+                <div className="text-xs text-muted-foreground/60">
                   Get your key at{" "}
                   <a href="https://fastsms.dev" target="_blank" rel="noreferrer" className="text-primary hover:underline">fastsms.dev</a>
+                </div>
+                <div className="border-t border-border/50 pt-3 space-y-2">
+                  <p className="text-xs text-muted-foreground">Test your API key by sending a real SMS:</p>
+                  <div className="flex gap-2">
+                    <input
+                      type="tel"
+                      value={testPhone}
+                      onChange={e => { setTestPhone(e.target.value); setSmsTestStatus(null); }}
+                      placeholder="+251912345678"
+                      className="flex-1 px-3 py-1.5 bg-background border border-border rounded-lg text-sm outline-none focus:border-primary"
+                    />
+                    <button
+                      onClick={testSms}
+                      disabled={smsTestLoading || !testPhone}
+                      className="px-4 py-1.5 bg-primary/10 text-primary border border-primary/30 rounded-lg text-sm font-medium hover:bg-primary/20 transition-colors disabled:opacity-40"
+                    >
+                      {smsTestLoading ? "Sending…" : "Test SMS"}
+                    </button>
+                  </div>
+                  {smsTestStatus && (
+                    <div className={`text-xs px-3 py-2 rounded-lg ${smsTestStatus.ok ? 'bg-success/10 text-success' : 'bg-destructive/10 text-destructive'}`}>
+                      {smsTestStatus.ok ? "✅ " : "❌ "}{smsTestStatus.msg}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -133,9 +192,33 @@ export default function AdminSettingsPage() {
                     className="flex-1 px-3 py-1.5 bg-background border border-border rounded-lg text-sm outline-none focus:border-primary"
                   />
                 </div>
-                <div className="text-xs text-muted-foreground/60 mt-1">
+                <div className="text-xs text-muted-foreground/60">
                   Get your key at{" "}
                   <a href="https://app.brevo.com/settings/keys/api" target="_blank" rel="noreferrer" className="text-primary hover:underline">brevo.com</a>
+                </div>
+                <div className="border-t border-border/50 pt-3 space-y-2">
+                  <p className="text-xs text-muted-foreground">Test your API key by sending a real email:</p>
+                  <div className="flex gap-2">
+                    <input
+                      type="email"
+                      value={testEmail}
+                      onChange={e => { setTestEmail(e.target.value); setEmailTestStatus(null); }}
+                      placeholder="test@example.com"
+                      className="flex-1 px-3 py-1.5 bg-background border border-border rounded-lg text-sm outline-none focus:border-primary"
+                    />
+                    <button
+                      onClick={testBrevo}
+                      disabled={emailTestLoading || !testEmail}
+                      className="px-4 py-1.5 bg-primary/10 text-primary border border-primary/30 rounded-lg text-sm font-medium hover:bg-primary/20 transition-colors disabled:opacity-40"
+                    >
+                      {emailTestLoading ? "Sending…" : "Test Email"}
+                    </button>
+                  </div>
+                  {emailTestStatus && (
+                    <div className={`text-xs px-3 py-2 rounded-lg ${emailTestStatus.ok ? 'bg-success/10 text-success' : 'bg-destructive/10 text-destructive'}`}>
+                      {emailTestStatus.ok ? "✅ " : "❌ "}{emailTestStatus.msg}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
