@@ -2,9 +2,42 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { kycSubmissionsTable, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import multer from "multer";
+import path from "node:path";
+import { mkdirSync } from "node:fs";
+import { randomBytes } from "node:crypto";
 
 const router = Router();
 const DEV_USER_ID = 1;
+
+const uploadsDir = path.resolve(process.cwd(), "uploads", "kyc");
+mkdirSync(uploadsDir, { recursive: true });
+
+const storage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, uploadsDir),
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase() || ".jpg";
+    const name = randomBytes(16).toString("hex") + ext;
+    cb(null, name);
+  },
+});
+
+const upload = multer({
+  storage,
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype.startsWith("image/")) cb(null, true);
+    else cb(new Error("Only image files are allowed"));
+  },
+});
+
+router.post("/upload", upload.single("file"), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: "No file uploaded" });
+  }
+  const url = `/uploads/kyc/${req.file.filename}`;
+  res.json({ url });
+});
 
 router.get("/status", async (req, res) => {
   try {
@@ -40,7 +73,6 @@ router.post("/submit", async (req, res) => {
   try {
     const { fullName, dateOfBirth, nationality, idType, frontImageUrl, backImageUrl, selfieUrl, livenessResult } = req.body;
 
-    // Upsert submission
     const existing = await db.select().from(kycSubmissionsTable)
       .where(eq(kycSubmissionsTable.userId, DEV_USER_ID)).then(r => r[0]);
 
@@ -75,7 +107,6 @@ router.post("/submit", async (req, res) => {
       });
     }
 
-    // Update user kyc status
     await db.update(usersTable).set({ kycStatus: "pending" }).where(eq(usersTable.id, DEV_USER_ID));
 
     res.status(201).json({

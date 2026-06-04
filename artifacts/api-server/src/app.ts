@@ -3,8 +3,15 @@ import cors from "cors";
 import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
+import path from "node:path";
+import { mkdirSync } from "node:fs";
+
+const uploadsDir = path.resolve(process.cwd(), "uploads");
+mkdirSync(uploadsDir, { recursive: true });
 
 const app: Express = express();
+
+app.use("/uploads", express.static(uploadsDir));
 
 app.use(
   pinoHttp({
