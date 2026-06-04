@@ -2,7 +2,7 @@ import { pgTable, serial, integer, text, timestamp } from "drizzle-orm/pg-core";
 
 export const depositVerificationsTable = pgTable("deposit_verifications", {
   id: serial("id").primaryKey(),
-  userId: integer("user_id").notNull(),
+  userId: integer("user_id"),
   txid: text("txid").notNull().unique(),
   amount: text("amount"),
   fromAddress: text("from_address"),

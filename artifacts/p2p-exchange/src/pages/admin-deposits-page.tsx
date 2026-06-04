@@ -2,17 +2,18 @@ import { useEffect, useState } from "react";
 import { AdminLayout, AdminGuard } from "@/components/admin-layout";
 import { adminGet, adminPost } from "@/lib/admin-api";
 import { Link } from "wouter";
-import { CheckCircle, XCircle, ExternalLink, RefreshCw, Clock, User, ChevronDown, ChevronUp } from "lucide-react";
+import { CheckCircle, XCircle, ExternalLink, RefreshCw, Clock, UserPlus, ChevronDown, ChevronUp } from "lucide-react";
 
 const STATUS_COLORS: Record<string, string> = {
   pending: "bg-warning/20 text-warning border border-warning/30",
+  pending_match: "bg-blue-500/20 text-blue-400 border border-blue-500/30",
   approved: "bg-success/20 text-success border border-success/30",
   rejected: "bg-destructive/20 text-destructive border border-destructive/30",
 };
 
 const SOURCE_LABELS: Record<string, string> = {
   user_report: "User Reported",
-  monitor_failure: "Auto-detect Failed",
+  monitor_failure: "Auto-detected (Unmatched)",
 };
 
 function RejectModal({ onConfirm, onCancel }: { onConfirm: (note: string) => void; onCancel: () => void }) {
@@ -37,15 +38,60 @@ function RejectModal({ onConfirm, onCancel }: { onConfirm: (note: string) => voi
   );
 }
 
+function AssignModal({ dep, onConfirm, onCancel }: { dep: any; onConfirm: (userId: number, note: string) => void; onCancel: () => void }) {
+  const [userId, setUserId] = useState("");
+  const [note, setNote] = useState("");
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <div className="bg-card border border-border rounded-2xl p-6 max-w-sm w-full">
+        <h3 className="font-bold text-lg mb-1">Assign Deposit to User</h3>
+        <p className="text-sm text-muted-foreground mb-4">
+          This deposit of <span className="text-primary font-mono font-semibold">{dep.amount ? `${parseFloat(dep.amount).toFixed(2)} USDT` : "unknown"}</span> from{" "}
+          <span className="font-mono text-xs">{dep.fromAddress ?? "unknown"}</span> has no matched user.
+          Enter the User ID to assign and credit.
+        </p>
+        <label className="block text-xs font-medium text-muted-foreground mb-1">User ID *</label>
+        <input
+          type="number"
+          value={userId}
+          onChange={e => setUserId(e.target.value)}
+          placeholder="e.g. 42"
+          className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm outline-none focus:border-primary mb-3"
+        />
+        <label className="block text-xs font-medium text-muted-foreground mb-1">Note (optional)</label>
+        <input
+          type="text"
+          value={note}
+          onChange={e => setNote(e.target.value)}
+          placeholder="e.g. Confirmed by user via support"
+          className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm outline-none focus:border-primary mb-4"
+        />
+        <div className="flex space-x-3">
+          <button onClick={onCancel} className="flex-1 py-2.5 border border-border rounded-lg text-sm font-medium">Cancel</button>
+          <button
+            onClick={() => userId && onConfirm(parseInt(userId), note)}
+            disabled={!userId}
+            className="flex-1 py-2.5 bg-primary text-black rounded-lg text-sm font-bold disabled:opacity-40"
+          >
+            Assign & Credit
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function VerificationRow({ v, onRefresh }: { v: any; onRefresh: () => void }) {
   const [expanded, setExpanded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showReject, setShowReject] = useState(false);
+  const [showAssign, setShowAssign] = useState(false);
   const { user, wallet } = v;
   const dep = v.v;
+  const isUnmatched = !dep.userId && dep.status === "pending";
 
   const approve = async () => {
-    if (!confirm(`Approve and credit ${dep.amount ?? "?"} USDT to ${user?.username}?`)) return;
+    if (!confirm(`Approve and credit ${dep.amount ?? "?"} USDT to ${user?.username ?? `User #${dep.userId}`}?`)) return;
     setLoading(true);
     try {
       await adminPost(`/deposits/verifications/${dep.id}/approve`, {});
@@ -70,23 +116,41 @@ function VerificationRow({ v, onRefresh }: { v: any; onRefresh: () => void }) {
     }
   };
 
+  const assign = async (userId: number, note: string) => {
+    setShowAssign(false);
+    setLoading(true);
+    try {
+      await adminPost(`/deposits/verifications/${dep.id}/assign`, { userId, note });
+      onRefresh();
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <>
       {showReject && <RejectModal onConfirm={reject} onCancel={() => setShowReject(false)} />}
-      <div className={`bg-card border rounded-xl overflow-hidden transition-all ${dep.status === "pending" ? "border-warning/30" : "border-border"}`}>
+      {showAssign && <AssignModal dep={dep} onConfirm={assign} onCancel={() => setShowAssign(false)} />}
+      <div className={`bg-card border rounded-xl overflow-hidden transition-all ${dep.status === "pending" ? (isUnmatched ? "border-orange-500/40" : "border-warning/30") : "border-border"}`}>
         <div className="p-4">
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-start gap-3 min-w-0">
-              <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center text-primary font-bold text-sm flex-shrink-0">
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0 ${isUnmatched ? "bg-orange-500/20 text-orange-400" : "bg-primary/20 text-primary"}`}>
                 {user?.username?.charAt(0)?.toUpperCase() ?? "?"}
               </div>
               <div className="min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <Link href={`/admin/users/${dep.userId}`} className="font-semibold hover:text-primary transition-colors">
-                    {user?.username ?? `User #${dep.userId}`}
-                  </Link>
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[dep.status]}`}>
-                    {dep.status}
+                  {dep.userId ? (
+                    <Link href={`/admin/users/${dep.userId}`} className="font-semibold hover:text-primary transition-colors">
+                      {user?.username ?? `User #${dep.userId}`}
+                    </Link>
+                  ) : (
+                    <span className="font-semibold text-orange-400">Unassigned</span>
+                  )}
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[dep.status] ?? ""}`}>
+                    {dep.status === "pending_match" ? "Waiting for TX" : dep.status}
                   </span>
                   <span className="text-xs px-2 py-0.5 rounded-full bg-secondary text-muted-foreground">
                     {SOURCE_LABELS[dep.source] ?? dep.source}
@@ -95,12 +159,14 @@ function VerificationRow({ v, onRefresh }: { v: any; onRefresh: () => void }) {
                 <div className="text-xs text-muted-foreground mt-0.5">
                   {user?.email} {user?.phone && `· ${user.phone}`}
                 </div>
-                <div className="text-xs text-muted-foreground">
-                  User ID: <span className="font-mono">{dep.userId}</span>
-                  {wallet?.availableBalance && (
-                    <span className="ml-2">· Balance: <span className="font-mono text-foreground">{parseFloat(wallet.availableBalance).toFixed(2)} USDT</span></span>
-                  )}
-                </div>
+                {dep.userId && (
+                  <div className="text-xs text-muted-foreground">
+                    User ID: <span className="font-mono">{dep.userId}</span>
+                    {wallet?.availableBalance && (
+                      <span className="ml-2">· Balance: <span className="font-mono text-foreground">{parseFloat(wallet.availableBalance).toFixed(2)} USDT</span></span>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -115,15 +181,17 @@ function VerificationRow({ v, onRefresh }: { v: any; onRefresh: () => void }) {
           </div>
 
           <div className="mt-3 flex items-center gap-2 flex-wrap">
-            <a
-              href={`https://tronscan.org/#/transaction/${dep.txid}`}
-              target="_blank"
-              rel="noreferrer"
-              className="flex items-center gap-1 text-xs text-primary hover:underline font-mono"
-            >
-              <ExternalLink className="w-3 h-3" />
-              {dep.txid.slice(0, 20)}...{dep.txid.slice(-8)}
-            </a>
+            {dep.txid && !dep.txid.startsWith("pending-") && (
+              <a
+                href={`https://tronscan.org/#/transaction/${dep.txid}`}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-1 text-xs text-primary hover:underline font-mono"
+              >
+                <ExternalLink className="w-3 h-3" />
+                {dep.txid.slice(0, 20)}...{dep.txid.slice(-8)}
+              </a>
+            )}
             <button
               onClick={() => setExpanded(!expanded)}
               className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors ml-auto"
@@ -137,34 +205,25 @@ function VerificationRow({ v, onRefresh }: { v: any; onRefresh: () => void }) {
             <div className="mt-3 bg-secondary rounded-lg p-3 space-y-1.5 text-xs font-mono">
               {dep.fromAddress && (
                 <div className="flex gap-2">
-                  <span className="text-muted-foreground w-24 flex-shrink-0">From:</span>
+                  <span className="text-muted-foreground w-28 flex-shrink-0">Sender address:</span>
                   <span className="break-all">{dep.fromAddress}</span>
                 </div>
               )}
               {dep.toAddress && (
                 <div className="flex gap-2">
-                  <span className="text-muted-foreground w-24 flex-shrink-0">To (deposit):</span>
+                  <span className="text-muted-foreground w-28 flex-shrink-0">Business address:</span>
                   <span className="break-all">{dep.toAddress}</span>
-                </div>
-              )}
-              {wallet?.depositAddress && (
-                <div className="flex gap-2">
-                  <span className="text-muted-foreground w-24 flex-shrink-0">User addr:</span>
-                  <span className={`break-all ${dep.toAddress?.toLowerCase() === wallet.depositAddress.toLowerCase() ? "text-success" : "text-warning"}`}>
-                    {wallet.depositAddress}
-                    {dep.toAddress?.toLowerCase() === wallet.depositAddress.toLowerCase() ? " ✓" : " ⚠ mismatch"}
-                  </span>
                 </div>
               )}
               {dep.adminNote && (
                 <div className="flex gap-2">
-                  <span className="text-muted-foreground w-24 flex-shrink-0">Note:</span>
-                  <span className="text-foreground">{dep.adminNote}</span>
+                  <span className="text-muted-foreground w-28 flex-shrink-0">Note:</span>
+                  <span className="text-foreground font-sans">{dep.adminNote}</span>
                 </div>
               )}
               {dep.reviewedBy && (
                 <div className="flex gap-2">
-                  <span className="text-muted-foreground w-24 flex-shrink-0">Reviewed by:</span>
+                  <span className="text-muted-foreground w-28 flex-shrink-0">Reviewed by:</span>
                   <span>{dep.reviewedBy} · {new Date(dep.reviewedAt).toLocaleString()}</span>
                 </div>
               )}
@@ -172,23 +231,46 @@ function VerificationRow({ v, onRefresh }: { v: any; onRefresh: () => void }) {
           )}
 
           {dep.status === "pending" && (
-            <div className="mt-3 flex gap-2">
-              <button
-                onClick={approve}
-                disabled={loading || !dep.amount || parseFloat(dep.amount) <= 0}
-                className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-success/10 text-success border border-success/20 rounded-lg text-sm font-semibold hover:bg-success/20 disabled:opacity-40 transition-colors"
-              >
-                <CheckCircle className="w-4 h-4" />
-                {loading ? "Processing..." : `Approve & Credit${dep.amount ? ` ${parseFloat(dep.amount).toFixed(2)} USDT` : ""}`}
-              </button>
-              <button
-                onClick={() => setShowReject(true)}
-                disabled={loading}
-                className="flex items-center justify-center gap-1.5 px-4 py-2 bg-destructive/10 text-destructive border border-destructive/20 rounded-lg text-sm font-semibold hover:bg-destructive/20 disabled:opacity-40 transition-colors"
-              >
-                <XCircle className="w-4 h-4" />
-                Reject
-              </button>
+            <div className="mt-3 flex gap-2 flex-wrap">
+              {isUnmatched ? (
+                <>
+                  <button
+                    onClick={() => setShowAssign(true)}
+                    disabled={loading}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-primary/10 text-primary border border-primary/20 rounded-lg text-sm font-semibold hover:bg-primary/20 disabled:opacity-40 transition-colors"
+                  >
+                    <UserPlus className="w-4 h-4" />
+                    {loading ? "Processing..." : `Assign to User & Credit${dep.amount ? ` ${parseFloat(dep.amount).toFixed(2)} USDT` : ""}`}
+                  </button>
+                  <button
+                    onClick={() => setShowReject(true)}
+                    disabled={loading}
+                    className="flex items-center justify-center gap-1.5 px-4 py-2 bg-destructive/10 text-destructive border border-destructive/20 rounded-lg text-sm font-semibold hover:bg-destructive/20 disabled:opacity-40 transition-colors"
+                  >
+                    <XCircle className="w-4 h-4" />
+                    Reject
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={approve}
+                    disabled={loading || !dep.amount || parseFloat(dep.amount) <= 0}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-success/10 text-success border border-success/20 rounded-lg text-sm font-semibold hover:bg-success/20 disabled:opacity-40 transition-colors"
+                  >
+                    <CheckCircle className="w-4 h-4" />
+                    {loading ? "Processing..." : `Approve & Credit${dep.amount ? ` ${parseFloat(dep.amount).toFixed(2)} USDT` : ""}`}
+                  </button>
+                  <button
+                    onClick={() => setShowReject(true)}
+                    disabled={loading}
+                    className="flex items-center justify-center gap-1.5 px-4 py-2 bg-destructive/10 text-destructive border border-destructive/20 rounded-lg text-sm font-semibold hover:bg-destructive/20 disabled:opacity-40 transition-colors"
+                  >
+                    <XCircle className="w-4 h-4" />
+                    Reject
+                  </button>
+                </>
+              )}
             </div>
           )}
         </div>
@@ -213,8 +295,6 @@ export default function AdminDepositsPage() {
 
   useEffect(() => { load(1, statusFilter); setPage(1); }, [statusFilter]);
 
-  const pending = data?.verifications?.filter((v: any) => v.v.status === "pending").length ?? 0;
-
   return (
     <AdminGuard>
       <AdminLayout title="Deposit Verifications">
@@ -222,7 +302,7 @@ export default function AdminDepositsPage() {
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div>
               <p className="text-sm text-muted-foreground">
-                Review deposit reports from users and auto-detect failures.
+                All deposits sent to the business address appear here. Matched deposits are auto-credited; unmatched ones need manual assignment.
               </p>
             </div>
             <button onClick={() => load(page, statusFilter)} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">

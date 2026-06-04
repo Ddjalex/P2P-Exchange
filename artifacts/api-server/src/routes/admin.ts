@@ -900,6 +900,7 @@ router.post("/deposits/verifications/:id/approve", adminAuth, async (req: any, r
     if (!rows[0]) return res.status(404).json({ error: "Verification not found" });
     const v = rows[0];
     if (v.status !== "pending") return res.status(400).json({ error: `Already ${v.status}` });
+    if (!v.userId) return res.status(400).json({ error: "No user assigned to this deposit. Use 'Assign to User' first." });
 
     // Credit the wallet
     let walletRows = await db.select().from(walletsTable).where(
@@ -953,6 +954,60 @@ router.post("/deposits/verifications/:id/reject", adminAuth, async (req: any, re
     res.json({ ok: true });
   } catch (err) {
     req.log.error({ err }, "Admin deposit reject failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// POST /admin/deposits/verifications/:id/assign — assign an unmatched deposit to a user and credit them
+router.post("/deposits/verifications/:id/assign", adminAuth, async (req: any, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { userId: assignUserId, note } = req.body ?? {};
+    if (!assignUserId) return res.status(400).json({ error: "userId is required" });
+
+    const rows = await db.select().from(depositVerificationsTable).where(eq(depositVerificationsTable.id, id));
+    if (!rows[0]) return res.status(404).json({ error: "Verification not found" });
+    const v = rows[0];
+    if (v.status !== "pending") return res.status(400).json({ error: `Cannot assign — already ${v.status}` });
+
+    const amount = parseFloat(v.amount ?? "0");
+    if (amount <= 0) return res.status(400).json({ error: "Cannot assign: amount is zero or unknown" });
+
+    // Credit the assigned user's wallet
+    let walletRows = await db.select().from(walletsTable).where(
+      and(eq(walletsTable.userId, assignUserId), eq(walletsTable.asset, "USDT"))
+    );
+    let wallet = walletRows[0];
+    if (!wallet) {
+      const [w] = await db.insert(walletsTable).values({
+        userId: assignUserId, asset: "USDT", availableBalance: "0.00", frozenBalance: "0.00",
+      }).returning();
+      wallet = w;
+    }
+    const newBalance = (parseFloat(wallet.availableBalance) + amount).toFixed(6);
+    await db.update(walletsTable)
+      .set({ availableBalance: newBalance, updatedAt: new Date() })
+      .where(eq(walletsTable.id, wallet.id));
+
+    await db.insert(transactionsTable).values({
+      userId: assignUserId, type: "deposit", amount: v.amount!,
+      network: v.network, status: "completed", txid: v.txid,
+    }).onConflictDoNothing();
+
+    await db.update(depositVerificationsTable)
+      .set({
+        userId: assignUserId,
+        status: "approved",
+        reviewedAt: new Date(),
+        reviewedBy: req.adminEmail,
+        adminNote: note ?? `Manually assigned to user ${assignUserId} by admin`,
+      })
+      .where(eq(depositVerificationsTable.id, id));
+
+    await log(req.adminEmail, "deposit_assigned", "deposit_verification", id, `Assigned ${v.amount} USDT to user ${assignUserId}`);
+    res.json({ ok: true, newBalance });
+  } catch (err) {
+    req.log.error({ err }, "Admin deposit assign failed");
     res.status(500).json({ error: "Internal server error" });
   }
 });

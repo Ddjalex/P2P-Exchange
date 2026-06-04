@@ -60,23 +60,15 @@ router.get("/deposit-address", async (req, res) => {
     return res.status(503).json({ error: "ERC20 deposits not yet supported. Use TRC20." });
   }
 
-  const masterSeed = process.env["DEPOSIT_MASTER_SEED"];
-  if (!masterSeed) {
-    return res.status(503).json({ error: "Deposit service not configured. Please contact support." });
-  }
-
   try {
-    const userId = (req as any).userId;
-    const wallet = await getOrCreateWallet(userId);
-
-    let address = wallet.depositAddress;
+    // All users deposit to the business owner's single address (set in Admin → Settings)
+    const settingKey = network === "TRC20" ? "trc20Address" : "erc20Address";
+    const address = await getSetting(settingKey, "");
     if (!address) {
-      address = deriveUserDepositAddress(masterSeed, userId);
-      await db.update(walletsTable)
-        .set({ depositAddress: address, updatedAt: new Date() })
-        .where(eq(walletsTable.id, wallet.id));
+      return res.status(503).json({
+        error: "Deposit address not configured yet. Please contact support.",
+      });
     }
-
     const minDeposit = await getSetting("minDeposit", "1");
     res.json({ address, network, minDeposit });
   } catch (err) {
@@ -144,24 +136,43 @@ router.post("/deposit/report", async (req, res) => {
   }
 });
 
-// POST /api/wallet/deposit/initiate — creates a pending deposit so the monitor can match it
+// POST /api/wallet/deposit/initiate — user registers their sending address so the monitor can auto-match
 router.post("/deposit/initiate", async (req, res) => {
   try {
-    const { amount } = req.body;
+    const { amount, fromAddress } = req.body;
     const userId = (req as any).userId;
     const amt = parseFloat(amount);
     if (!amt || amt <= 0) return res.status(400).json({ error: "Invalid amount" });
+    if (!fromAddress || typeof fromAddress !== "string" || fromAddress.trim().length < 10) {
+      return res.status(400).json({ error: "Your sending wallet address (fromAddress) is required so we can automatically credit your deposit." });
+    }
 
-    // Record pending deposit request
-    const [tx] = await db.insert(transactionsTable).values({
+    const cleanFrom = fromAddress.trim();
+
+    // Get the business deposit address to show the user
+    const businessAddress = await getSetting("trc20Address", "");
+
+    // Store as pending_match so the monitor can match this deposit when it arrives
+    const [record] = await db.insert(depositVerificationsTable).values({
       userId,
-      type: "deposit",
+      txid: `pending-${userId}-${Date.now()}`,
       amount: amt.toFixed(6),
+      fromAddress: cleanFrom,
+      toAddress: businessAddress || null,
       network: "TRC20",
-      status: "pending",
+      status: "pending_match",
+      source: "user_report",
+      adminNote: `User initiated deposit of ${amt.toFixed(6)} USDT from ${cleanFrom}`,
     }).returning();
 
-    res.json({ id: tx.id, status: "pending", message: "Send exactly this amount to the deposit address. It will be credited automatically after confirmation." });
+    res.json({
+      id: record.id,
+      status: "pending_match",
+      depositAddress: businessAddress,
+      amount: amt.toFixed(6),
+      fromAddress: cleanFrom,
+      message: `Send exactly ${amt.toFixed(6)} USDT (TRC20) to the deposit address from ${cleanFrom}. Your balance will be credited automatically once the transaction is confirmed on-chain.`,
+    });
   } catch (err) {
     req.log.error({ err }, "Failed to initiate deposit");
     res.status(500).json({ error: "Internal server error" });
