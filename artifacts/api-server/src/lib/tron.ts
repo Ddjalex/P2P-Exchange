@@ -5,7 +5,7 @@
  * USDT TRC20 contract on mainnet: TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t
  */
 import { getPublicKey, sign as secp256k1Sign } from "@noble/secp256k1";
-import { createHash } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 
@@ -165,6 +165,25 @@ export function privateKeyToTronAddress(privateKeyHex: string): string {
 export function tronAddressToHex(address: string): string {
   const decoded = base58Decode(address);
   return Buffer.from(decoded.slice(0, 21)).toString("hex");
+}
+
+// ─── Per-user deposit address derivation ─────────────────────────────────────
+
+/**
+ * Derive a deterministic unique private key for a user's deposit address.
+ * Uses HMAC-SHA256(masterSeed, "deposit:user:<userId>") so each user gets
+ * a unique, reproducible key without storing it in the DB.
+ */
+export function deriveUserDepositKey(masterSeed: string, userId: number): string {
+  const hmac = createHmac("sha256", masterSeed);
+  hmac.update(`deposit:user:${userId}`);
+  return hmac.digest("hex");
+}
+
+/** Derive the TRON deposit address for a given user */
+export function deriveUserDepositAddress(masterSeed: string, userId: number): string {
+  const privateKey = deriveUserDepositKey(masterSeed, userId);
+  return privateKeyToTronAddress(privateKey);
 }
 
 /** Convert hex address (41...) → TRON base58 */

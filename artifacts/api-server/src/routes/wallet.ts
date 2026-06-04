@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { walletsTable, transactionsTable, systemSettingsTable } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
-import { sendUsdt, privateKeyToTronAddress } from "../lib/tron.js";
+import { sendUsdt, privateKeyToTronAddress, deriveUserDepositAddress } from "../lib/tron.js";
 
 const router = Router();
 
@@ -58,13 +58,30 @@ router.get("/deposit-address", async (req, res) => {
   if (network === "ERC20") {
     return res.status(503).json({ error: "ERC20 deposits not yet supported. Use TRC20." });
   }
-  const key = "trc20Address";
-  const address = await getSetting(key, "");
-  if (!address) {
-    return res.status(503).json({ error: "Deposit address not configured. Please contact support." });
+
+  const masterSeed = process.env["DEPOSIT_MASTER_SEED"];
+  if (!masterSeed) {
+    return res.status(503).json({ error: "Deposit service not configured. Please contact support." });
   }
-  const minDeposit = await getSetting("minDeposit", "1");
-  res.json({ address, network, minDeposit });
+
+  try {
+    const userId = (req as any).userId;
+    const wallet = await getOrCreateWallet(userId);
+
+    let address = wallet.depositAddress;
+    if (!address) {
+      address = deriveUserDepositAddress(masterSeed, userId);
+      await db.update(walletsTable)
+        .set({ depositAddress: address, updatedAt: new Date() })
+        .where(eq(walletsTable.id, wallet.id));
+    }
+
+    const minDeposit = await getSetting("minDeposit", "1");
+    res.json({ address, network, minDeposit });
+  } catch (err) {
+    req.log.error({ err }, "Failed to get deposit address");
+    res.status(500).json({ error: "Internal server error" });
+  }
 });
 
 // POST /api/wallet/deposit/initiate — creates a pending deposit so the monitor can match it

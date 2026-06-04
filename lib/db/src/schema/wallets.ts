@@ -8,6 +8,7 @@ export const walletsTable = pgTable("wallets", {
   asset: text("asset").notNull().default("USDT"),
   availableBalance: text("available_balance").notNull().default("0.00"),
   frozenBalance: text("frozen_balance").notNull().default("0.00"),
+  depositAddress: text("deposit_address"),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
