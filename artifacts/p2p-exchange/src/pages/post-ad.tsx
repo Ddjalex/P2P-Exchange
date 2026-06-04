@@ -186,7 +186,7 @@ export default function PostAdPage() {
             <div className="space-y-2">
               <label className="text-sm font-medium">Payment Methods</label>
               <div className="flex flex-wrap gap-2">
-                {["CBE", "Telebirr", "Awash", "Dashen"].map(pm => {
+                {["CBE", "Telebirr", "Awash", "Dashen", "Abyssinia", "HelloCash", "MPesa", "CBEBirr", "Amhara", "Wegagen", "Coopbank", "Hibret", "Nib", "Oromia"].map(pm => {
                   const isSelected = (ad.paymentMethods ?? []).includes(pm);
                   return (
                     <button
