@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { AdminLayout, AdminGuard } from "@/components/admin-layout";
-import { adminGet, adminPut, adminDelete } from "@/lib/admin-api";
+import { adminGet, adminPost, adminPut, adminDelete } from "@/lib/admin-api";
 import { Link, useLocation } from "wouter";
-import { ArrowLeft, ShieldCheck, CheckCircle, Trash2, Flag, X } from "lucide-react";
+import { ArrowLeft, ShieldCheck, CheckCircle, Trash2, Flag, X, PlusCircle, MinusCircle } from "lucide-react";
 
 const KYC_COLORS: Record<string, string> = {
   verified: "bg-success/20 text-success", pending: "bg-warning/20 text-warning",
@@ -44,6 +44,13 @@ export default function AdminUserDetailPage({ params }: { params: { id: string }
   const [flagDesc, setFlagDesc] = useState("");
   const [flagging, setFlagging] = useState(false);
 
+  const [showCreditModal, setShowCreditModal] = useState(false);
+  const [creditType, setCreditType] = useState<"credit" | "debit">("credit");
+  const [creditAmount, setCreditAmount] = useState("");
+  const [creditNote, setCreditNote] = useState("");
+  const [crediting, setCrediting] = useState(false);
+  const [creditError, setCreditError] = useState("");
+
   const load = () => {
     setLoading(true);
     adminGet<any>(`/users/${params.id}`).then(setData).catch(() => {}).finally(() => setLoading(false));
@@ -78,6 +85,24 @@ export default function AdminUserDetailPage({ params }: { params: { id: string }
     setShowFlagModal(false);
     load();
     setFlagging(false);
+  };
+
+  const doCredit = async () => {
+    setCreditError("");
+    const amt = parseFloat(creditAmount);
+    if (isNaN(amt) || amt <= 0) { setCreditError("Enter a valid amount"); return; }
+    setCrediting(true);
+    try {
+      await adminPost(`/wallets/${params.id}/adjust`, { type: creditType, amount: amt, note: creditNote });
+      setShowCreditModal(false);
+      setCreditAmount("");
+      setCreditNote("");
+      load();
+    } catch (e: any) {
+      setCreditError(e.message);
+    } finally {
+      setCrediting(false);
+    }
   };
 
   if (loading) return <AdminGuard><AdminLayout title="User Detail"><div className="text-muted-foreground">Loading...</div></AdminLayout></AdminGuard>;
@@ -126,6 +151,53 @@ export default function AdminUserDetailPage({ params }: { params: { id: string }
                   <button onClick={doSuspend} disabled={suspending || (suspendReason === "Other" && !suspendCustomReason.trim())}
                     className="flex-1 py-2.5 bg-destructive text-white rounded-lg text-sm font-bold disabled:opacity-40">
                     {suspending ? "Suspending..." : "Suspend"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Credit / Debit Modal */}
+        {showCreditModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+            <div className="bg-card border border-border rounded-2xl p-6 max-w-sm w-full">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-bold text-lg">Adjust Wallet Balance</h3>
+                <button onClick={() => { setShowCreditModal(false); setCreditError(""); }}><X className="w-5 h-5 text-muted-foreground" /></button>
+              </div>
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-2">
+                  {(["credit", "debit"] as const).map(t => (
+                    <button key={t} onClick={() => setCreditType(t)}
+                      className={`py-2.5 rounded-xl text-sm font-semibold border capitalize transition-colors ${creditType === t ? (t === "credit" ? "bg-success/10 border-success text-success" : "bg-destructive/10 border-destructive text-destructive") : "bg-secondary border-border text-muted-foreground hover:bg-secondary/80"}`}>
+                      {t === "credit" ? "➕ Credit" : "➖ Debit"}
+                    </button>
+                  ))}
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground font-medium block mb-1.5">Amount (USDT)</label>
+                  <input type="number" min="0.01" step="0.01" placeholder="0.00"
+                    value={creditAmount} onChange={e => setCreditAmount(e.target.value)}
+                    className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm font-mono outline-none focus:border-primary" />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground font-medium block mb-1.5">Note (optional)</label>
+                  <input type="text" placeholder="e.g. Test deposit, deposit fix..."
+                    value={creditNote} onChange={e => setCreditNote(e.target.value)}
+                    className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm outline-none focus:border-primary" />
+                </div>
+                {data?.wallet && (
+                  <p className="text-xs text-muted-foreground">
+                    Current balance: <span className="font-mono font-semibold text-foreground">{parseFloat(data.wallet.availableBalance).toFixed(2)} USDT</span>
+                  </p>
+                )}
+                {creditError && <p className="text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded-lg p-2">{creditError}</p>}
+                <div className="flex space-x-3">
+                  <button onClick={() => { setShowCreditModal(false); setCreditError(""); }} className="flex-1 py-2.5 border border-border rounded-lg text-sm font-medium">Cancel</button>
+                  <button onClick={doCredit} disabled={crediting || !creditAmount}
+                    className={`flex-1 py-2.5 rounded-lg text-sm font-bold disabled:opacity-40 ${creditType === "credit" ? "bg-success text-white" : "bg-destructive text-white"}`}>
+                    {crediting ? "Processing..." : creditType === "credit" ? "Credit" : "Debit"}
                   </button>
                 </div>
               </div>
@@ -240,6 +312,10 @@ export default function AdminUserDetailPage({ params }: { params: { id: string }
                 <button onClick={() => action("merchant", { isMerchant: !user.isMerchant })}
                   className="w-full py-2 px-3 bg-warning/10 text-warning border border-warning/20 rounded-lg text-sm font-medium hover:bg-warning/20 transition-colors">
                   {user.isMerchant ? "Revoke Merchant" : "Grant Merchant"}
+                </button>
+                <button onClick={() => { setCreditType("credit"); setShowCreditModal(true); }}
+                  className="w-full py-2 px-3 bg-primary/10 text-primary border border-primary/20 rounded-lg text-sm font-medium hover:bg-primary/20 transition-colors flex items-center justify-center space-x-2">
+                  <PlusCircle className="w-4 h-4" /><span>Adjust Balance</span>
                 </button>
                 <button onClick={() => setShowFlagModal(true)}
                   className="w-full py-2 px-3 bg-orange-500/10 text-orange-400 border border-orange-500/20 rounded-lg text-sm font-medium hover:bg-orange-500/20 transition-colors flex items-center justify-center space-x-2">

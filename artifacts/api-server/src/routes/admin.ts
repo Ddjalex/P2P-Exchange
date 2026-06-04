@@ -844,6 +844,58 @@ router.post("/test-email", adminAuth, async (req: any, res) => {
   }
 });
 
+// ─── WALLET MANUAL CREDIT / DEBIT ────────────────────────────────────────────
+
+router.post("/wallets/:userId/adjust", adminAuth, async (req: any, res) => {
+  try {
+    const userId = parseInt(req.params.userId);
+    const { type, amount, note } = req.body ?? {};
+    if (!["credit", "debit"].includes(type)) return res.status(400).json({ error: "type must be 'credit' or 'debit'" });
+    const amt = parseFloat(amount);
+    if (isNaN(amt) || amt <= 0) return res.status(400).json({ error: "amount must be a positive number" });
+
+    let walletRows = await db.select().from(walletsTable).where(
+      and(eq(walletsTable.userId, userId), eq(walletsTable.asset, "USDT"))
+    );
+    let wallet = walletRows[0];
+    if (!wallet) {
+      const [w] = await db.insert(walletsTable).values({
+        userId, asset: "USDT", availableBalance: "0.00", frozenBalance: "0.00",
+      }).returning();
+      wallet = w;
+    }
+
+    const current = parseFloat(wallet.availableBalance);
+    if (type === "debit" && amt > current) {
+      return res.status(400).json({ error: `Insufficient balance. Available: ${current.toFixed(6)} USDT` });
+    }
+
+    const newBalance = type === "credit"
+      ? (current + amt).toFixed(6)
+      : (current - amt).toFixed(6);
+
+    await db.update(walletsTable)
+      .set({ availableBalance: newBalance, updatedAt: new Date() })
+      .where(eq(walletsTable.id, wallet.id));
+
+    await db.insert(transactionsTable).values({
+      userId,
+      type: "deposit",
+      amount: amt.toFixed(6),
+      network: "MANUAL",
+      status: "completed",
+      address: `admin:${type}:${req.adminEmail}`,
+    });
+
+    await log(req.adminEmail, `manual_wallet_${type}`, "user", userId, `${type} ${amt} USDT — ${note || "no note"}`);
+
+    res.json({ ok: true, newBalance, type, amount: amt.toFixed(6) });
+  } catch (err) {
+    req.log.error({ err }, "Admin wallet adjust failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // ─── AUDIT LOGS ───────────────────────────────────────────────────────────────
 
 router.get("/logs", adminAuth, async (req, res) => {
