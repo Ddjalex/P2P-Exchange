@@ -191,6 +191,29 @@
 .admin-toggle-link a:hover{color:#00d4ff;}
 .admin-toggle-link a i{font-size:10px;}
 
+/* ── OTP ── */
+.otp-input-wrap{margin:16px 0 4px;}
+.otp-input{
+  width:100%;
+  text-align:center;
+  font-size:32px;
+  font-weight:700;
+  letter-spacing:10px;
+  padding:14px 10px;
+  background:rgba(0,212,255,.06);
+  border:1.5px solid rgba(0,212,255,.35);
+  border-radius:12px;
+  color:#00d4ff;
+  outline:none;
+  transition:.2s;
+  font-family:inherit;
+}
+.otp-input::placeholder{color:rgba(0,212,255,.2);letter-spacing:8px;}
+.otp-input:focus{border-color:#00d4ff;box-shadow:0 0 0 3px rgba(0,212,255,.12);}
+.otp-resend{font-size:11px;text-align:center;margin-top:10px;color:rgba(255,255,255,.4);}
+.otp-resend a{color:#00d4ff;cursor:pointer;font-weight:600;}
+.otp-resend a:hover{text-decoration:underline;}
+
 /* ── SWITCH ── */
 .switch-link{font-size:11px;text-align:center;margin-top:12px;color:#fff;}
 .switch-link a{color:#00d4ff;font-weight:600;text-decoration:none;cursor:pointer;}

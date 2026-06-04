@@ -7,6 +7,8 @@ export default function AdminSettingsPage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [showFastsms, setShowFastsms] = useState(false);
+  const [showBrevo, setShowBrevo] = useState(false);
 
   useEffect(() => {
     adminGet<Record<string, string>>("/settings").then(setSettings).catch(() => {}).finally(() => setLoading(false));
@@ -29,6 +31,25 @@ export default function AdminSettingsPage() {
     <button onClick={() => toggle(k)} className={`w-11 h-6 rounded-full flex items-center px-0.5 transition-colors ${settings[k] === "true" ? 'bg-success justify-end' : 'bg-border justify-start'}`}>
       <div className="w-5 h-5 bg-white rounded-full shadow-sm" />
     </button>
+  );
+
+  const SecretInput = ({ k, show, onToggle }: { k: string; show: boolean; onToggle: () => void }) => (
+    <div className="relative flex-1">
+      <input
+        type={show ? "text" : "password"}
+        value={settings[k] ?? ""}
+        onChange={e => update(k, e.target.value)}
+        placeholder="Enter API key…"
+        className="w-full px-3 py-1.5 pr-9 bg-background border border-border rounded-lg text-sm font-mono outline-none focus:border-primary"
+      />
+      <button
+        type="button"
+        onClick={onToggle}
+        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors text-xs"
+      >
+        {show ? "hide" : "show"}
+      </button>
+    </div>
   );
 
   return (
@@ -55,6 +76,67 @@ export default function AdminSettingsPage() {
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">Maintenance Mode</span>
                 <Toggle k="maintenanceMode" />
+              </div>
+            </div>
+          </div>
+
+          {/* SMS & Email Verification */}
+          <div className="bg-card border border-border rounded-xl p-5">
+            <div className="flex items-center gap-2 mb-1">
+              <h3 className="font-semibold">SMS & Email Verification</h3>
+              <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium">Integrations</span>
+            </div>
+            <p className="text-xs text-muted-foreground mb-5">API keys used to send OTP codes during registration. Keys are stored securely in the database.</p>
+
+            <div className="space-y-5">
+              {/* FastSMS */}
+              <div className="border border-border rounded-lg p-4 space-y-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-sm font-medium">📱 FastSMS.dev</span>
+                  <span className="text-xs text-muted-foreground">— Phone number verification</span>
+                </div>
+                <div className="flex items-center justify-between gap-4">
+                  <label className="text-sm text-muted-foreground flex-shrink-0 w-28">API Key</label>
+                  <SecretInput k="fastsmsApiKey" show={showFastsms} onToggle={() => setShowFastsms(v => !v)} />
+                </div>
+                <div className="text-xs text-muted-foreground/60 mt-1">
+                  Get your key at{" "}
+                  <a href="https://fastsms.dev" target="_blank" rel="noreferrer" className="text-primary hover:underline">fastsms.dev</a>
+                </div>
+              </div>
+
+              {/* Brevo */}
+              <div className="border border-border rounded-lg p-4 space-y-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-sm font-medium">✉️ Brevo</span>
+                  <span className="text-xs text-muted-foreground">— Email verification</span>
+                </div>
+                <div className="flex items-center justify-between gap-4">
+                  <label className="text-sm text-muted-foreground flex-shrink-0 w-28">API Key</label>
+                  <SecretInput k="brevoApiKey" show={showBrevo} onToggle={() => setShowBrevo(v => !v)} />
+                </div>
+                <div className="flex items-center justify-between gap-4">
+                  <label className="text-sm text-muted-foreground flex-shrink-0 w-28">Sender Email</label>
+                  <input
+                    type="email"
+                    value={settings["brevoSenderEmail"] ?? ""}
+                    onChange={e => update("brevoSenderEmail", e.target.value)}
+                    className="flex-1 px-3 py-1.5 bg-background border border-border rounded-lg text-sm outline-none focus:border-primary"
+                  />
+                </div>
+                <div className="flex items-center justify-between gap-4">
+                  <label className="text-sm text-muted-foreground flex-shrink-0 w-28">Sender Name</label>
+                  <input
+                    type="text"
+                    value={settings["brevoSenderName"] ?? ""}
+                    onChange={e => update("brevoSenderName", e.target.value)}
+                    className="flex-1 px-3 py-1.5 bg-background border border-border rounded-lg text-sm outline-none focus:border-primary"
+                  />
+                </div>
+                <div className="text-xs text-muted-foreground/60 mt-1">
+                  Get your key at{" "}
+                  <a href="https://app.brevo.com/settings/keys/api" target="_blank" rel="noreferrer" className="text-primary hover:underline">brevo.com</a>
+                </div>
               </div>
             </div>
           </div>

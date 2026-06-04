@@ -707,6 +707,10 @@ const DEFAULT_SETTINGS: Record<string, string> = {
   erc20Address: "0x1234567890abcdef1234567890abcdef12345678",
   trc20Enabled: "true",
   erc20Enabled: "true",
+  fastsmsApiKey: "",
+  brevoApiKey: "",
+  brevoSenderEmail: "noreply@ethiop2p.com",
+  brevoSenderName: "EthioP2P",
 };
 
 router.get("/settings", adminAuth, async (req, res) => {

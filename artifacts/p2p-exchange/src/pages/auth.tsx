@@ -81,6 +81,14 @@ export default function AuthPage() {
   const [regLoading, setRegLoading] = useState(false);
   const [regPhoneFocused, setRegPhoneFocused] = useState(false);
 
+  // OTP / verification state
+  const [otpStep, setOtpStep] = useState(false);
+  const [otpCode, setOtpCode] = useState("");
+  const [otpLoading, setOtpLoading] = useState(false);
+  const [otpErr, setOtpErr] = useState("");
+  const [otpCooldown, setOtpCooldown] = useState(0);
+  const cooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   // Admin login state
   const [adminEmail, setAdminEmail] = useState("");
   const [adminPwd, setAdminPwd] = useState("");
@@ -95,24 +103,29 @@ export default function AuthPage() {
   const [regPillOpen, setRegPillOpen] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
 
-  // If already logged in, redirect
   useEffect(() => {
-    if (!isLoading && user) {
-      setLocation("/wallet");
-    }
+    if (!isLoading && user) setLocation("/wallet");
   }, [user, isLoading, setLocation]);
 
-  // ESC closes modal / admin mode
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        closeModal();
-        setAdminMode(false);
-      }
+      if (e.key === "Escape") { closeModal(); setAdminMode(false); }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, []);
+
+  // Cooldown timer for resend
+  function startCooldown() {
+    setOtpCooldown(60);
+    if (cooldownRef.current) clearInterval(cooldownRef.current);
+    cooldownRef.current = setInterval(() => {
+      setOtpCooldown(v => {
+        if (v <= 1) { clearInterval(cooldownRef.current!); return 0; }
+        return v - 1;
+      });
+    }, 1000);
+  }
 
   function openModal(ctx: "login" | "reg") {
     setModalCtx(ctx);
@@ -134,59 +147,43 @@ export default function AuthPage() {
     const isET = c.code === "ET";
     if (modalCtx === "login") {
       setLoginC(c);
-      if (!isET) setLoginType("email");
-      else setLoginType("phone");
+      setLoginType(!isET ? "email" : "phone");
     } else {
       setRegC(c);
-      if (!isET) setRegType("email");
-      else setRegType("phone");
+      setRegType(!isET ? "email" : "phone");
     }
     closeModal();
   }
 
   const filteredCountries = COUNTRIES.filter(c => {
     const q = modalSearch.toLowerCase();
-    return (
-      c.name.toLowerCase().includes(q) ||
-      c.code.toLowerCase().includes(q) ||
-      c.dial.includes(q)
-    );
+    return c.name.toLowerCase().includes(q) || c.code.toLowerCase().includes(q) || c.dial.includes(q);
   });
+
+  // Compute the OTP target (phone with dial code or email)
+  function getOtpTarget() {
+    if (regType === "phone") return `${regC.dial}${regPhone}`;
+    return regEmail;
+  }
 
   async function doLogin() {
     setLoginErr("");
-    if (loginType === "phone") {
-      if (loginC.code === "ET" && !/^[97]\d{8}$/.test(loginPhone)) {
-        setLoginPhoneErr(true);
-        return;
-      }
-    }
-    setLoginPhoneErr(false);
-
-    const identifier = loginType === "phone" ? loginPhone : loginEmail;
-    if (!identifier || !loginPwd) {
-      setLoginErr("Please fill in all fields");
+    if (loginType === "phone" && loginC.code === "ET" && !/^[97]\d{8}$/.test(loginPhone)) {
+      setLoginPhoneErr(true);
       return;
     }
-
+    setLoginPhoneErr(false);
+    const identifier = loginType === "phone" ? loginPhone : loginEmail;
+    if (!identifier || !loginPwd) { setLoginErr("Please fill in all fields"); return; }
     setLoginLoading(true);
     try {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          identifier,
-          password: loginPwd,
-          country: loginC.code,
-          dialCode: loginC.dial,
-          type: loginType,
-        }),
+        body: JSON.stringify({ identifier, password: loginPwd, country: loginC.code, dialCode: loginC.dial, type: loginType }),
       });
       const data = await res.json();
-      if (!res.ok) {
-        setLoginErr(data.error || "Login failed");
-        return;
-      }
+      if (!res.ok) { setLoginErr(data.error || "Login failed"); return; }
       login(data.token, data.user);
       setLocation("/wallet");
     } catch {
@@ -196,24 +193,67 @@ export default function AuthPage() {
     }
   }
 
-  async function doRegister() {
+  // Step 1 of register: validate form, then send OTP
+  async function doSendCode() {
     setRegErr("");
-    if (regType === "phone") {
-      if (regC.code === "ET" && !/^[97]\d{8}$/.test(regPhone)) {
-        setRegPhoneErr(true);
-        return;
-      }
-    }
-    setRegPhoneErr(false);
-
-    const identifier = regType === "phone" ? regPhone : regEmail;
-    if (!identifier || !regPwd || !regUser) {
-      setRegErr("Please fill in all required fields");
+    setOtpErr("");
+    if (regType === "phone" && regC.code === "ET" && !/^[97]\d{8}$/.test(regPhone)) {
+      setRegPhoneErr(true);
       return;
     }
+    setRegPhoneErr(false);
+    const identifier = regType === "phone" ? regPhone : regEmail;
+    if (!identifier || !regPwd || !regUser) { setRegErr("Please fill in all required fields"); return; }
+    if (regPwd.length < 6) { setRegErr("Password must be at least 6 characters"); return; }
+    if (regUser.length < 3) { setRegErr("Username must be at least 3 characters"); return; }
 
+    setOtpLoading(true);
+    try {
+      const target = getOtpTarget();
+      const res = await fetch("/api/auth/send-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ target, type: regType }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setRegErr(data.error || "Failed to send code"); return; }
+      setOtpStep(true);
+      setOtpCode("");
+      startCooldown();
+    } catch {
+      setRegErr("Network error. Please try again.");
+    } finally {
+      setOtpLoading(false);
+    }
+  }
+
+  async function doResendCode() {
+    if (otpCooldown > 0) return;
+    setOtpErr("");
+    setOtpLoading(true);
+    try {
+      const target = getOtpTarget();
+      const res = await fetch("/api/auth/send-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ target, type: regType }),
+      });
+      if (res.ok) startCooldown();
+      else { const d = await res.json(); setOtpErr(d.error || "Failed to resend"); }
+    } catch {
+      setOtpErr("Network error.");
+    } finally {
+      setOtpLoading(false);
+    }
+  }
+
+  // Step 2: verify code then register
+  async function doVerifyAndRegister() {
+    setOtpErr("");
+    if (otpCode.length !== 6) { setOtpErr("Enter the 6-digit code"); return; }
     setRegLoading(true);
     try {
+      const identifier = regType === "phone" ? regPhone : regEmail;
       const res = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -225,17 +265,20 @@ export default function AuthPage() {
           dialCode: regC.dial,
           type: regType,
           referral: regRef || undefined,
+          code: otpCode,
         }),
       });
       const data = await res.json();
       if (!res.ok) {
-        setRegErr(data.error || "Registration failed");
+        if (data.error?.toLowerCase().includes("code")) setOtpErr(data.error);
+        else setRegErr(data.error || "Registration failed");
+        if (!data.error?.toLowerCase().includes("code")) setOtpStep(false);
         return;
       }
       login(data.token, data.user);
       setLocation("/wallet");
     } catch {
-      setRegErr("Network error. Please try again.");
+      setOtpErr("Network error. Please try again.");
     } finally {
       setRegLoading(false);
     }
@@ -243,10 +286,7 @@ export default function AuthPage() {
 
   async function doAdminLogin() {
     setAdminErr("");
-    if (!adminEmail || !adminPwd) {
-      setAdminErr("Email and password are required");
-      return;
-    }
+    if (!adminEmail || !adminPwd) { setAdminErr("Email and password are required"); return; }
     setAdminLoading(true);
     try {
       await adminLogin(adminEmail, adminPwd);
@@ -259,11 +299,7 @@ export default function AuthPage() {
   }
 
   if (isLoading) {
-    return (
-      <div className="auth-root">
-        <div style={{ color: "#00d4ff", fontSize: 14 }}>Loading…</div>
-      </div>
-    );
+    return <div className="auth-root"><div style={{ color: "#00d4ff", fontSize: 14 }}>Loading…</div></div>;
   }
 
   return (
@@ -294,23 +330,13 @@ export default function AuthPage() {
           </div>
           <div className="modal-list">
             {filteredCountries.length === 0 ? (
-              <div style={{ padding: "20px", textAlign: "center", color: "rgba(255,255,255,.4)", fontSize: 13 }}>
-                No countries found
-              </div>
+              <div style={{ padding: "20px", textAlign: "center", color: "rgba(255,255,255,.4)", fontSize: 13 }}>No countries found</div>
             ) : filteredCountries.map(c => {
               const cur = modalCtx === "login" ? loginC : regC;
-              const active = cur.code === c.code;
               return (
-                <div
-                  key={c.code}
-                  className={`modal-item${active ? " active" : ""}`}
-                  onClick={() => pickCountry(c.code)}
-                >
+                <div key={c.code} className={`modal-item${cur.code === c.code ? " active" : ""}`} onClick={() => pickCountry(c.code)}>
                   <span className="m-flag">{c.flag}</span>
-                  <div className="m-info">
-                    <div className="m-name">{c.name}</div>
-                    <div className="m-iso">{c.code}</div>
-                  </div>
+                  <div className="m-info"><div className="m-name">{c.name}</div><div className="m-iso">{c.code}</div></div>
                   <span className="m-dial">{c.dial}</span>
                   <i className="fa-solid fa-check m-check"></i>
                 </div>
@@ -328,7 +354,7 @@ export default function AuthPage() {
         <div className="background-shape"></div>
         <div className="secondary-shape"></div>
 
-        {/* ══ ADMIN LOGIN PANEL (overlays when adminMode = true) ══ */}
+        {/* ══ ADMIN LOGIN PANEL ══ */}
         <div className={`admin-panel${adminMode ? " visible" : ""}`}>
           <div className="admin-panel-inner">
             <div className="admin-badge">
@@ -337,44 +363,23 @@ export default function AuthPage() {
             </div>
             <h2>Admin Login</h2>
             <p className="admin-subtitle">Authorized personnel only</p>
-
             <div className="field-wrapper" style={{ marginTop: 24 }}>
-              <input
-                type="email"
-                value={adminEmail}
-                onChange={e => setAdminEmail(e.target.value)}
-                required
-              />
+              <input type="email" value={adminEmail} onChange={e => setAdminEmail(e.target.value)} required />
               <label>Admin Email</label>
               <i className="fa-solid fa-envelope"></i>
             </div>
-
             <div className="field-wrapper">
-              <input
-                type="password"
-                value={adminPwd}
-                onChange={e => setAdminPwd(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && doAdminLogin()}
-                required
-              />
+              <input type="password" value={adminPwd} onChange={e => setAdminPwd(e.target.value)} onKeyDown={e => e.key === "Enter" && doAdminLogin()} required />
               <label>Password</label>
               <i className="fa-solid fa-lock"></i>
             </div>
-
-            <button
-              className="submit-btn"
-              style={{ marginTop: 20 }}
-              onClick={doAdminLogin}
-              disabled={adminLoading}
-            >
+            <button className="submit-btn" style={{ marginTop: 20 }} onClick={doAdminLogin} disabled={adminLoading}>
               {adminLoading ? "Signing in…" : "Sign In as Admin"}
             </button>
             {adminErr && <div className="server-err">{adminErr}</div>}
-
             <div className="switch-link" style={{ marginTop: 16 }}>
               <a onClick={() => { setAdminMode(false); setAdminErr(""); }}>
-                <i className="fa-solid fa-arrow-left" style={{ marginRight: 5, fontSize: 10 }}></i>
-                Back to user login
+                <i className="fa-solid fa-arrow-left" style={{ marginRight: 5, fontSize: 10 }}></i>Back to user login
               </a>
             </div>
           </div>
@@ -384,13 +389,9 @@ export default function AuthPage() {
         <div className="credentials-panel signin">
           <h2 className="slide-element">Login</h2>
 
-          {/* Country Pill */}
           <div className="country-pill-wrap slide-element">
             <div className="country-pill-label">Country</div>
-            <div
-              className={`country-pill${loginPillOpen ? " open" : ""}`}
-              onClick={() => openModal("login")}
-            >
+            <div className={`country-pill${loginPillOpen ? " open" : ""}`} onClick={() => openModal("login")}>
               <span className="pill-flag">{loginC.flag}</span>
               <div className="pill-info">
                 <span className="pill-name">{loginC.name}</span>
@@ -400,74 +401,41 @@ export default function AuthPage() {
             </div>
           </div>
 
-          {/* Phone/Email tabs (ET only) */}
           {loginC.code === "ET" && (
             <div className="input-tabs slide-element">
-              <button
-                className={loginType === "phone" ? "active" : ""}
-                onClick={() => setLoginType("phone")}
-              >
-                <span className="tab-icon">📱</span>
-                <span className="tab-label">Phone</span>
+              <button className={loginType === "phone" ? "active" : ""} onClick={() => setLoginType("phone")}>
+                <span className="tab-icon">📱</span><span className="tab-label">Phone</span>
               </button>
-              <button
-                className={loginType === "email" ? "active" : ""}
-                onClick={() => setLoginType("email")}
-              >
-                <span className="tab-icon">✉️</span>
-                <span className="tab-label">Email</span>
+              <button className={loginType === "email" ? "active" : ""} onClick={() => setLoginType("email")}>
+                <span className="tab-icon">✉️</span><span className="tab-label">Email</span>
               </button>
             </div>
           )}
 
-          {/* Phone input */}
           {loginType === "phone" && (
             <div className="phone-row-wrap slide-element">
               <div className="phone-row-label">Phone Number</div>
               <div className={`phone-row${loginPhoneFocused ? " focused" : ""}`}>
-                <div className="phone-prefix">
-                  <span className="pf-flag">{loginC.flag}</span>
-                  <span className="pf-code">{loginC.dial}</span>
-                </div>
-                <input
-                  type="tel"
-                  placeholder="9XX XXX XXXX"
-                  value={loginPhone}
+                <div className="phone-prefix"><span className="pf-flag">{loginC.flag}</span><span className="pf-code">{loginC.dial}</span></div>
+                <input type="tel" placeholder="9XX XXX XXXX" value={loginPhone}
                   onChange={e => setLoginPhone(e.target.value.replace(/\D/g, "").slice(0, 9))}
-                  onFocus={() => setLoginPhoneFocused(true)}
-                  onBlur={() => setLoginPhoneFocused(false)}
-                />
+                  onFocus={() => setLoginPhoneFocused(true)} onBlur={() => setLoginPhoneFocused(false)} />
                 <i className="fa-solid fa-phone"></i>
               </div>
-              <div className={`auth-err${loginPhoneErr ? " show" : ""}`}>
-                Invalid phone number (must start with 9 or 7)
-              </div>
+              <div className={`auth-err${loginPhoneErr ? " show" : ""}`}>Invalid phone number (must start with 9 or 7)</div>
             </div>
           )}
 
-          {/* Email input */}
           {loginType === "email" && (
             <div className="field-wrapper slide-element">
-              <input
-                type="email"
-                value={loginEmail}
-                onChange={e => setLoginEmail(e.target.value)}
-                required
-              />
+              <input type="email" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} required />
               <label>Email Address</label>
               <i className="fa-solid fa-envelope"></i>
             </div>
           )}
 
-          {/* Password */}
           <div className="field-wrapper slide-element">
-            <input
-              type="password"
-              value={loginPwd}
-              onChange={e => setLoginPwd(e.target.value)}
-              onKeyDown={e => e.key === "Enter" && doLogin()}
-              required
-            />
+            <input type="password" value={loginPwd} onChange={e => setLoginPwd(e.target.value)} onKeyDown={e => e.key === "Enter" && doLogin()} required />
             <label>Password</label>
             <i className="fa-solid fa-lock"></i>
           </div>
@@ -482,8 +450,7 @@ export default function AuthPage() {
           </div>
 
           <div className="switch-link slide-element">
-            Don't have an account?{" "}
-            <a onClick={() => setToggled(true)}>Sign Up</a>
+            Don't have an account? <a onClick={() => { setToggled(true); setOtpStep(false); setOtpCode(""); setRegErr(""); }}>Sign Up</a>
           </div>
         </div>
 
@@ -495,129 +462,129 @@ export default function AuthPage() {
 
         {/* ══ REGISTER PANEL ══ */}
         <div className="credentials-panel signup">
-          <h2 className="slide-element">Register</h2>
 
-          {/* Country Pill */}
-          <div className="country-pill-wrap slide-element">
-            <div className="country-pill-label">Country</div>
-            <div
-              className={`country-pill${regPillOpen ? " open" : ""}`}
-              onClick={() => openModal("reg")}
-            >
-              <span className="pill-flag">{regC.flag}</span>
-              <div className="pill-info">
-                <span className="pill-name">{regC.name}</span>
-                <span className="pill-code">{regC.code} · {regC.dial}</span>
-              </div>
-              <i className="fa-solid fa-chevron-down pill-caret"></i>
-            </div>
-          </div>
+          {!otpStep ? (
+            <>
+              <h2 className="slide-element">Register</h2>
 
-          {/* Phone/Email tabs (ET only) */}
-          {regC.code === "ET" && (
-            <div className="input-tabs slide-element">
-              <button
-                className={regType === "phone" ? "active" : ""}
-                onClick={() => setRegType("phone")}
-              >
-                <span className="tab-icon">📱</span>
-                <span className="tab-label">Phone</span>
-              </button>
-              <button
-                className={regType === "email" ? "active" : ""}
-                onClick={() => setRegType("email")}
-              >
-                <span className="tab-icon">✉️</span>
-                <span className="tab-label">Email</span>
-              </button>
-            </div>
-          )}
-
-          {/* Phone input */}
-          {regType === "phone" && (
-            <div className="phone-row-wrap slide-element">
-              <div className="phone-row-label">Phone Number</div>
-              <div className={`phone-row${regPhoneFocused ? " focused" : ""}`}>
-                <div className="phone-prefix">
-                  <span className="pf-flag">{regC.flag}</span>
-                  <span className="pf-code">{regC.dial}</span>
+              <div className="country-pill-wrap slide-element">
+                <div className="country-pill-label">Country</div>
+                <div className={`country-pill${regPillOpen ? " open" : ""}`} onClick={() => openModal("reg")}>
+                  <span className="pill-flag">{regC.flag}</span>
+                  <div className="pill-info">
+                    <span className="pill-name">{regC.name}</span>
+                    <span className="pill-code">{regC.code} · {regC.dial}</span>
+                  </div>
+                  <i className="fa-solid fa-chevron-down pill-caret"></i>
                 </div>
+              </div>
+
+              {regC.code === "ET" && (
+                <div className="input-tabs slide-element">
+                  <button className={regType === "phone" ? "active" : ""} onClick={() => setRegType("phone")}>
+                    <span className="tab-icon">📱</span><span className="tab-label">Phone</span>
+                  </button>
+                  <button className={regType === "email" ? "active" : ""} onClick={() => setRegType("email")}>
+                    <span className="tab-icon">✉️</span><span className="tab-label">Email</span>
+                  </button>
+                </div>
+              )}
+
+              {regType === "phone" && (
+                <div className="phone-row-wrap slide-element">
+                  <div className="phone-row-label">Phone Number</div>
+                  <div className={`phone-row${regPhoneFocused ? " focused" : ""}`}>
+                    <div className="phone-prefix"><span className="pf-flag">{regC.flag}</span><span className="pf-code">{regC.dial}</span></div>
+                    <input type="tel" placeholder="9XX XXX XXXX" value={regPhone}
+                      onChange={e => setRegPhone(e.target.value.replace(/\D/g, "").slice(0, 9))}
+                      onFocus={() => setRegPhoneFocused(true)} onBlur={() => setRegPhoneFocused(false)} />
+                    <i className="fa-solid fa-phone"></i>
+                  </div>
+                  <div className={`auth-err${regPhoneErr ? " show" : ""}`}>Ethiopian number must start with 9 or 7</div>
+                </div>
+              )}
+
+              {regType === "email" && (
+                <div className="field-wrapper slide-element">
+                  <input type="email" value={regEmail} onChange={e => setRegEmail(e.target.value)} required />
+                  <label>Email Address</label>
+                  <i className="fa-solid fa-envelope"></i>
+                </div>
+              )}
+
+              <div className="field-wrapper slide-element">
+                <input type="text" value={regUser} onChange={e => setRegUser(e.target.value)} required />
+                <label>Username</label>
+                <i className="fa-solid fa-user"></i>
+              </div>
+
+              <div className="field-wrapper slide-element">
+                <input type="password" value={regPwd} onChange={e => setRegPwd(e.target.value)} required />
+                <label>Password</label>
+                <i className="fa-solid fa-lock"></i>
+              </div>
+
+              <div className="field-wrapper slide-element">
+                <input type="text" value={regRef} onChange={e => setRegRef(e.target.value)} />
+                <label>Referral Code (optional)</label>
+                <i className="fa-solid fa-gift"></i>
+              </div>
+
+              <div className="slide-element">
+                <button className="submit-btn" onClick={doSendCode} disabled={otpLoading}>
+                  {otpLoading ? "Sending code…" : (regType === "phone" ? "📱 Send SMS Code" : "✉️ Send Email Code")}
+                </button>
+                {regErr && <div className="server-err">{regErr}</div>}
+              </div>
+
+              <div className="switch-link slide-element">
+                Already have an account? <a onClick={() => setToggled(false)}>Sign In</a>
+              </div>
+            </>
+          ) : (
+            <>
+              <h2 className="slide-element">Verify</h2>
+              <p className="slide-element" style={{ fontSize: 12, color: "rgba(255,255,255,.5)", marginBottom: 8 }}>
+                {regType === "phone"
+                  ? `We sent a 6-digit code to ${regC.dial} ${regPhone}`
+                  : `We sent a 6-digit code to ${regEmail}`}
+              </p>
+
+              <div className="otp-input-wrap slide-element">
                 <input
-                  type="tel"
-                  placeholder="9XX XXX XXXX"
-                  value={regPhone}
-                  onChange={e => setRegPhone(e.target.value.replace(/\D/g, "").slice(0, 9))}
-                  onFocus={() => setRegPhoneFocused(true)}
-                  onBlur={() => setRegPhoneFocused(false)}
+                  className="otp-input"
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={6}
+                  placeholder="000000"
+                  value={otpCode}
+                  onChange={e => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  onKeyDown={e => e.key === "Enter" && doVerifyAndRegister()}
+                  autoFocus
                 />
-                <i className="fa-solid fa-phone"></i>
               </div>
-              <div className={`auth-err${regPhoneErr ? " show" : ""}`}>
-                Ethiopian number must start with 9 or 7
+
+              <div className="slide-element">
+                <button className="submit-btn" onClick={doVerifyAndRegister} disabled={regLoading}>
+                  {regLoading ? "Verifying…" : "Verify & Create Account"}
+                </button>
+                {otpErr && <div className="server-err">{otpErr}</div>}
               </div>
-            </div>
+
+              <div className="otp-resend slide-element">
+                {otpCooldown > 0
+                  ? <span>Resend code in {otpCooldown}s</span>
+                  : <a onClick={doResendCode}>Resend code</a>
+                }
+              </div>
+
+              <div className="switch-link slide-element">
+                <a onClick={() => { setOtpStep(false); setOtpErr(""); setRegErr(""); }}>
+                  <i className="fa-solid fa-arrow-left" style={{ marginRight: 5, fontSize: 10 }}></i>Back
+                </a>
+              </div>
+            </>
           )}
-
-          {/* Email input */}
-          {regType === "email" && (
-            <div className="field-wrapper slide-element">
-              <input
-                type="email"
-                value={regEmail}
-                onChange={e => setRegEmail(e.target.value)}
-                required
-              />
-              <label>Email Address</label>
-              <i className="fa-solid fa-envelope"></i>
-            </div>
-          )}
-
-          {/* Username */}
-          <div className="field-wrapper slide-element">
-            <input
-              type="text"
-              value={regUser}
-              onChange={e => setRegUser(e.target.value)}
-              required
-            />
-            <label>Username</label>
-            <i className="fa-solid fa-user"></i>
-          </div>
-
-          {/* Password */}
-          <div className="field-wrapper slide-element">
-            <input
-              type="password"
-              value={regPwd}
-              onChange={e => setRegPwd(e.target.value)}
-              required
-            />
-            <label>Password</label>
-            <i className="fa-solid fa-lock"></i>
-          </div>
-
-          {/* Referral */}
-          <div className="field-wrapper slide-element">
-            <input
-              type="text"
-              value={regRef}
-              onChange={e => setRegRef(e.target.value)}
-            />
-            <label>Referral Code (optional)</label>
-            <i className="fa-solid fa-gift"></i>
-          </div>
-
-          <div className="slide-element">
-            <button className="submit-btn" onClick={doRegister} disabled={regLoading}>
-              {regLoading ? "Creating account…" : "Create Account"}
-            </button>
-            {regErr && <div className="server-err">{regErr}</div>}
-          </div>
-
-          <div className="switch-link slide-element">
-            Already have an account?{" "}
-            <a onClick={() => setToggled(false)}>Sign In</a>
-          </div>
         </div>
 
         {/* Welcome left */}
@@ -629,7 +596,7 @@ export default function AuthPage() {
 
       {/* Admin toggle link */}
       <div className="admin-toggle-link">
-        {adminMode ? null : (
+        {!adminMode && (
           <a onClick={() => { setAdminMode(true); setAdminErr(""); }}>
             <i className="fa-solid fa-shield-halved"></i> Admin Access
           </a>
