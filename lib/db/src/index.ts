@@ -4,11 +4,11 @@ import * as schema from "./schema";
 
 const { Pool } = pg;
 
-const connectionString = process.env.NEON_DATABASE_URL;
+const connectionString = process.env.DATABASE_URL || process.env.NEON_DATABASE_URL;
 
 if (!connectionString) {
   throw new Error(
-    "NEON_DATABASE_URL is not set. Set it to your Neon PostgreSQL connection string.",
+    "DATABASE_URL is not set. Set it to your PostgreSQL connection string.",
   );
 }
 
