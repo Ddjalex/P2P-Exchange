@@ -91,18 +91,20 @@ function DepositModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
     <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={onClose}>
       <div className="absolute inset-0 bg-black/60" />
       <div
-        className="relative w-full max-w-[480px] bg-card rounded-t-2xl overflow-y-auto max-h-[85dvh]"
+        className="relative w-full max-w-[480px] bg-card rounded-t-2xl flex flex-col"
+        style={{ maxHeight: "85dvh" }}
         onClick={e => e.stopPropagation()}
       >
-        <div className="p-6 space-y-5">
-          {/* Header */}
-          <div className="flex items-center justify-between">
-            <h2 className="font-bold text-lg">Deposit USDT</h2>
-            <button onClick={onClose} className="p-1 rounded-lg hover:bg-secondary/50">
-              <X className="w-5 h-5" />
-            </button>
-          </div>
+        {/* Pinned header */}
+        <div className="flex items-center justify-between px-6 pt-6 pb-4 flex-shrink-0">
+          <h2 className="font-bold text-lg">Deposit USDT</h2>
+          <button onClick={onClose} className="p-1 rounded-lg hover:bg-secondary/50">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
 
+        {/* Scrollable body */}
+        <div className="overflow-y-auto flex-1 px-6 pb-8 space-y-5">
           {/* Network selector */}
           <div>
             <label className="text-xs text-muted-foreground mb-2 block">Select Network</label>
@@ -198,7 +200,6 @@ function DepositModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
               </>
             )}
           </div>
-
         </div>
       </div>
     </div>
