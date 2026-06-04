@@ -88,7 +88,7 @@ function DepositModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
   const networkExplorer = network === "BEP20" ? "bscscan.com" : "tronscan.org";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={onClose}>
+    <div className="fixed inset-0 z-[60] flex items-end justify-center" onClick={onClose}>
       <div className="absolute inset-0 bg-black/60" />
       <div
         className="relative w-full max-w-[480px] bg-card rounded-t-2xl flex flex-col"
@@ -104,7 +104,7 @@ function DepositModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
         </div>
 
         {/* Scrollable body */}
-        <div className="overflow-y-auto flex-1 px-6 pb-8 space-y-5">
+        <div className="overflow-y-auto flex-1 px-6 pb-8 space-y-5" style={{ WebkitOverflowScrolling: "touch" }}>
           {/* Network selector */}
           <div>
             <label className="text-xs text-muted-foreground mb-2 block">Select Network</label>
@@ -195,7 +195,7 @@ function DepositModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
                   className="w-full py-3 bg-primary text-black font-bold rounded-xl text-sm disabled:opacity-50 flex items-center justify-center gap-2 transition-opacity"
                 >
                   {verifying ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-                  {verifying ? "Verifying on blockchain..." : "Verify & Credit My Wallet"}
+                  {verifying ? "Verifying..." : "Verify"}
                 </button>
               </>
             )}
@@ -257,10 +257,11 @@ function WithdrawModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={onClose}>
+    <div className="fixed inset-0 z-[60] flex items-end justify-center" onClick={onClose}>
       <div className="absolute inset-0 bg-black/60" />
       <div
-        className="relative w-full max-w-[480px] bg-card rounded-t-2xl overflow-y-auto max-h-[88vh]"
+        className="relative w-full max-w-[480px] bg-card rounded-t-2xl overflow-y-auto max-h-[85dvh]"
+        style={{ WebkitOverflowScrolling: "touch" }}
         onClick={e => e.stopPropagation()}
       >
         <div className="p-6 space-y-5">
