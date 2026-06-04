@@ -1,7 +1,9 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { walletsTable, transactionsTable, systemSettingsTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
+import { sendUsdt, privateKeyToTronAddress } from "../lib/tron.js";
+
 const router = Router();
 
 async function getSetting(key: string, fallback = ""): Promise<string> {
@@ -9,28 +11,28 @@ async function getSetting(key: string, fallback = ""): Promise<string> {
   return rows[0]?.value ?? fallback;
 }
 
-function getOrCreateWallet(userId: number) {
-  return db.select().from(walletsTable).where(
+async function getOrCreateWallet(userId: number) {
+  const rows = await db.select().from(walletsTable).where(
     and(eq(walletsTable.userId, userId), eq(walletsTable.asset, "USDT"))
-  ).then(async rows => {
-    if (rows[0]) return rows[0];
-    const [w] = await db.insert(walletsTable).values({
-      userId,
-      asset: "USDT",
-      availableBalance: "0.00",
-      frozenBalance: "0.00",
-    }).returning();
-    return w;
-  });
+  );
+  if (rows[0]) return rows[0];
+  const [w] = await db.insert(walletsTable).values({
+    userId,
+    asset: "USDT",
+    availableBalance: "0.00",
+    frozenBalance: "0.00",
+  }).returning();
+  return w;
 }
 
+// GET /api/wallet
 router.get("/", async (req, res) => {
   try {
     const wallet = await getOrCreateWallet((req as any).userId);
     const avail = parseFloat(wallet.availableBalance);
     const frozen = parseFloat(wallet.frozenBalance);
     const total = avail + frozen;
-    const etbRate = await getSetting("etbRate", "0.00");
+    const etbRate = await getSetting("etbRate", "0");
     const etbValue = (total * parseFloat(etbRate || "0")).toFixed(2);
     res.json({
       userId: wallet.userId,
@@ -47,66 +49,170 @@ router.get("/", async (req, res) => {
   }
 });
 
+// GET /api/wallet/deposit-address?network=TRC20
 router.get("/deposit-address", async (req, res) => {
   const network = req.query.network as string;
   if (!["TRC20", "ERC20"].includes(network)) {
     return res.status(400).json({ error: "Invalid network" });
   }
-  const key = network === "TRC20" ? "trc20Address" : "erc20Address";
+  if (network === "ERC20") {
+    return res.status(503).json({ error: "ERC20 deposits not yet supported. Use TRC20." });
+  }
+  const key = "trc20Address";
   const address = await getSetting(key, "");
   if (!address) {
     return res.status(503).json({ error: "Deposit address not configured. Please contact support." });
   }
   const minDeposit = await getSetting("minDeposit", "1");
-  res.json({
-    address,
-    network,
-    minDeposit,
-  });
+  res.json({ address, network, minDeposit });
 });
 
+// POST /api/wallet/deposit/initiate — creates a pending deposit so the monitor can match it
+router.post("/deposit/initiate", async (req, res) => {
+  try {
+    const { amount } = req.body;
+    const userId = (req as any).userId;
+    const amt = parseFloat(amount);
+    if (!amt || amt <= 0) return res.status(400).json({ error: "Invalid amount" });
+
+    // Record pending deposit request
+    const [tx] = await db.insert(transactionsTable).values({
+      userId,
+      type: "deposit",
+      amount: amt.toFixed(6),
+      network: "TRC20",
+      status: "pending",
+    }).returning();
+
+    res.json({ id: tx.id, status: "pending", message: "Send exactly this amount to the deposit address. It will be credited automatically after confirmation." });
+  } catch (err) {
+    req.log.error({ err }, "Failed to initiate deposit");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// POST /api/wallet/withdraw — real TRC20 blockchain withdrawal
 router.post("/withdraw", async (req, res) => {
   try {
     const { address, network, amount } = req.body;
-    if (!address || !network || !amount) return res.status(400).json({ error: "Invalid input" });
-    if (!["TRC20", "ERC20"].includes(network)) return res.status(400).json({ error: "Invalid network" });
+    const userId = (req as any).userId;
 
-    const wallet = await getOrCreateWallet((req as any).userId);
-    const avail = parseFloat(wallet.availableBalance);
+    if (!address || !amount) return res.status(400).json({ error: "Invalid input" });
+    if (network !== "TRC20") return res.status(400).json({ error: "Only TRC20 withdrawals are supported" });
+
     const amt = parseFloat(amount);
+    if (isNaN(amt) || amt < 1) return res.status(400).json({ error: "Minimum withdrawal is 1 USDT" });
+
+    const wallet = await getOrCreateWallet(userId);
+    const avail = parseFloat(wallet.availableBalance);
     if (amt > avail) return res.status(400).json({ error: "Insufficient balance" });
 
-    const fee = (amt * 0.001).toFixed(2);
+    // Validate destination address format (TRON addresses start with T, length 34)
+    if (!address.startsWith("T") || address.length !== 34) {
+      return res.status(400).json({ error: "Invalid TRON address format" });
+    }
+
+    const privateKey = process.env["HOT_WALLET_PRIVATE_KEY"];
+    if (!privateKey) {
+      return res.status(503).json({ error: "Withdrawal service not configured" });
+    }
+
+    // Check hot wallet has enough balance (optional sanity check)
+    const fee = (amt * 0.001);
+    const netAmount = amt - fee;
+
+    // Deduct balance BEFORE broadcast to prevent double-spend
+    const newBalance = (avail - amt).toFixed(6);
+    await db.update(walletsTable)
+      .set({ availableBalance: newBalance, updatedAt: new Date() })
+      .where(eq(walletsTable.id, wallet.id));
+
+    // Create pending tx record
     const [tx] = await db.insert(transactionsTable).values({
-      userId: (req as any).userId,
+      userId,
       type: "withdraw",
-      amount,
-      network,
+      amount: amt.toFixed(6),
+      network: "TRC20",
       status: "pending",
       address,
-      fee,
+      fee: fee.toFixed(6),
     }).returning();
 
-    // Deduct balance
-    await db.update(walletsTable)
-      .set({ availableBalance: (avail - amt).toFixed(2) })
-      .where(eq(walletsTable.id, wallet.id));
+    // Broadcast to blockchain (async — respond immediately, update tx after)
+    sendUsdt(privateKey, address, netAmount)
+      .then(async (txid) => {
+        await db.update(transactionsTable)
+          .set({ status: "completed", txid })
+          .where(eq(transactionsTable.id, tx.id));
+        req.log.info({ txid, userId, amount: netAmount }, "Withdrawal broadcast successful");
+      })
+      .catch(async (err) => {
+        req.log.error({ err, txId: tx.id }, "Withdrawal broadcast failed — refunding");
+        // Refund balance on failure
+        const currentWallet = await getOrCreateWallet(userId);
+        const refunded = (parseFloat(currentWallet.availableBalance) + amt).toFixed(6);
+        await db.update(walletsTable)
+          .set({ availableBalance: refunded, updatedAt: new Date() })
+          .where(eq(walletsTable.id, wallet.id));
+        await db.update(transactionsTable)
+          .set({ status: "failed" })
+          .where(eq(transactionsTable.id, tx.id));
+      });
 
     res.json({
       id: tx.id,
-      userId: tx.userId,
-      type: tx.type,
-      amount: tx.amount,
-      network: tx.network ?? null,
-      status: tx.status,
-      txid: tx.txid ?? null,
-      address: tx.address ?? null,
-      fee: tx.fee ?? null,
-      createdAt: tx.createdAt,
+      status: "pending",
+      amount: amt.toFixed(6),
+      netAmount: netAmount.toFixed(6),
+      fee: fee.toFixed(6),
+      network: "TRC20",
+      address,
+      message: "Withdrawal submitted to blockchain. Usually confirms within 1-3 minutes.",
     });
   } catch (err) {
     req.log.error({ err }, "Failed to withdraw");
     res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// GET /api/wallet/transactions — transaction history
+router.get("/transactions", async (req, res) => {
+  try {
+    const userId = (req as any).userId;
+    const limit = Math.min(parseInt(req.query.limit as string || "20"), 100);
+    const rows = await db
+      .select()
+      .from(transactionsTable)
+      .where(eq(transactionsTable.userId, userId))
+      .orderBy(desc(transactionsTable.createdAt))
+      .limit(limit);
+
+    res.json(rows.map(tx => ({
+      id: tx.id,
+      type: tx.type,
+      amount: tx.amount,
+      network: tx.network,
+      status: tx.status,
+      txid: tx.txid,
+      address: tx.address,
+      fee: tx.fee,
+      createdAt: tx.createdAt,
+    })));
+  } catch (err) {
+    req.log.error({ err }, "Failed to get transactions");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// GET /api/wallet/hot-wallet-address — for admin info
+router.get("/hot-wallet-info", async (req, res) => {
+  try {
+    const privateKey = process.env["HOT_WALLET_PRIVATE_KEY"];
+    if (!privateKey) return res.status(503).json({ error: "Not configured" });
+    const address = privateKeyToTronAddress(privateKey.replace(/^0x/, ""));
+    res.json({ address, network: "TRC20" });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to derive address" });
   }
 });
 
