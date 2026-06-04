@@ -1,6 +1,6 @@
 import { useAuth } from "@/hooks/use-auth";
 import { AppLayout } from "@/components/layout";
-import { Bell, Settings, Eye, EyeOff, ArrowDownToLine, ArrowUpFromLine, X, Copy, Check, Loader2, AlertCircle, ChevronDown } from "lucide-react";
+import { Bell, Settings, Eye, EyeOff, ArrowDownToLine, ArrowUpFromLine, X, Copy, Check, Loader2, AlertCircle } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useGetWallet, getGetWalletQueryKey } from "@workspace/api-client-react";
 import { useState, useEffect } from "react";
@@ -91,7 +91,7 @@ function DepositModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
     <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={onClose}>
       <div className="absolute inset-0 bg-black/60" />
       <div
-        className="relative w-full max-w-[480px] bg-card rounded-t-2xl overflow-y-auto max-h-[90vh]"
+        className="relative w-full max-w-[480px] bg-card rounded-t-2xl overflow-y-auto max-h-[85dvh]"
         onClick={e => e.stopPropagation()}
       >
         <div className="p-6 space-y-5">
@@ -165,10 +165,6 @@ function DepositModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
               <label className="text-sm font-medium">After sending, paste the transaction hash</label>
             </div>
 
-            <p className="text-xs text-muted-foreground ml-7">
-              After your transfer is confirmed, copy the transaction hash (TX ID) from your exchange or {networkExplorer} and paste it below.
-            </p>
-
             {verified ? (
               <div className="bg-success/10 border border-success/20 rounded-xl p-4 text-center space-y-1">
                 <p className="text-lg font-bold text-success">✓ Deposit Verified!</p>
@@ -203,35 +199,8 @@ function DepositModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
             )}
           </div>
 
-          {/* Accordion: didn't receive */}
-          {!verified && <MissedDepositAccordion />}
         </div>
       </div>
-    </div>
-  );
-}
-
-function MissedDepositAccordion() {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="border border-border rounded-xl overflow-hidden">
-      <button
-        onClick={() => setOpen(v => !v)}
-        className="w-full flex items-center justify-between px-4 py-3 text-sm text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors"
-      >
-        <span>Sent but still not credited?</span>
-        <ChevronDown className={`w-4 h-4 transition-transform ${open ? "rotate-180" : ""}`} />
-      </button>
-      {open && (
-        <div className="px-4 pb-4 pt-3 border-t border-border text-xs text-muted-foreground space-y-1">
-          <p>If your transaction is confirmed on-chain but the hash gives an error:</p>
-          <ul className="list-disc list-inside space-y-0.5">
-            <li>Make sure you selected the correct network (BEP20 vs TRC20)</li>
-            <li>Double-check the hash — copy it directly from your exchange history</li>
-            <li>Contact support with your TX hash and we will credit you manually</li>
-          </ul>
-        </div>
-      )}
     </div>
   );
 }
