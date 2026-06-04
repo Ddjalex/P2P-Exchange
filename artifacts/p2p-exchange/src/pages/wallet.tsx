@@ -4,6 +4,7 @@ import { Bell, Settings, Eye, EyeOff, ArrowDownToLine, ArrowUpFromLine, X, Copy,
 import { Link, useLocation } from "wouter";
 import { useGetWallet, getGetWalletQueryKey } from "@workspace/api-client-react";
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -87,8 +88,8 @@ function DepositModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
   const networkLabel = network === "BEP20" ? "BEP20 (BSC)" : "TRC20 (TRON)";
   const networkExplorer = network === "BEP20" ? "bscscan.com" : "tronscan.org";
 
-  return (
-    <div className="fixed inset-0 z-[60] flex items-end justify-center" onClick={onClose}>
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-end justify-center" onClick={onClose}>
       <div className="absolute inset-0 bg-black/60" />
       <div
         className="relative w-full max-w-[480px] bg-card rounded-t-2xl flex flex-col"
@@ -203,7 +204,7 @@ function DepositModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
         </div>
       </div>
     </div>
-  );
+  , document.body);
 }
 
 // ─── Withdraw Modal ──────────────────────────────────────────────────────────
@@ -256,22 +257,24 @@ function WithdrawModal({
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-[60] flex items-end justify-center" onClick={onClose}>
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-end justify-center" onClick={onClose}>
       <div className="absolute inset-0 bg-black/60" />
       <div
-        className="relative w-full max-w-[480px] bg-card rounded-t-2xl overflow-y-auto max-h-[85dvh]"
-        style={{ WebkitOverflowScrolling: "touch" }}
+        className="relative w-full max-w-[480px] bg-card rounded-t-2xl flex flex-col"
+        style={{ maxHeight: "85dvh" }}
         onClick={e => e.stopPropagation()}
       >
-        <div className="p-6 space-y-5">
-          <div className="flex items-center justify-between">
-            <h2 className="font-bold text-lg">Withdraw USDT</h2>
-            <button onClick={onClose} className="p-1 rounded-lg hover:bg-secondary/50">
-              <X className="w-5 h-5" />
-            </button>
-          </div>
+        {/* Pinned header */}
+        <div className="flex items-center justify-between px-6 pt-6 pb-4 flex-shrink-0">
+          <h2 className="font-bold text-lg">Withdraw USDT</h2>
+          <button onClick={onClose} className="p-1 rounded-lg hover:bg-secondary/50">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
 
+        {/* Scrollable body */}
+        <div className="overflow-y-auto flex-1 px-6 pb-8 space-y-5" style={{ WebkitOverflowScrolling: "touch" }}>
           <div>
             <label className="text-xs text-muted-foreground mb-2 block">Network</label>
             <div className="py-2.5 px-4 rounded-xl text-sm font-semibold border bg-primary/10 border-primary text-primary w-fit">
@@ -355,7 +358,7 @@ function WithdrawModal({
         </div>
       </div>
     </div>
-  );
+  , document.body);
 }
 
 // ─── Main Wallet Page ────────────────────────────────────────────────────────
