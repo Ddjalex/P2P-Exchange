@@ -57,6 +57,7 @@ router.get("/status", async (req, res) => {
 
     res.json({
       status: submission.status,
+      fullName: submission.fullName ?? null,
       rejectionReason: submission.rejectionReason ?? null,
       adminMessage: submission.adminMessage ?? null,
       submittedAt: submission.submittedAt,
