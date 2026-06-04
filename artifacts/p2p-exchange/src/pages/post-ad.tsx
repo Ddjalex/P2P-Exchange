@@ -1,31 +1,65 @@
 import { AppLayout } from "@/components/layout";
-import { useState } from "react";
-import { Link, useLocation } from "wouter";
-import { useCreateAd, getListAdsQueryKey } from "@workspace/api-client-react";
+import { useState, useEffect } from "react";
+import { useLocation, useParams } from "wouter";
+import { useCreateAd, useUpdateAd, useGetAd, getListAdsQueryKey } from "@workspace/api-client-react";
 import type { AdInput } from "@workspace/api-client-react/src/generated/api.schemas";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Check } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+
+const EMPTY_AD: Partial<AdInput> = {
+  type: "buy",
+  priceType: "fixed",
+  asset: "USDT",
+  fiat: "ETB",
+  price: "120.50",
+  totalAmount: "",
+  minLimit: "",
+  maxLimit: "",
+  paymentMethods: [],
+  paymentTimeLimit: 15,
+  autoReply: "",
+  region: "ET",
+  status: "online",
+};
 
 export default function PostAdPage() {
+  const params = useParams<{ id?: string }>();
+  const editId = params.id ? Number(params.id) : undefined;
+  const isEdit = !!editId;
+
   const [step, setStep] = useState(1);
-  const [ad, setAd] = useState<Partial<AdInput>>({
-    type: "buy",
-    priceType: "fixed",
-    asset: "USDT",
-    fiat: "ETB",
-    price: "120.50",
-    totalAmount: "",
-    minLimit: "",
-    maxLimit: "",
-    paymentMethods: [],
-    paymentTimeLimit: 15,
-    autoReply: "",
-    region: "ET",
-    status: "online"
-  } as any);
+  const [ad, setAd] = useState<Partial<AdInput>>(EMPTY_AD);
+  const [loaded, setLoaded] = useState(!isEdit);
+
+  const { data: existingAd, isLoading: loadingAd } = useGetAd(editId!, {
+    query: { enabled: isEdit },
+  });
+
+  useEffect(() => {
+    if (existingAd && !loaded) {
+      setAd({
+        type: existingAd.type as any,
+        priceType: (existingAd as any).priceType ?? "fixed",
+        asset: existingAd.asset,
+        fiat: existingAd.fiat,
+        price: String(existingAd.price),
+        totalAmount: String(existingAd.totalAmount ?? ""),
+        minLimit: String(existingAd.minLimit ?? ""),
+        maxLimit: String(existingAd.maxLimit ?? ""),
+        paymentMethods: existingAd.paymentMethods ?? [],
+        paymentTimeLimit: (existingAd as any).paymentTimeLimit ?? 15,
+        autoReply: (existingAd as any).autoReply ?? "",
+        region: (existingAd as any).region ?? "ET",
+        status: existingAd.status as any,
+      });
+      setLoaded(true);
+    }
+  }, [existingAd, loaded]);
 
   const createAd = useCreateAd();
+  const updateAd = useUpdateAd();
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
@@ -34,23 +68,54 @@ export default function PostAdPage() {
   const handleBack = () => setStep(s => Math.max(1, s - 1));
 
   const submit = () => {
-    createAd.mutate({ data: ad as AdInput }, {
-      onSuccess: () => {
-        toast({ title: "Ad posted successfully" });
-        queryClient.invalidateQueries({ queryKey: getListAdsQueryKey({ mine: true }) });
-        setLocation("/ads");
-      },
-      onError: () => {
-        toast({ title: "Failed to post ad", variant: "destructive" });
-      }
-    });
+    if (isEdit) {
+      updateAd.mutate({ id: editId!, data: ad as any }, {
+        onSuccess: () => {
+          toast({ title: "Ad updated successfully" });
+          queryClient.invalidateQueries({ queryKey: getListAdsQueryKey({ mine: true }) });
+          setLocation("/ads");
+        },
+        onError: () => {
+          toast({ title: "Failed to update ad", variant: "destructive" });
+        },
+      });
+    } else {
+      createAd.mutate({ data: ad as AdInput }, {
+        onSuccess: () => {
+          toast({ title: "Ad posted successfully" });
+          queryClient.invalidateQueries({ queryKey: getListAdsQueryKey({ mine: true }) });
+          setLocation("/ads");
+        },
+        onError: () => {
+          toast({ title: "Failed to post ad", variant: "destructive" });
+        },
+      });
+    }
   };
+
+  const isPending = createAd.isPending || updateAd.isPending;
+
+  if (isEdit && loadingAd) {
+    return (
+      <AppLayout showNav={false}>
+        <header className="p-4 border-b border-border flex items-center">
+          <button onClick={() => setLocation("/ads")} className="text-muted-foreground mr-4">←</button>
+          <h1 className="font-bold">Edit Ad</h1>
+        </header>
+        <div className="p-4 space-y-4">
+          <Skeleton className="h-10 w-full rounded" />
+          <Skeleton className="h-10 w-full rounded" />
+          <Skeleton className="h-10 w-full rounded" />
+        </div>
+      </AppLayout>
+    );
+  }
 
   return (
     <AppLayout showNav={false}>
       <header className="p-4 border-b border-border flex items-center">
         <button onClick={() => step > 1 ? handleBack() : setLocation("/ads")} className="text-muted-foreground mr-4">←</button>
-        <h1 className="font-bold">Post Ad</h1>
+        <h1 className="font-bold">{isEdit ? "Edit Ad" : "Post Ad"}</h1>
       </header>
 
       <div className="p-4">
@@ -90,9 +155,9 @@ export default function PostAdPage() {
             <div className="space-y-2">
               <label className="text-sm font-medium">Price</label>
               <div className="flex items-center justify-between border border-border rounded-lg p-2 bg-card">
-                <button className="w-10 h-10 bg-secondary rounded flex items-center justify-center font-bold" onClick={() => setAd(a => ({ ...a, price: String(Number(a.price) - 0.1) }))}>-</button>
+                <button className="w-10 h-10 bg-secondary rounded flex items-center justify-center font-bold" onClick={() => setAd(a => ({ ...a, price: String(Math.max(0, Number(a.price) - 0.1).toFixed(2)) }))}>-</button>
                 <input type="number" value={ad.price} onChange={e => setAd({ ...ad, price: e.target.value })} className="bg-transparent text-center font-mono text-xl font-bold w-full outline-none" />
-                <button className="w-10 h-10 bg-secondary rounded flex items-center justify-center font-bold" onClick={() => setAd(a => ({ ...a, price: String(Number(a.price) + 0.1) }))}>+</button>
+                <button className="w-10 h-10 bg-secondary rounded flex items-center justify-center font-bold" onClick={() => setAd(a => ({ ...a, price: String((Number(a.price) + 0.1).toFixed(2)) }))}>+</button>
               </div>
             </div>
           </div>
@@ -117,7 +182,7 @@ export default function PostAdPage() {
                 <span className="text-sm text-muted-foreground font-medium w-10">ETB</span>
               </div>
             </div>
-            
+
             <div className="space-y-2">
               <label className="text-sm font-medium">Payment Methods</label>
               <div className="flex flex-wrap gap-2">
@@ -128,7 +193,7 @@ export default function PostAdPage() {
                       key={pm}
                       onClick={() => {
                         const m = ad.paymentMethods || [];
-                        setAd({ ...ad, paymentMethods: isSelected ? m.filter(x => x !== pm) : [...m, pm] })
+                        setAd({ ...ad, paymentMethods: isSelected ? m.filter(x => x !== pm) : [...m, pm] });
                       }}
                       className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${isSelected ? "bg-primary/20 border-primary text-primary" : "bg-secondary border-border text-muted-foreground"}`}
                     >
@@ -145,14 +210,14 @@ export default function PostAdPage() {
           <div className="space-y-6">
             <div className="space-y-2">
               <label className="text-sm font-medium">Auto-reply (Optional)</label>
-              <textarea 
-                value={ad.autoReply || ""} 
+              <textarea
+                value={ad.autoReply || ""}
                 onChange={e => setAd({ ...ad, autoReply: e.target.value })}
                 className="w-full p-3 bg-card border border-border rounded outline-none text-sm min-h-[100px] resize-none"
                 placeholder="Sent to the counterparty automatically after order is created"
               />
             </div>
-            
+
             <div className="space-y-2">
               <label className="text-sm font-medium">Status</label>
               <div className="flex space-x-2">
@@ -175,7 +240,9 @@ export default function PostAdPage() {
           {step < 3 ? (
             <button onClick={handleNext} className="flex-1 py-3 bg-primary text-background rounded font-semibold">Next</button>
           ) : (
-            <button onClick={submit} className="flex-1 py-3 bg-primary text-background rounded font-semibold">Post Ad</button>
+            <button onClick={submit} disabled={isPending} className="flex-1 py-3 bg-primary text-background rounded font-semibold disabled:opacity-60">
+              {isPending ? (isEdit ? "Saving..." : "Posting...") : (isEdit ? "Save Changes" : "Post Ad")}
+            </button>
           )}
         </div>
       </div>

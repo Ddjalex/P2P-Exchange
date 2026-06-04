@@ -91,6 +91,7 @@ function Router() {
       <Route path="/p2p/confirm/:adId"><KycProtectedRoute component={BuyConfirmPage} /></Route>
       <Route path="/ads"><KycProtectedRoute component={AdsPage} /></Route>
       <Route path="/ads/post"><KycProtectedRoute component={PostAdPage} /></Route>
+      <Route path="/ads/edit/:id"><KycProtectedRoute component={PostAdPage} /></Route>
       <Route path="/orders"><KycProtectedRoute component={OrdersPage} /></Route>
       <Route path="/trade/:id"><KycProtectedRoute component={TradePage} /></Route>
       <Route path="/chat"><KycProtectedRoute component={ChatPage} /></Route>

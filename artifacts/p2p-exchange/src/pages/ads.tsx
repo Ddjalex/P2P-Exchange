@@ -1,5 +1,5 @@
 import { AppLayout } from "@/components/layout";
-import { Plus, Settings } from "lucide-react";
+import { Plus, Pencil } from "lucide-react";
 import { useListAds, useToggleAdStatus, useDeleteAd, getListAdsQueryKey } from "@workspace/api-client-react";
 import { useState } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -98,7 +98,10 @@ export default function AdsPage() {
                     <span key={pm} className="text-[10px] bg-secondary px-1.5 py-0.5 rounded">{pm}</span>
                   ))}
                 </div>
-                <div className="flex space-x-2">
+                <div className="flex items-center space-x-3">
+                  <Link href={`/ads/edit/${ad.id}`} className="text-xs text-primary flex items-center gap-1 hover:opacity-80 transition-opacity">
+                    <Pencil className="w-3 h-3" /> Edit
+                  </Link>
                   <button onClick={() => handleToggle(ad.id)} className="text-xs text-muted-foreground hover:text-primary transition-colors">
                     {ad.status === 'online' ? 'Offline' : 'Online'}
                   </button>
