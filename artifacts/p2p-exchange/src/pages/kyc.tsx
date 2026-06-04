@@ -1,6 +1,6 @@
 import { AppLayout } from "@/components/layout";
-import { ArrowLeft, Check, Camera, UploadCloud, X, Loader2 } from "lucide-react";
-import { useSubmitKyc, getGetMeQueryKey } from "@workspace/api-client-react";
+import { ArrowLeft, Check, UploadCloud, X, Loader2 } from "lucide-react";
+import { useSubmitKyc, getGetMeQueryKey, useGetMe } from "@workspace/api-client-react";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Link, useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
@@ -18,7 +18,11 @@ async function uploadFile(file: File): Promise<string> {
   return data.url as string;
 }
 
-type UploadState = { status: "idle" } | { status: "uploading" } | { status: "done"; url: string; preview: string } | { status: "error"; message: string };
+type UploadState =
+  | { status: "idle" }
+  | { status: "uploading" }
+  | { status: "done"; url: string; preview: string }
+  | { status: "error"; message: string };
 
 function useFileUpload() {
   const [state, setState] = useState<UploadState>({ status: "idle" });
@@ -115,6 +119,8 @@ function UploadBox({
 }
 
 export default function KycPage() {
+  const { data: me } = useGetMe();
+
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState({
     fullName: "",
@@ -122,6 +128,14 @@ export default function KycPage() {
     nationality: "ET",
     idType: "national_id" as "national_id" | "passport" | "drivers_license" | "kebele_id",
   });
+
+  // Pre-fill name from user profile once loaded
+  useEffect(() => {
+    if (me && !formData.fullName) {
+      const prefill = (me as any).fullName || "";
+      if (prefill) setFormData(f => ({ ...f, fullName: prefill }));
+    }
+  }, [me]);
 
   const frontUpload = useFileUpload();
   const backUpload = useFileUpload();
@@ -170,7 +184,10 @@ export default function KycPage() {
   const handleSubmit = () => {
     const frontUrl = frontUpload.state.status === "done" ? frontUpload.state.url : "";
     const backUrl = backUpload.state.status === "done" ? backUpload.state.url : undefined;
-    const selfieUrl = selfieUpload.state.status === "done" ? selfieUpload.state.url : "https://example.com/mock-selfie.jpg";
+    const selfieUrl =
+      selfieUpload.state.status === "done"
+        ? selfieUpload.state.url
+        : "https://example.com/mock-selfie.jpg";
 
     submitKyc.mutate(
       {
@@ -195,6 +212,10 @@ export default function KycPage() {
     );
   };
 
+  // Derived phone/email for identity reference banner
+  const userPhone = (me as any)?.phone ?? "";
+  const userEmail = (me as any)?.email ?? "";
+
   return (
     <AppLayout showNav={false}>
       <header className="flex items-center space-x-3 p-4 border-b border-border bg-background z-10 sticky top-0">
@@ -211,13 +232,16 @@ export default function KycPage() {
       </header>
 
       <div className="p-4 space-y-6">
+        {/* Step indicator */}
         <div className="flex items-center justify-between mb-4 relative">
           <div className="absolute left-0 right-0 top-1/2 h-0.5 bg-border -z-10"></div>
           {[1, 2, 3].map(s => (
             <div
               key={s}
               className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-colors ${
-                step >= s ? "bg-primary text-background" : "bg-card border border-border text-muted-foreground"
+                step >= s
+                  ? "bg-primary text-background"
+                  : "bg-card border border-border text-muted-foreground"
               }`}
             >
               {step > s ? <Check className="w-4 h-4" /> : s}
@@ -225,22 +249,42 @@ export default function KycPage() {
           ))}
         </div>
 
-        {/* Step 1 — Personal Info */}
+        {/* ── Step 1: Personal Information ── */}
         {step === 1 && (
           <div className="space-y-4 animate-in fade-in">
             <h2 className="text-xl font-bold">Personal Information</h2>
+
+            {/* Identity reference banner */}
+            {(userPhone || userEmail) && (
+              <div className="bg-primary/10 border border-primary/20 rounded-xl p-3 text-sm">
+                <p className="text-xs text-muted-foreground mb-1 font-medium uppercase tracking-wide">Registered Account</p>
+                {userPhone && <p className="font-medium text-foreground">{userPhone}</p>}
+                {userEmail && <p className="text-muted-foreground text-xs">{userEmail}</p>}
+                <p className="text-xs text-muted-foreground mt-1.5">
+                  Your ID must match the name on this account.
+                </p>
+              </div>
+            )}
+
             <div className="space-y-2">
-              <label className="text-sm font-medium">Full Legal Name</label>
+              <label className="text-sm font-medium">
+                Full Legal Name <span className="text-destructive">*</span>
+              </label>
               <input
                 type="text"
                 value={formData.fullName}
                 onChange={e => setFormData({ ...formData, fullName: e.target.value })}
                 className="w-full p-3 bg-card border border-border rounded-lg outline-none focus:border-primary"
                 placeholder="As it appears on your ID"
+                autoComplete="name"
               />
+              <p className="text-xs text-muted-foreground">
+                Enter your name exactly as shown on your identity document.
+              </p>
             </div>
+
             <div className="space-y-2">
-              <label className="text-sm font-medium">Date of Birth</label>
+              <label className="text-sm font-medium">Date of Birth <span className="text-destructive">*</span></label>
               <input
                 type="date"
                 value={formData.dateOfBirth}
@@ -248,6 +292,7 @@ export default function KycPage() {
                 className="w-full p-3 bg-card border border-border rounded-lg outline-none focus:border-primary"
               />
             </div>
+
             <div className="space-y-2">
               <label className="text-sm font-medium">Document Type</label>
               <div className="grid grid-cols-2 gap-3">
@@ -271,6 +316,7 @@ export default function KycPage() {
                 ))}
               </div>
             </div>
+
             <button
               onClick={() => setStep(2)}
               disabled={!formData.fullName || !formData.dateOfBirth}
@@ -281,7 +327,7 @@ export default function KycPage() {
           </div>
         )}
 
-        {/* Step 2 — Document Upload */}
+        {/* ── Step 2: Document Upload ── */}
         {step === 2 && (
           <div className="space-y-6 animate-in fade-in slide-in-from-right-4">
             <div>
@@ -313,7 +359,7 @@ export default function KycPage() {
           </div>
         )}
 
-        {/* Step 3 — Liveness */}
+        {/* ── Step 3: Liveness / Face Check ── */}
         {step === 3 && (
           <div className="space-y-6 animate-in fade-in slide-in-from-right-4 flex flex-col items-center">
             <div className="w-full">
