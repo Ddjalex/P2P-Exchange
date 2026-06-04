@@ -1,7 +1,7 @@
 import { AppLayout } from "@/components/layout";
-import { ArrowLeft, Trash2, Plus, CreditCard, Smartphone, Building2 } from "lucide-react";
-import { useListPaymentMethods, useAddPaymentMethod, useDeletePaymentMethod, getListPaymentMethodsQueryKey } from "@workspace/api-client-react";
-import { useState } from "react";
+import { ArrowLeft, Trash2, Plus, CreditCard, Smartphone, Building2, ShieldCheck } from "lucide-react";
+import { useListPaymentMethods, useAddPaymentMethod, useDeletePaymentMethod, getListPaymentMethodsQueryKey, useGetKycStatus } from "@workspace/api-client-react";
+import { useState, useEffect } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Link } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
@@ -42,12 +42,21 @@ const getProvider = (name: string) =>
 
 export default function PaymentMethodsPage() {
   const { data: methods, isLoading } = useListPaymentMethods();
+  const { data: kycData } = useGetKycStatus();
   const [showAdd, setShowAdd] = useState(false);
   const [newMethod, setNewMethod] = useState<Partial<PaymentMethodInput>>({
     type: "CBE",
     accountName: "",
     accountNumber: "",
   } as any);
+
+  const kycName = kycData?.fullName ?? "";
+
+  useEffect(() => {
+    if (kycName) {
+      setNewMethod(prev => ({ ...prev, accountName: kycName }));
+    }
+  }, [kycName]);
 
   const addMethod = useAddPaymentMethod();
   const deleteMethod = useDeletePaymentMethod();
@@ -57,7 +66,7 @@ export default function PaymentMethodsPage() {
   const selectedProvider = getProvider(newMethod.type as string);
 
   const handleProviderChange = (name: string) => {
-    setNewMethod({ type: name as any, accountName: "", accountNumber: "" } as any);
+    setNewMethod(prev => ({ type: name as any, accountName: prev.accountName, accountNumber: "" } as any));
   };
 
   const handleAdd = (e: React.FormEvent) => {
@@ -129,15 +138,32 @@ export default function PaymentMethodsPage() {
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium">Full Name</label>
-            <input
-              type="text"
-              placeholder={selectedProvider.namePlaceholder}
-              value={newMethod.accountName}
-              onChange={e => setNewMethod({ ...newMethod, accountName: e.target.value })}
-              className="w-full p-3 bg-card border border-border rounded-lg outline-none text-sm focus:border-primary"
-            />
-            <p className="text-xs text-muted-foreground">Must match the name registered with {selectedProvider.label}</p>
+            <label className="text-sm font-medium flex items-center gap-2">
+              Full Name
+              {kycName && (
+                <span className="flex items-center gap-1 text-[10px] font-normal text-primary bg-primary/10 px-1.5 py-0.5 rounded-full">
+                  <ShieldCheck className="w-3 h-3" /> KYC Verified
+                </span>
+              )}
+            </label>
+            <div className="relative">
+              <input
+                type="text"
+                readOnly={!!kycName}
+                value={newMethod.accountName ?? ""}
+                onChange={e => !kycName && setNewMethod({ ...newMethod, accountName: e.target.value })}
+                placeholder={kycName ? "" : selectedProvider.namePlaceholder}
+                className={`w-full p-3 rounded-lg outline-none text-sm border ${kycName ? "bg-secondary border-border text-foreground cursor-not-allowed select-none" : "bg-card border-border focus:border-primary"}`}
+              />
+              {kycName && (
+                <ShieldCheck className="absolute right-3 top-3.5 w-4 h-4 text-primary opacity-60" />
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {kycName
+                ? "Name is locked to your KYC-verified identity and cannot be changed."
+                : `Must match the name registered with ${selectedProvider.label}`}
+            </p>
           </div>
 
           <div className="space-y-2">
