@@ -186,11 +186,15 @@
 .admin-panel-inner h2{font-size:26px;font-weight:700;text-align:center;margin-bottom:4px;color:#fff;}
 .admin-subtitle{font-size:11px;color:rgba(255,255,255,.45);text-align:center;margin-bottom:0;}
 
-/* Admin toggle link (below wrapper) */
-.admin-toggle-link{margin-top:16px;text-align:center;}
-.admin-toggle-link a{font-size:11px;color:rgba(255,255,255,.3);text-decoration:none;cursor:pointer;transition:.2s;display:inline-flex;align-items:center;gap:5px;}
-.admin-toggle-link a:hover{color:#00d4ff;}
-.admin-toggle-link a i{font-size:10px;}
+/* Login heading row with admin icon */
+.login-heading{display:flex;align-items:center;justify-content:space-between;margin-bottom:0;}
+.login-heading h2{margin:0;font-size:28px;font-weight:700;}
+.admin-icon-btn{
+  background:none;border:1.5px solid rgba(0,212,255,.25);border-radius:8px;
+  color:rgba(0,212,255,.45);cursor:pointer;padding:5px 8px;font-size:14px;
+  transition:.2s;line-height:1;
+}
+.admin-icon-btn:hover{border-color:#00d4ff;color:#00d4ff;box-shadow:0 0 8px rgba(0,212,255,.3);}
 
 /* ── OTP ── */
 .otp-input-wrap{margin:16px 0 4px;}

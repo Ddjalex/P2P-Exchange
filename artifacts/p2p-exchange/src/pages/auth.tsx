@@ -387,7 +387,12 @@ export default function AuthPage() {
 
         {/* ══ LOGIN PANEL ══ */}
         <div className="credentials-panel signin">
-          <h2 className="slide-element">Login</h2>
+          <div className="login-heading slide-element">
+            <h2>Login</h2>
+            <button className="admin-icon-btn" onClick={() => { setAdminMode(true); setAdminErr(""); }} title="Admin Access">
+              <i className="fa-solid fa-shield-halved"></i>
+            </button>
+          </div>
 
           <div className="country-pill-wrap slide-element">
             <div className="country-pill-label">Country</div>
@@ -594,14 +599,6 @@ export default function AuthPage() {
         </div>
       </div>
 
-      {/* Admin toggle link */}
-      <div className="admin-toggle-link">
-        {!adminMode && (
-          <a onClick={() => { setAdminMode(true); setAdminErr(""); }}>
-            <i className="fa-solid fa-shield-halved"></i> Admin Access
-          </a>
-        )}
-      </div>
     </div>
   );
 }
