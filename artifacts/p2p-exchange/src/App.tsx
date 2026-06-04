@@ -4,6 +4,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/hooks/use-auth";
 import { AdminAuthProvider } from "@/hooks/use-admin-auth";
+import { useSse } from "@/hooks/use-sse";
 
 // Regular pages
 import AuthPage from "@/pages/auth";
@@ -55,6 +56,7 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
 
 function Router() {
   const { user, isLoading } = useAuth();
+  useSse();
 
   return (
     <Switch>

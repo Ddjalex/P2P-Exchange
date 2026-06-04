@@ -11,6 +11,7 @@ import kycRouter from "./kyc";
 import notificationsRouter from "./notifications";
 import statsRouter from "./stats";
 import adminRouter from "./admin";
+import sseRouter from "./sse";
 
 const router: IRouter = Router();
 
@@ -26,5 +27,6 @@ router.use("/kyc", kycRouter);
 router.use("/notifications", notificationsRouter);
 router.use("/stats", statsRouter);
 router.use("/admin", adminRouter);
+router.use("/sse", sseRouter);
 
 export default router;

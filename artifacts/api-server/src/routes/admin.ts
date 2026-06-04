@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { createHmac, timingSafeEqual, randomBytes } from "crypto";
+import { emitToUser } from "../lib/sse";
 import { db } from "@workspace/db";
 import {
   usersTable, adsTable, ordersTable, kycSubmissionsTable, appealsTable,
@@ -341,6 +342,11 @@ router.post("/kyc/:userId/review", adminAuth, async (req: any, res) => {
     await db.update(kycSubmissionsTable).set({ status: newStatus as any, rejectionReason: rejectionReason ?? null, adminMessage: adminMessage ?? null, reviewedAt: new Date() }).where(eq(kycSubmissionsTable.userId, userId));
     await db.update(usersTable).set({ kycStatus: newStatus as any }).where(eq(usersTable.id, userId));
     await log(req.adminEmail, `kyc_${newStatus}`, "kyc", userId, rejectionReason);
+    emitToUser(userId, "kyc_update", {
+      status: newStatus,
+      rejectionReason: rejectionReason ?? null,
+      adminMessage: adminMessage ?? null,
+    });
     const sub = await db.select().from(kycSubmissionsTable).where(eq(kycSubmissionsTable.userId, userId)).then(r => r[0]);
     res.json(await formatKyc(sub!));
   } catch (err) {
