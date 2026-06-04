@@ -1,5 +1,5 @@
 import { AppLayout } from "@/components/layout";
-import { Edit2, ShieldCheck, HelpCircle, Info, LogOut, ChevronRight, CheckCircle2, X } from "lucide-react";
+import { Edit2, ShieldCheck, HelpCircle, Info, LogOut, ChevronRight, CheckCircle2, X, Loader2 } from "lucide-react";
 import { useGetProfile, getGetProfileQueryKey } from "@workspace/api-client-react";
 import { useState, useEffect } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -29,7 +29,83 @@ const LANGUAGES = [
   { code: "ti", label: "ትግርኛ (Tigrinya)" },
 ];
 
-// --- Add Email Modal for phone-only users ---
+// ─── Edit Username Modal ─────────────────────────────────────────────────────
+function EditUsernameModal({
+  currentUsername,
+  onClose,
+  onSuccess,
+}: { currentUsername: string; onClose: () => void; onSuccess: (newName: string) => void }) {
+  const [username, setUsername] = useState(currentUsername);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const { toast } = useToast();
+
+  const handleSave = async () => {
+    const trimmed = username.trim();
+    if (trimmed.length < 3) { setError("Username must be at least 3 characters"); return; }
+    if (trimmed === currentUsername) { onClose(); return; }
+    setLoading(true); setError("");
+    try {
+      const res = await fetch("/api/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
+        body: JSON.stringify({ username: trimmed }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to update username");
+      toast({ title: "Username updated!" });
+      onSuccess(trimmed);
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/60" />
+      <div
+        className="relative w-full max-w-[480px] bg-card rounded-t-2xl overflow-y-auto max-h-[88vh]"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="font-bold text-lg">Edit Username</h2>
+            <button onClick={onClose} className="p-1 rounded-lg hover:bg-secondary/50"><X className="w-5 h-5" /></button>
+          </div>
+          <p className="text-sm text-muted-foreground">Choose a unique username (min. 3 characters).</p>
+          <input
+            type="text"
+            value={username}
+            onChange={e => setUsername(e.target.value)}
+            maxLength={30}
+            autoFocus
+            className="w-full bg-secondary border border-border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-primary"
+          />
+          {error && <p className="text-xs text-destructive">{error}</p>}
+          <div className="flex space-x-3">
+            <button
+              onClick={onClose}
+              className="flex-1 py-3 rounded-xl border border-border text-sm font-medium hover:bg-secondary/50 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={loading || username.trim().length < 3}
+              className="flex-1 py-3 rounded-xl bg-primary text-primary-foreground text-sm font-semibold disabled:opacity-50 flex items-center justify-center space-x-2"
+            >
+              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <span>Save</span>}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Add Email Modal ─────────────────────────────────────────────────────────
 function AddEmailModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
   const [step, setStep] = useState<"email" | "code">("email");
   const [email, setEmail] = useState("");
@@ -81,91 +157,105 @@ function AddEmailModal({ onClose, onSuccess }: { onClose: () => void; onSuccess:
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={onClose}>
       <div className="absolute inset-0 bg-black/60" />
-      <div className="relative w-full max-w-[480px] bg-card rounded-t-2xl p-6 space-y-4" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between">
-          <h2 className="font-bold text-lg">Add Email Address</h2>
-          <button onClick={onClose} className="p-1 rounded-lg hover:bg-secondary/50"><X className="w-5 h-5" /></button>
-        </div>
-        <p className="text-sm text-muted-foreground">
-          {step === "email"
-            ? "Add your email to enable email notifications. We'll send a verification code."
-            : `Enter the 6-digit code sent to ${email}`}
-        </p>
-        {step === "email" ? (
-          <input
-            type="email"
-            placeholder="your@email.com"
-            value={email}
-            onChange={e => setEmail(e.target.value)}
-            className="w-full bg-secondary border border-border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-primary"
-          />
-        ) : (
-          <input
-            type="text"
-            placeholder="000000"
-            value={code}
-            onChange={e => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-            className="w-full bg-secondary border border-border rounded-xl px-4 py-3 text-sm text-center tracking-widest text-lg font-mono focus:outline-none focus:border-primary"
-            inputMode="numeric"
-          />
-        )}
-        {error && <p className="text-xs text-destructive">{error}</p>}
-        <button
-          onClick={step === "email" ? sendCode : verifyAndSave}
-          disabled={loading}
-          className="w-full bg-primary text-primary-foreground rounded-xl py-3 text-sm font-semibold disabled:opacity-50"
-        >
-          {loading ? "Please wait..." : step === "email" ? "Send Verification Code" : "Verify & Save"}
-        </button>
-        {step === "code" && (
-          <button onClick={() => { setStep("email"); setCode(""); setError(""); }} className="w-full text-sm text-muted-foreground">
-            ← Change email
+      <div
+        className="relative w-full max-w-[480px] bg-card rounded-t-2xl overflow-y-auto max-h-[88vh]"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="font-bold text-lg">Add Email Address</h2>
+            <button onClick={onClose} className="p-1 rounded-lg hover:bg-secondary/50"><X className="w-5 h-5" /></button>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            {step === "email"
+              ? "Add your email to enable email notifications. We'll send a verification code."
+              : `Enter the 6-digit code sent to ${email}`}
+          </p>
+          {step === "email" ? (
+            <input
+              type="email"
+              placeholder="your@email.com"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              autoFocus
+              className="w-full bg-secondary border border-border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-primary"
+            />
+          ) : (
+            <input
+              type="text"
+              placeholder="000000"
+              value={code}
+              onChange={e => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              className="w-full bg-secondary border border-border rounded-xl px-4 py-3 text-sm text-center tracking-widest text-lg font-mono focus:outline-none focus:border-primary"
+              inputMode="numeric"
+            />
+          )}
+          {error && <p className="text-xs text-destructive">{error}</p>}
+          <button
+            onClick={step === "email" ? sendCode : verifyAndSave}
+            disabled={loading}
+            className="w-full bg-primary text-primary-foreground rounded-xl py-3 text-sm font-semibold disabled:opacity-50 flex items-center justify-center space-x-2"
+          >
+            {loading
+              ? <><Loader2 className="w-4 h-4 animate-spin" /><span>Please wait...</span></>
+              : <span>{step === "email" ? "Send Verification Code" : "Verify & Save"}</span>}
           </button>
-        )}
+          {step === "code" && (
+            <button onClick={() => { setStep("email"); setCode(""); setError(""); }} className="w-full text-sm text-muted-foreground">
+              ← Change email
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
-// --- Language Modal ---
+// ─── Language Modal ──────────────────────────────────────────────────────────
 function LanguageModal({ current, onClose, onSelect }: { current: string; onClose: () => void; onSelect: (code: string) => void }) {
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={onClose}>
       <div className="absolute inset-0 bg-black/60" />
-      <div className="relative w-full max-w-[480px] bg-card rounded-t-2xl p-6 space-y-4" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-2">
-          <h2 className="font-bold text-lg">Select Language</h2>
-          <button onClick={onClose} className="p-1 rounded-lg hover:bg-secondary/50"><X className="w-5 h-5" /></button>
-        </div>
-        <div className="space-y-2">
-          {LANGUAGES.map(lang => (
-            <button
-              key={lang.code}
-              onClick={() => { onSelect(lang.code); onClose(); }}
-              className={`w-full flex items-center justify-between p-4 rounded-xl border transition-colors ${current === lang.code ? "border-primary bg-primary/10 text-primary" : "border-border hover:bg-secondary/50"}`}
-            >
-              <span className="text-sm font-medium">{lang.label}</span>
-              {current === lang.code && <CheckCircle2 className="w-4 h-4 text-primary" />}
-            </button>
-          ))}
+      <div
+        className="relative w-full max-w-[480px] bg-card rounded-t-2xl overflow-y-auto max-h-[88vh]"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="font-bold text-lg">Select Language</h2>
+            <button onClick={onClose} className="p-1 rounded-lg hover:bg-secondary/50"><X className="w-5 h-5" /></button>
+          </div>
+          <div className="space-y-2">
+            {LANGUAGES.map(lang => (
+              <button
+                key={lang.code}
+                onClick={() => { onSelect(lang.code); onClose(); }}
+                className={`w-full flex items-center justify-between p-4 rounded-xl border transition-colors ${current === lang.code ? "border-primary bg-primary/10 text-primary" : "border-border hover:bg-secondary/50"}`}
+              >
+                <span className="text-sm font-medium">{lang.label}</span>
+                {current === lang.code && <CheckCircle2 className="w-4 h-4 text-primary" />}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-// --- Toggle Switch ---
+// ─── Toggle Switch ───────────────────────────────────────────────────────────
 function Toggle({ on, onChange, disabled }: { on: boolean; onChange: () => void; disabled?: boolean }) {
   return (
     <div
       onClick={disabled ? undefined : onChange}
       className={`w-10 h-5 rounded-full relative transition-colors ${on ? "bg-primary" : "bg-secondary"} ${disabled ? "opacity-40 cursor-not-allowed" : "cursor-pointer"}`}
     >
-      <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${on ? "left-5" : "left-0.5"}`} />
+      <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all ${on ? "left-5" : "left-0.5"}`} />
     </div>
   );
 }
 
+// ─── Profile Page ────────────────────────────────────────────────────────────
 export default function ProfilePage() {
   const { data: profile, isLoading } = useGetProfile();
   const { user, logout, refreshUser } = useAuth();
@@ -178,9 +268,9 @@ export default function ProfilePage() {
   const [savingNotif, setSavingNotif] = useState<string | null>(null);
   const [showAddEmail, setShowAddEmail] = useState(false);
   const [showLang, setShowLang] = useState(false);
+  const [showEditUsername, setShowEditUsername] = useState(false);
   const [language, setLanguage] = useState("en");
 
-  // Sync notification settings from profile
   useEffect(() => {
     if (profile?.notificationSettings) {
       setNotifSettings(profile.notificationSettings as Record<string, boolean>);
@@ -191,17 +281,14 @@ export default function ProfilePage() {
   const hasPhone = !!user?.phone;
 
   const handleToggleNotif = async (key: NotifKey) => {
-    // Email toggle: phone-only users need to add email first
     if (key === "emailNotifications" && isPhoneUser && !notifSettings[key]) {
       setShowAddEmail(true);
       return;
     }
-    // SMS toggle: user without phone can't enable SMS
     if (key === "smsNotifications" && !hasPhone && !notifSettings[key]) {
       toast({ title: "No phone number linked", description: "Register with a phone number to enable SMS notifications.", variant: "destructive" });
       return;
     }
-
     const newVal = !notifSettings[key];
     setNotifSettings(prev => ({ ...prev, [key]: newVal }));
     setSavingNotif(key);
@@ -225,8 +312,13 @@ export default function ProfilePage() {
     setShowAddEmail(false);
     await refreshUser();
     await queryClient.invalidateQueries({ queryKey: getGetProfileQueryKey() });
-    // Now enable email notifications
     await handleToggleNotif("emailNotifications");
+  };
+
+  const handleUsernameUpdated = async (newName: string) => {
+    setShowEditUsername(false);
+    await refreshUser();
+    await queryClient.invalidateQueries({ queryKey: getGetProfileQueryKey() });
   };
 
   const handleLogout = () => {
@@ -235,6 +327,7 @@ export default function ProfilePage() {
   };
 
   const currentLangLabel = LANGUAGES.find(l => l.code === language)?.label ?? "English";
+  const displayUsername = profile?.username || user?.username || "?";
 
   return (
     <AppLayout>
@@ -245,15 +338,20 @@ export default function ProfilePage() {
               <Skeleton className="w-16 h-16 rounded-full" />
             ) : (
               <div className="w-16 h-16 rounded-full bg-secondary flex items-center justify-center text-xl font-bold">
-                {(profile?.username || user?.username || "?").slice(0, 2).toUpperCase()}
+                {displayUsername.slice(0, 2).toUpperCase()}
               </div>
             )}
             <div>
               <div className="flex items-center space-x-2">
                 {isLoading ? <Skeleton className="h-6 w-24" /> : (
-                  <h1 className="font-bold text-xl">{profile?.username || user?.username}</h1>
+                  <h1 className="font-bold text-xl">{displayUsername}</h1>
                 )}
-                <Edit2 className="w-4 h-4 text-muted-foreground" />
+                <button
+                  onClick={() => setShowEditUsername(true)}
+                  className="p-1 rounded-lg hover:bg-secondary/50 transition-colors"
+                >
+                  <Edit2 className="w-4 h-4 text-muted-foreground" />
+                </button>
               </div>
               <div className="text-sm text-muted-foreground mt-1 flex items-center">
                 {profile?.kycStatus === "verified" ? (
@@ -354,21 +452,13 @@ export default function ProfilePage() {
                 <div key={key} className="flex justify-between items-center pb-4 border-b border-border last:border-0 last:pb-0">
                   <div>
                     <span className="text-sm">{label}</span>
-                    {isEmailDisabled && (
-                      <div className="text-[10px] text-muted-foreground mt-0.5">Add email to enable</div>
-                    )}
-                    {isSmsDisabled && (
-                      <div className="text-[10px] text-muted-foreground mt-0.5">Phone number required</div>
-                    )}
+                    {isEmailDisabled && <div className="text-[10px] text-muted-foreground mt-0.5">Add email to enable</div>}
+                    {isSmsDisabled && <div className="text-[10px] text-muted-foreground mt-0.5">Phone number required</div>}
                   </div>
                   {isSaving ? (
                     <div className="w-10 h-5 rounded-full bg-secondary animate-pulse" />
                   ) : (
-                    <Toggle
-                      on={isOn}
-                      onChange={() => handleToggleNotif(key)}
-                      disabled={isSmsDisabled}
-                    />
+                    <Toggle on={isOn} onChange={() => handleToggleNotif(key)} disabled={isSmsDisabled} />
                   )}
                 </div>
               );
@@ -383,7 +473,7 @@ export default function ProfilePage() {
               className="w-full flex items-center justify-between p-4 border-b border-border hover:bg-secondary/50 transition-colors"
             >
               <span className="text-sm font-medium">Language</span>
-              <span className="text-xs text-muted-foreground flex items-center">{currentLangLabel} <ChevronRight className="w-4 h-4 ml-1" /></span>
+              <span className="text-xs text-muted-foreground flex items-center">{currentLangLabel}<ChevronRight className="w-4 h-4 ml-1" /></span>
             </button>
             <Link href="/help-center" className="flex items-center justify-between p-4 border-b border-border hover:bg-secondary/50 transition-colors">
               <span className="text-sm font-medium flex items-center"><HelpCircle className="w-4 h-4 mr-2 text-muted-foreground" />Help Center</span>
@@ -393,10 +483,7 @@ export default function ProfilePage() {
               <span className="text-sm font-medium flex items-center"><Info className="w-4 h-4 mr-2 text-muted-foreground" />About EthioP2P</span>
               <ChevronRight className="w-4 h-4 text-muted-foreground" />
             </Link>
-            <button
-              onClick={handleLogout}
-              className="w-full flex items-center p-4 hover:bg-secondary/50 transition-colors cursor-pointer text-destructive"
-            >
+            <button onClick={handleLogout} className="w-full flex items-center p-4 hover:bg-secondary/50 transition-colors text-destructive">
               <LogOut className="w-4 h-4 mr-2" />
               <span className="text-sm font-bold">Logout</span>
             </button>
@@ -404,19 +491,18 @@ export default function ProfilePage() {
         )}
       </div>
 
-      {showAddEmail && (
-        <AddEmailModal
-          onClose={() => setShowAddEmail(false)}
-          onSuccess={handleEmailAdded}
+      {showEditUsername && (
+        <EditUsernameModal
+          currentUsername={displayUsername}
+          onClose={() => setShowEditUsername(false)}
+          onSuccess={handleUsernameUpdated}
         />
       )}
-
+      {showAddEmail && (
+        <AddEmailModal onClose={() => setShowAddEmail(false)} onSuccess={handleEmailAdded} />
+      )}
       {showLang && (
-        <LanguageModal
-          current={language}
-          onClose={() => setShowLang(false)}
-          onSelect={setLanguage}
-        />
+        <LanguageModal current={language} onClose={() => setShowLang(false)} onSelect={setLanguage} />
       )}
     </AppLayout>
   );

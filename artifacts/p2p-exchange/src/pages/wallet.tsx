@@ -56,67 +56,66 @@ function DepositModal({ onClose }: { onClose: () => void }) {
     <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={onClose}>
       <div className="absolute inset-0 bg-black/60" />
       <div
-        className="relative w-full max-w-[480px] bg-card rounded-t-2xl p-6 space-y-5"
+        className="relative w-full max-w-[480px] bg-card rounded-t-2xl overflow-y-auto max-h-[88vh]"
         onClick={e => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between">
-          <h2 className="font-bold text-lg">Deposit USDT</h2>
-          <button onClick={onClose} className="p-1 rounded-lg hover:bg-secondary/50">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        {/* Network selector */}
-        <div>
-          <label className="text-xs text-muted-foreground mb-2 block">Select Network</label>
-          <div className="grid grid-cols-2 gap-2">
-            {(["TRC20", "ERC20"] as const).map(net => (
-              <button
-                key={net}
-                onClick={() => setNetwork(net)}
-                className={`py-2.5 rounded-xl text-sm font-semibold border transition-colors ${network === net ? "bg-primary/10 border-primary text-primary" : "bg-secondary border-border text-muted-foreground hover:bg-secondary/80"}`}
-              >
-                {net}
-              </button>
-            ))}
+        <div className="p-6 space-y-5">
+          <div className="flex items-center justify-between">
+            <h2 className="font-bold text-lg">Deposit USDT</h2>
+            <button onClick={onClose} className="p-1 rounded-lg hover:bg-secondary/50">
+              <X className="w-5 h-5" />
+            </button>
           </div>
-        </div>
 
-        {/* Address display */}
-        <div>
-          <label className="text-xs text-muted-foreground mb-2 block">Deposit Address ({network})</label>
-          {loading ? (
-            <div className="flex items-center justify-center h-20 bg-secondary rounded-xl">
-              <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+          <div>
+            <label className="text-xs text-muted-foreground mb-2 block">Select Network</label>
+            <div className="grid grid-cols-2 gap-2">
+              {(["TRC20", "ERC20"] as const).map(net => (
+                <button
+                  key={net}
+                  onClick={() => setNetwork(net)}
+                  className={`py-2.5 rounded-xl text-sm font-semibold border transition-colors ${network === net ? "bg-primary/10 border-primary text-primary" : "bg-secondary border-border text-muted-foreground hover:bg-secondary/80"}`}
+                >
+                  {net}
+                </button>
+              ))}
             </div>
-          ) : error ? (
-            <div className="flex items-start space-x-2 p-4 bg-destructive/10 border border-destructive/20 rounded-xl">
-              <AlertCircle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
-              <p className="text-sm text-destructive">{error}</p>
-            </div>
-          ) : (
-            <div className="bg-secondary rounded-xl p-4 space-y-3">
-              <p className="text-sm font-mono break-all leading-relaxed">{address}</p>
-              <button
-                onClick={copyAddress}
-                className="w-full flex items-center justify-center space-x-2 py-2 bg-primary/10 hover:bg-primary/20 text-primary rounded-lg text-sm font-medium transition-colors"
-              >
-                {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                <span>{copied ? "Copied!" : "Copy Address"}</span>
-              </button>
-            </div>
-          )}
-        </div>
+          </div>
 
-        {/* Warning */}
-        <div className="bg-warning/10 border border-warning/20 rounded-xl p-4 space-y-1">
-          <p className="text-xs font-semibold text-warning">⚠️ Important</p>
-          <ul className="text-xs text-muted-foreground space-y-1 list-disc list-inside">
-            <li>Only send <strong>USDT ({network})</strong> to this address</li>
-            <li>Minimum deposit: <strong>{minDeposit} USDT</strong></li>
-            <li>Sending other tokens may result in permanent loss</li>
-            <li>Deposits are credited after blockchain confirmation</li>
-          </ul>
+          <div>
+            <label className="text-xs text-muted-foreground mb-2 block">Deposit Address ({network})</label>
+            {loading ? (
+              <div className="flex items-center justify-center h-20 bg-secondary rounded-xl">
+                <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+              </div>
+            ) : error ? (
+              <div className="flex items-start space-x-2 p-4 bg-destructive/10 border border-destructive/20 rounded-xl">
+                <AlertCircle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
+                <p className="text-sm text-destructive">{error}</p>
+              </div>
+            ) : (
+              <div className="bg-secondary rounded-xl p-4 space-y-3">
+                <p className="text-sm font-mono break-all leading-relaxed">{address}</p>
+                <button
+                  onClick={copyAddress}
+                  className="w-full flex items-center justify-center space-x-2 py-2 bg-primary/10 hover:bg-primary/20 text-primary rounded-lg text-sm font-medium transition-colors"
+                >
+                  {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                  <span>{copied ? "Copied!" : "Copy Address"}</span>
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="bg-warning/10 border border-warning/20 rounded-xl p-4 space-y-1">
+            <p className="text-xs font-semibold text-warning">⚠️ Important</p>
+            <ul className="text-xs text-muted-foreground space-y-1 list-disc list-inside">
+              <li>Only send <strong>USDT ({network})</strong> to this address</li>
+              <li>Minimum deposit: <strong>{minDeposit} USDT</strong></li>
+              <li>Sending other tokens may result in permanent loss</li>
+              <li>Deposits are credited after blockchain confirmation</li>
+            </ul>
+          </div>
         </div>
       </div>
     </div>
@@ -159,10 +158,7 @@ function WithdrawModal({
     try {
       const res = await fetch("/api/wallet/withdraw", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${getToken()}`,
-        },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
         body: JSON.stringify({ address: address.trim(), network, amount }),
       });
       const data = await res.json();
@@ -180,108 +176,106 @@ function WithdrawModal({
     <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={onClose}>
       <div className="absolute inset-0 bg-black/60" />
       <div
-        className="relative w-full max-w-[480px] bg-card rounded-t-2xl p-6 space-y-5"
+        className="relative w-full max-w-[480px] bg-card rounded-t-2xl overflow-y-auto max-h-[88vh]"
         onClick={e => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between">
-          <h2 className="font-bold text-lg">Withdraw USDT</h2>
-          <button onClick={onClose} className="p-1 rounded-lg hover:bg-secondary/50">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        {/* Network selector */}
-        <div>
-          <label className="text-xs text-muted-foreground mb-2 block">Select Network</label>
-          <div className="grid grid-cols-2 gap-2">
-            {(["TRC20", "ERC20"] as const).map(net => (
-              <button
-                key={net}
-                onClick={() => setNetwork(net)}
-                className={`py-2.5 rounded-xl text-sm font-semibold border transition-colors ${network === net ? "bg-primary/10 border-primary text-primary" : "bg-secondary border-border text-muted-foreground hover:bg-secondary/80"}`}
-              >
-                {net}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Destination address */}
-        <div>
-          <label className="text-xs text-muted-foreground mb-2 block">Destination Address ({network})</label>
-          <input
-            type="text"
-            placeholder="Paste wallet address"
-            value={address}
-            onChange={e => setAddress(e.target.value)}
-            className="w-full bg-secondary border border-border rounded-xl px-4 py-3 text-sm font-mono focus:outline-none focus:border-primary placeholder:text-muted-foreground"
-          />
-        </div>
-
-        {/* Amount */}
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <label className="text-xs text-muted-foreground">Amount (USDT)</label>
-            <span className="text-xs text-muted-foreground">
-              Available: <span className="text-foreground font-medium">{avail.toLocaleString()} USDT</span>
-            </span>
-          </div>
-          <div className="relative">
-            <input
-              type="number"
-              placeholder="0.00"
-              value={amount}
-              onChange={e => setAmount(e.target.value)}
-              min="1"
-              max={avail}
-              step="0.01"
-              className="w-full bg-secondary border border-border rounded-xl px-4 py-3 pr-16 text-sm font-mono focus:outline-none focus:border-primary placeholder:text-muted-foreground"
-            />
-            <button
-              onClick={handleSetMax}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-primary font-bold hover:underline"
-            >
-              MAX
+        <div className="p-6 space-y-5">
+          <div className="flex items-center justify-between">
+            <h2 className="font-bold text-lg">Withdraw USDT</h2>
+            <button onClick={onClose} className="p-1 rounded-lg hover:bg-secondary/50">
+              <X className="w-5 h-5" />
             </button>
           </div>
-        </div>
 
-        {/* Fee summary */}
-        {amt > 0 && (
-          <div className="bg-secondary rounded-xl p-4 space-y-2 text-sm">
-            <div className="flex justify-between text-muted-foreground">
-              <span>Network Fee (0.1%)</span>
-              <span className="font-mono">{fee} USDT</span>
-            </div>
-            <div className="flex justify-between font-semibold border-t border-border pt-2">
-              <span>You Receive</span>
-              <span className="font-mono text-primary">{youGet} USDT</span>
+          <div>
+            <label className="text-xs text-muted-foreground mb-2 block">Select Network</label>
+            <div className="grid grid-cols-2 gap-2">
+              {(["TRC20", "ERC20"] as const).map(net => (
+                <button
+                  key={net}
+                  onClick={() => setNetwork(net)}
+                  className={`py-2.5 rounded-xl text-sm font-semibold border transition-colors ${network === net ? "bg-primary/10 border-primary text-primary" : "bg-secondary border-border text-muted-foreground hover:bg-secondary/80"}`}
+                >
+                  {net}
+                </button>
+              ))}
             </div>
           </div>
-        )}
 
-        {error && (
-          <div className="flex items-start space-x-2 p-3 bg-destructive/10 border border-destructive/20 rounded-xl">
-            <AlertCircle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
-            <p className="text-sm text-destructive">{error}</p>
+          <div>
+            <label className="text-xs text-muted-foreground mb-2 block">Destination Address ({network})</label>
+            <input
+              type="text"
+              placeholder="Paste wallet address"
+              value={address}
+              onChange={e => setAddress(e.target.value)}
+              className="w-full bg-secondary border border-border rounded-xl px-4 py-3 text-sm font-mono focus:outline-none focus:border-primary placeholder:text-muted-foreground"
+            />
           </div>
-        )}
 
-        <button
-          onClick={handleWithdraw}
-          disabled={loading || !address || amt <= 0 || amt > avail}
-          className="w-full bg-primary text-primary-foreground rounded-xl py-3 text-sm font-semibold disabled:opacity-50 flex items-center justify-center space-x-2"
-        >
-          {loading ? (
-            <><Loader2 className="w-4 h-4 animate-spin" /><span>Submitting...</span></>
-          ) : (
-            <><ArrowUpFromLine className="w-4 h-4" /><span>Confirm Withdrawal</span></>
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-xs text-muted-foreground">Amount (USDT)</label>
+              <span className="text-xs text-muted-foreground">
+                Available: <span className="text-foreground font-medium">{avail.toLocaleString()} USDT</span>
+              </span>
+            </div>
+            <div className="relative">
+              <input
+                type="number"
+                placeholder="0.00"
+                value={amount}
+                onChange={e => setAmount(e.target.value)}
+                min="1"
+                max={avail}
+                step="0.01"
+                className="w-full bg-secondary border border-border rounded-xl px-4 py-3 pr-16 text-sm font-mono focus:outline-none focus:border-primary placeholder:text-muted-foreground"
+              />
+              <button
+                onClick={handleSetMax}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-primary font-bold hover:underline"
+              >
+                MAX
+              </button>
+            </div>
+          </div>
+
+          {amt > 0 && (
+            <div className="bg-secondary rounded-xl p-4 space-y-2 text-sm">
+              <div className="flex justify-between text-muted-foreground">
+                <span>Network Fee (0.1%)</span>
+                <span className="font-mono">{fee} USDT</span>
+              </div>
+              <div className="flex justify-between font-semibold border-t border-border pt-2">
+                <span>You Receive</span>
+                <span className="font-mono text-primary">{youGet} USDT</span>
+              </div>
+            </div>
           )}
-        </button>
 
-        <p className="text-center text-xs text-muted-foreground">
-          Minimum withdrawal: 1 USDT · Processing time: ~30 minutes
-        </p>
+          {error && (
+            <div className="flex items-start space-x-2 p-3 bg-destructive/10 border border-destructive/20 rounded-xl">
+              <AlertCircle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
+              <p className="text-sm text-destructive">{error}</p>
+            </div>
+          )}
+
+          <button
+            onClick={handleWithdraw}
+            disabled={loading || !address || amt <= 0 || amt > avail}
+            className="w-full bg-primary text-primary-foreground rounded-xl py-3 text-sm font-semibold disabled:opacity-50 flex items-center justify-center space-x-2"
+          >
+            {loading ? (
+              <><Loader2 className="w-4 h-4 animate-spin" /><span>Submitting...</span></>
+            ) : (
+              <><ArrowUpFromLine className="w-4 h-4" /><span>Confirm Withdrawal</span></>
+            )}
+          </button>
+
+          <p className="text-center text-xs text-muted-foreground pb-2">
+            Minimum withdrawal: 1 USDT · Processing time: ~30 minutes
+          </p>
+        </div>
       </div>
     </div>
   );
@@ -333,15 +327,9 @@ export default function WalletPage() {
               {user?.kycStatus === "rejected" && "KYC Rejected — Resubmit your documents"}
               {user?.kycStatus === "more_info_required" && "Action Required — Update your submission"}
             </div>
-            {(user?.kycStatus === "none") && (
-              <Link href="/kyc" className="text-sm underline font-semibold">Verify Now</Link>
-            )}
-            {user?.kycStatus === "rejected" && (
-              <Link href="/kyc" className="text-sm underline font-semibold">Resubmit</Link>
-            )}
-            {user?.kycStatus === "more_info_required" && (
-              <Link href="/kyc" className="text-sm underline font-semibold">Update</Link>
-            )}
+            {user?.kycStatus === "none" && <Link href="/kyc" className="text-sm underline font-semibold">Verify Now</Link>}
+            {user?.kycStatus === "rejected" && <Link href="/kyc" className="text-sm underline font-semibold">Resubmit</Link>}
+            {user?.kycStatus === "more_info_required" && <Link href="/kyc" className="text-sm underline font-semibold">Update</Link>}
           </div>
         )}
 
@@ -354,16 +342,12 @@ export default function WalletPage() {
           </div>
 
           <div className="space-y-1">
-            {isLoading ? (
-              <Skeleton className="h-10 w-32" />
-            ) : (
+            {isLoading ? <Skeleton className="h-10 w-32" /> : (
               <div className="text-3xl font-bold font-mono">
                 {showBalance ? `${Number(wallet?.totalBalance || 0).toLocaleString()} USDT` : "*****"}
               </div>
             )}
-            {isLoading ? (
-              <Skeleton className="h-5 w-24" />
-            ) : (
+            {isLoading ? <Skeleton className="h-5 w-24" /> : (
               <div className="text-sm text-muted-foreground">
                 {showBalance ? `≈ ${Number(wallet?.etbValue || 0).toLocaleString()} ETB` : "*****"}
               </div>
@@ -401,14 +385,10 @@ export default function WalletPage() {
               </div>
             </div>
             <div className="text-right">
-              {isLoading ? (
-                <Skeleton className="h-5 w-16 mb-1" />
-              ) : (
+              {isLoading ? <Skeleton className="h-5 w-16 mb-1" /> : (
                 <div className="font-mono font-medium">{showBalance ? Number(wallet?.totalBalance || 0).toLocaleString() : "***"}</div>
               )}
-              {isLoading ? (
-                <Skeleton className="h-4 w-12" />
-              ) : (
+              {isLoading ? <Skeleton className="h-4 w-12" /> : (
                 <div className="text-xs text-muted-foreground">{showBalance ? `≈ ${Number(wallet?.etbValue || 0).toLocaleString()} Br` : "***"}</div>
               )}
             </div>
