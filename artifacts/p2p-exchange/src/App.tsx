@@ -5,6 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/hooks/use-auth";
 import { AdminAuthProvider } from "@/hooks/use-admin-auth";
 import { useSse } from "@/hooks/use-sse";
+import { KycGate } from "@/components/kyc-gate";
 
 // Regular pages
 import AuthPage from "@/pages/auth";
@@ -60,6 +61,13 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
   return <Component />;
 }
 
+function KycProtectedRoute({ component: Component }: { component: React.ComponentType }) {
+  const { user, isLoading } = useAuth();
+  if (isLoading) return null;
+  if (!user) return <Redirect to="/auth" />;
+  return <KycGate><Component /></KycGate>;
+}
+
 function Router() {
   const { user, isLoading } = useAuth();
   useSse();
@@ -76,17 +84,19 @@ function Router() {
         {isLoading ? null : user ? <Redirect to="/wallet" /> : <AuthPage />}
       </Route>
 
-      {/* User-facing protected pages */}
-      <Route path="/wallet"><ProtectedRoute component={WalletPage} /></Route>
+      {/* KYC-gated pages — show verification wall if not verified */}
+      <Route path="/wallet"><KycProtectedRoute component={WalletPage} /></Route>
       <Route path="/wallet/usdt"><Redirect to="/wallet" /></Route>
-      <Route path="/p2p"><ProtectedRoute component={P2PPage} /></Route>
-      <Route path="/p2p/confirm/:adId"><ProtectedRoute component={BuyConfirmPage} /></Route>
-      <Route path="/ads"><ProtectedRoute component={AdsPage} /></Route>
-      <Route path="/ads/post"><ProtectedRoute component={PostAdPage} /></Route>
-      <Route path="/orders"><ProtectedRoute component={OrdersPage} /></Route>
-      <Route path="/trade/:id"><ProtectedRoute component={TradePage} /></Route>
-      <Route path="/chat"><ProtectedRoute component={ChatPage} /></Route>
-      <Route path="/chat/:orderId"><ProtectedRoute component={ChatThreadPage} /></Route>
+      <Route path="/p2p"><KycProtectedRoute component={P2PPage} /></Route>
+      <Route path="/p2p/confirm/:adId"><KycProtectedRoute component={BuyConfirmPage} /></Route>
+      <Route path="/ads"><KycProtectedRoute component={AdsPage} /></Route>
+      <Route path="/ads/post"><KycProtectedRoute component={PostAdPage} /></Route>
+      <Route path="/orders"><KycProtectedRoute component={OrdersPage} /></Route>
+      <Route path="/trade/:id"><KycProtectedRoute component={TradePage} /></Route>
+      <Route path="/chat"><KycProtectedRoute component={ChatPage} /></Route>
+      <Route path="/chat/:orderId"><KycProtectedRoute component={ChatThreadPage} /></Route>
+
+      {/* Always accessible after login — no KYC required */}
       <Route path="/profile"><ProtectedRoute component={ProfilePage} /></Route>
       <Route path="/profile/payment-methods"><ProtectedRoute component={PaymentMethodsPage} /></Route>
       <Route path="/profile/feedback"><ProtectedRoute component={ReceivedFeedbackPage} /></Route>
