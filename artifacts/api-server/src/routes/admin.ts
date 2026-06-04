@@ -879,7 +879,8 @@ router.post("/test-blockchain", adminAuth, async (req: any, res) => {
     }
 
     if (provider === "bscscan") {
-      const url = `https://api.bscscan.com/api?module=stats&action=bnbsupply&apikey=${encodeURIComponent(apiKey)}`;
+      // BSCScan v2 API (v1 is deprecated): chainid=56 for BNB Smart Chain
+      const url = `https://api.bscscan.com/v2/api?chainid=56&module=stats&action=bnbsupply&apikey=${encodeURIComponent(apiKey)}`;
       const r = await fetch(url, { signal: AbortSignal.timeout(10_000) });
       if (!r.ok) return res.json({ ok: false, error: `BSCScan returned HTTP ${r.status}.` });
       const body = await r.json().catch(() => ({})) as any;

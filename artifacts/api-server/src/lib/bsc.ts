@@ -17,7 +17,8 @@ export interface BscTxResult {
 export async function getBscUsdtTx(txHash: string, apiKey?: string): Promise<BscTxResult | null> {
   const key = apiKey || process.env["BSCSCAN_API_KEY"] || "";
   const apiKeyParam = key ? `&apikey=${key}` : "";
-  const url = `https://api.bscscan.com/api?module=proxy&action=eth_getTransactionReceipt&txhash=${encodeURIComponent(txHash)}${apiKeyParam}`;
+  // BSCScan v2 API (v1 is deprecated): chainid=56 for BNB Smart Chain
+  const url = `https://api.bscscan.com/v2/api?chainid=56&module=proxy&action=eth_getTransactionReceipt&txhash=${encodeURIComponent(txHash)}${apiKeyParam}`;
 
   const res = await fetch(url, { signal: AbortSignal.timeout(15_000) });
   if (!res.ok) return null;
