@@ -11,6 +11,10 @@ export default function AdminSettingsPage() {
   const [showBrevo, setShowBrevo] = useState(false);
   const [showTrongrid, setShowTrongrid] = useState(false);
   const [showBscscan, setShowBscscan] = useState(false);
+  const [trongridTestStatus, setTrongridTestStatus] = useState<{ ok: boolean; msg: string } | null>(null);
+  const [bscscanTestStatus, setBscscanTestStatus] = useState<{ ok: boolean; msg: string } | null>(null);
+  const [trongridTestLoading, setTrongridTestLoading] = useState(false);
+  const [bscscanTestLoading, setBscscanTestLoading] = useState(false);
 
   const [testPhone, setTestPhone] = useState("");
   const [testEmail, setTestEmail] = useState("");
@@ -59,6 +63,23 @@ export default function AdminSettingsPage() {
       setEmailTestStatus({ ok: false, msg: "Network error" });
     } finally {
       setEmailTestLoading(false);
+    }
+  };
+
+  const testBlockchain = async (provider: "trongrid" | "bscscan") => {
+    const key = settings[provider === "trongrid" ? "trongridApiKey" : "bscscanApiKey"] ?? "";
+    if (!key.trim()) return;
+    const setLoading = provider === "trongrid" ? setTrongridTestLoading : setBscscanTestLoading;
+    const setStatus = provider === "trongrid" ? setTrongridTestStatus : setBscscanTestStatus;
+    setLoading(true);
+    setStatus(null);
+    try {
+      const data = await adminPost<{ ok: boolean; message?: string; error?: string }>("/test-blockchain", { provider, key: key.trim() });
+      setStatus({ ok: data.ok, msg: data.ok ? (data.message ?? "OK") : (data.error ?? "Failed") });
+    } catch {
+      setStatus({ ok: false, msg: "Network error" });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -253,6 +274,20 @@ export default function AdminSettingsPage() {
                   <label className="text-sm text-muted-foreground flex-shrink-0 w-28">API Key</label>
                   <SecretInput k="trongridApiKey" show={showTrongrid} onToggle={() => setShowTrongrid(v => !v)} />
                 </div>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => testBlockchain("trongrid")}
+                    disabled={trongridTestLoading || !settings["trongridApiKey"]?.trim()}
+                    className="text-xs px-3 py-1.5 rounded-lg border border-primary/40 text-primary hover:bg-primary/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {trongridTestLoading ? "Testing…" : "Test Connection"}
+                  </button>
+                  {trongridTestStatus && (
+                    <span className={`text-xs font-medium ${trongridTestStatus.ok ? "text-success" : "text-destructive"}`}>
+                      {trongridTestStatus.ok ? "✓" : "✗"} {trongridTestStatus.msg}
+                    </span>
+                  )}
+                </div>
                 <div className="text-xs text-muted-foreground/60">
                   Free tier: 2,000 req/day · Get your key at{" "}
                   <a href="https://www.trongrid.io" target="_blank" rel="noreferrer" className="text-primary hover:underline">trongrid.io</a>
@@ -274,6 +309,20 @@ export default function AdminSettingsPage() {
                 <div className="flex items-center justify-between gap-4">
                   <label className="text-sm text-muted-foreground flex-shrink-0 w-28">API Key</label>
                   <SecretInput k="bscscanApiKey" show={showBscscan} onToggle={() => setShowBscscan(v => !v)} />
+                </div>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => testBlockchain("bscscan")}
+                    disabled={bscscanTestLoading || !settings["bscscanApiKey"]?.trim()}
+                    className="text-xs px-3 py-1.5 rounded-lg border border-primary/40 text-primary hover:bg-primary/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {bscscanTestLoading ? "Testing…" : "Test Connection"}
+                  </button>
+                  {bscscanTestStatus && (
+                    <span className={`text-xs font-medium ${bscscanTestStatus.ok ? "text-success" : "text-destructive"}`}>
+                      {bscscanTestStatus.ok ? "✓" : "✗"} {bscscanTestStatus.msg}
+                    </span>
+                  )}
                 </div>
                 <div className="text-xs text-muted-foreground/60">
                   Free tier: 100,000 req/day · Get your key at{" "}

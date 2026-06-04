@@ -847,6 +847,57 @@ router.post("/test-email", adminAuth, async (req: any, res) => {
   }
 });
 
+router.post("/test-blockchain", adminAuth, async (req: any, res) => {
+  try {
+    const { provider, key } = req.body ?? {};
+    if (!provider || !["trongrid", "bscscan"].includes(provider)) {
+      return res.status(400).json({ ok: false, error: "provider must be 'trongrid' or 'bscscan'" });
+    }
+    if (!key || typeof key !== "string" || key.trim().length < 8) {
+      return res.status(400).json({ ok: false, error: "A valid API key is required." });
+    }
+    const apiKey = key.trim();
+
+    if (provider === "trongrid") {
+      // Use the USDT contract account as a known-good address to query
+      const r = await fetch("https://api.trongrid.io/v1/accounts/TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t", {
+        headers: { "TRON-PRO-API-KEY": apiKey, "Content-Type": "application/json" },
+        signal: AbortSignal.timeout(10_000),
+      });
+      const body = await r.json().catch(() => ({})) as any;
+      if (!r.ok) {
+        if (r.status === 401 || r.status === 403) {
+          return res.json({ ok: false, error: "Authentication failed — this API key is invalid or expired." });
+        }
+        return res.json({ ok: false, error: `TronGrid returned HTTP ${r.status}.` });
+      }
+      // TronGrid returns { data: [...], success: true } on success
+      if (body?.success === false) {
+        return res.json({ ok: false, error: body?.error?.message || "TronGrid rejected the request." });
+      }
+      return res.json({ ok: true, message: "TronGrid API key is valid and working." });
+    }
+
+    if (provider === "bscscan") {
+      const url = `https://api.bscscan.com/api?module=stats&action=bnbsupply&apikey=${encodeURIComponent(apiKey)}`;
+      const r = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+      if (!r.ok) return res.json({ ok: false, error: `BSCScan returned HTTP ${r.status}.` });
+      const body = await r.json().catch(() => ({})) as any;
+      if (body?.status === "0" || body?.message === "NOTOK") {
+        const msg = body?.result ?? "Unknown error";
+        if (msg.toLowerCase().includes("invalid") || msg.toLowerCase().includes("missing")) {
+          return res.json({ ok: false, error: "Invalid API key — please check you copied it correctly." });
+        }
+        return res.json({ ok: false, error: `BSCScan error: ${msg}` });
+      }
+      return res.json({ ok: true, message: "BSCScan API key is valid and working." });
+    }
+  } catch (err: any) {
+    if (err?.name === "TimeoutError") return res.json({ ok: false, error: "Request timed out — API may be unreachable." });
+    res.status(500).json({ ok: false, error: err?.message || "Internal error" });
+  }
+});
+
 // ─── DEPOSIT VERIFICATIONS ───────────────────────────────────────────────────
 
 router.get("/deposits/verifications", adminAuth, async (req, res) => {
