@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { usersTable, paymentMethodsTable, ordersTable, feedbackTable } from "@workspace/db";
-import { eq, and, or, gte, desc } from "drizzle-orm";
+import { usersTable, paymentMethodsTable, ordersTable, feedbackTable, followsTable, blockedUsersTable, verificationCodesTable } from "@workspace/db";
+import { eq, and, or, gte, desc, gt } from "drizzle-orm";
 
 const router = Router();
 
@@ -35,6 +35,7 @@ async function getProfileData(userId: number) {
     id: user.id,
     username: user.username,
     email: user.email,
+    phone: user.phone ?? null,
     kycStatus: user.kycStatus,
     isMerchant: user.isMerchant,
     emailVerified: user.emailVerified,
@@ -76,6 +77,226 @@ router.patch("/", async (req, res) => {
     res.json(profile);
   } catch (err) {
     req.log.error({ err }, "Failed to update profile");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// PATCH /api/profile/notifications — update notification settings
+router.patch("/notifications", async (req, res) => {
+  try {
+    const { tradeAlerts, chatMessages, systemNotifications, emailNotifications, smsNotifications } = req.body;
+    const userId = (req as any).userId;
+
+    const user = await db.select().from(usersTable).where(eq(usersTable.id, userId)).then(r => r[0]);
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    const current = JSON.parse(user.notificationSettings);
+    const updated = {
+      ...current,
+      ...(tradeAlerts !== undefined && { tradeAlerts }),
+      ...(chatMessages !== undefined && { chatMessages }),
+      ...(systemNotifications !== undefined && { systemNotifications }),
+      ...(emailNotifications !== undefined && { emailNotifications }),
+      ...(smsNotifications !== undefined && { smsNotifications }),
+    };
+
+    await db.update(usersTable)
+      .set({ notificationSettings: JSON.stringify(updated) })
+      .where(eq(usersTable.id, userId));
+
+    res.json({ notificationSettings: updated });
+  } catch (err) {
+    req.log.error({ err }, "Failed to update notifications");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// PATCH /api/profile/email — add/update email for phone-registered users
+router.patch("/email", async (req, res) => {
+  try {
+    const { email, code } = req.body;
+    const userId = (req as any).userId;
+
+    if (!email || !code) return res.status(400).json({ error: "email and code are required" });
+
+    const normalizedEmail = String(email).toLowerCase().trim();
+
+    // Verify the OTP
+    const now = new Date();
+    const records = await db.select().from(verificationCodesTable)
+      .where(and(
+        eq(verificationCodesTable.target, normalizedEmail),
+        eq(verificationCodesTable.code, String(code)),
+        eq(verificationCodesTable.used, false),
+        gt(verificationCodesTable.expiresAt, now),
+      ));
+    const record = records[records.length - 1];
+    if (!record) return res.status(400).json({ error: "Invalid or expired verification code" });
+
+    await db.update(verificationCodesTable).set({ used: true }).where(eq(verificationCodesTable.id, record.id));
+
+    // Check email not taken by another user
+    const existing = await db.select({ id: usersTable.id }).from(usersTable)
+      .where(eq(usersTable.email, normalizedEmail)).then(r => r[0]);
+    if (existing && existing.id !== userId) return res.status(409).json({ error: "Email already in use" });
+
+    await db.update(usersTable)
+      .set({ email: normalizedEmail, emailVerified: true })
+      .where(eq(usersTable.id, userId));
+
+    res.json({ success: true });
+  } catch (err) {
+    req.log.error({ err }, "Failed to update email");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// GET /api/profile/feedback — received feedback list
+router.get("/feedback", async (req, res) => {
+  try {
+    const userId = (req as any).userId;
+    const feedbacks = await db.select().from(feedbackTable)
+      .where(eq(feedbackTable.toUserId, userId))
+      .orderBy(desc(feedbackTable.createdAt));
+
+    const fromUserIds = [...new Set(feedbacks.map(f => f.fromUserId))];
+    const fromUsers = fromUserIds.length > 0
+      ? await db.select({ id: usersTable.id, username: usersTable.username })
+          .from(usersTable)
+          .where(or(...fromUserIds.map(id => eq(usersTable.id, id)))!)
+      : [];
+    const userMap = Object.fromEntries(fromUsers.map(u => [u.id, u.username]));
+
+    res.json(feedbacks.map(f => ({
+      id: f.id,
+      type: f.type,
+      comment: f.comment ?? null,
+      fromUsername: userMap[f.fromUserId] ?? "Unknown",
+      fromUserId: f.fromUserId,
+      orderId: f.orderId,
+      createdAt: f.createdAt,
+    })));
+  } catch (err) {
+    req.log.error({ err }, "Failed to get feedback");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// GET /api/profile/follows — list users this user follows
+router.get("/follows", async (req, res) => {
+  try {
+    const userId = (req as any).userId;
+    const follows = await db.select().from(followsTable)
+      .where(eq(followsTable.followerId, userId))
+      .orderBy(desc(followsTable.createdAt));
+
+    const followedIds = follows.map(f => f.followedId);
+    const followedUsers = followedIds.length > 0
+      ? await db.select({ id: usersTable.id, username: usersTable.username, kycStatus: usersTable.kycStatus })
+          .from(usersTable)
+          .where(or(...followedIds.map(id => eq(usersTable.id, id)))!)
+      : [];
+    const userMap = Object.fromEntries(followedUsers.map(u => [u.id, u]));
+
+    res.json(follows.map(f => ({
+      id: f.id,
+      followedId: f.followedId,
+      username: userMap[f.followedId]?.username ?? "Unknown",
+      kycStatus: userMap[f.followedId]?.kycStatus ?? "none",
+      createdAt: f.createdAt,
+    })));
+  } catch (err) {
+    req.log.error({ err }, "Failed to get follows");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// POST /api/profile/follows/:userId
+router.post("/follows/:userId", async (req, res) => {
+  try {
+    const userId = (req as any).userId;
+    const followedId = parseInt(req.params.userId);
+    if (userId === followedId) return res.status(400).json({ error: "Cannot follow yourself" });
+
+    const target = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.id, followedId)).then(r => r[0]);
+    if (!target) return res.status(404).json({ error: "User not found" });
+
+    await db.insert(followsTable).values({ followerId: userId, followedId }).onConflictDoNothing();
+    res.json({ success: true });
+  } catch (err) {
+    req.log.error({ err }, "Failed to follow user");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// DELETE /api/profile/follows/:userId
+router.delete("/follows/:userId", async (req, res) => {
+  try {
+    const userId = (req as any).userId;
+    const followedId = parseInt(req.params.userId);
+    await db.delete(followsTable).where(and(eq(followsTable.followerId, userId), eq(followsTable.followedId, followedId)));
+    res.json({ success: true });
+  } catch (err) {
+    req.log.error({ err }, "Failed to unfollow user");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// GET /api/profile/blocked — list blocked users
+router.get("/blocked", async (req, res) => {
+  try {
+    const userId = (req as any).userId;
+    const blocks = await db.select().from(blockedUsersTable)
+      .where(eq(blockedUsersTable.blockerId, userId))
+      .orderBy(desc(blockedUsersTable.createdAt));
+
+    const blockedIds = blocks.map(b => b.blockedId);
+    const blockedUsers = blockedIds.length > 0
+      ? await db.select({ id: usersTable.id, username: usersTable.username })
+          .from(usersTable)
+          .where(or(...blockedIds.map(id => eq(usersTable.id, id)))!)
+      : [];
+    const userMap = Object.fromEntries(blockedUsers.map(u => [u.id, u]));
+
+    res.json(blocks.map(b => ({
+      id: b.id,
+      blockedId: b.blockedId,
+      username: userMap[b.blockedId]?.username ?? "Unknown",
+      createdAt: b.createdAt,
+    })));
+  } catch (err) {
+    req.log.error({ err }, "Failed to get blocked users");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// POST /api/profile/blocked/:userId
+router.post("/blocked/:userId", async (req, res) => {
+  try {
+    const userId = (req as any).userId;
+    const blockedId = parseInt(req.params.userId);
+    if (userId === blockedId) return res.status(400).json({ error: "Cannot block yourself" });
+
+    const target = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.id, blockedId)).then(r => r[0]);
+    if (!target) return res.status(404).json({ error: "User not found" });
+
+    await db.insert(blockedUsersTable).values({ blockerId: userId, blockedId }).onConflictDoNothing();
+    res.json({ success: true });
+  } catch (err) {
+    req.log.error({ err }, "Failed to block user");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// DELETE /api/profile/blocked/:userId
+router.delete("/blocked/:userId", async (req, res) => {
+  try {
+    const userId = (req as any).userId;
+    const blockedId = parseInt(req.params.userId);
+    await db.delete(blockedUsersTable).where(and(eq(blockedUsersTable.blockerId, userId), eq(blockedUsersTable.blockedId, blockedId)));
+    res.json({ success: true });
+  } catch (err) {
+    req.log.error({ err }, "Failed to unblock user");
     res.status(500).json({ error: "Internal server error" });
   }
 });

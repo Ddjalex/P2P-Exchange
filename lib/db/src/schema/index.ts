@@ -12,3 +12,5 @@ export * from "./notifications";
 export * from "./admin";
 export * from "./fraud";
 export * from "./verification";
+export * from "./follows";
+export * from "./blocked_users";

@@ -10,7 +10,12 @@ import { useAuth } from "@/hooks/use-auth";
 async function uploadFile(file: File): Promise<string> {
   const fd = new FormData();
   fd.append("file", file);
-  const res = await fetch("/api/kyc/upload", { method: "POST", body: fd });
+  const token = localStorage.getItem("p2p_token");
+  const res = await fetch("/api/kyc/upload", {
+    method: "POST",
+    body: fd,
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: "Upload failed" }));
     throw new Error(err.error || "Upload failed");

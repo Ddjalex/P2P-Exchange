@@ -21,6 +21,11 @@ import ChatThreadPage from "@/pages/chat-thread";
 import ProfilePage from "@/pages/profile";
 import PaymentMethodsPage from "@/pages/payment-methods";
 import KycPage from "@/pages/kyc";
+import ReceivedFeedbackPage from "@/pages/received-feedback";
+import FollowsPage from "@/pages/follows";
+import BlockedUsersPage from "@/pages/blocked-users";
+import HelpCenterPage from "@/pages/help-center";
+import AboutPage from "@/pages/about";
 
 // Admin pages
 import AdminLoginPage from "@/pages/admin-login";
@@ -83,6 +88,11 @@ function Router() {
       <Route path="/chat/:orderId"><ProtectedRoute component={ChatThreadPage} /></Route>
       <Route path="/profile"><ProtectedRoute component={ProfilePage} /></Route>
       <Route path="/profile/payment-methods"><ProtectedRoute component={PaymentMethodsPage} /></Route>
+      <Route path="/profile/feedback"><ProtectedRoute component={ReceivedFeedbackPage} /></Route>
+      <Route path="/profile/follows"><ProtectedRoute component={FollowsPage} /></Route>
+      <Route path="/profile/blocked"><ProtectedRoute component={BlockedUsersPage} /></Route>
+      <Route path="/help-center"><ProtectedRoute component={HelpCenterPage} /></Route>
+      <Route path="/about"><ProtectedRoute component={AboutPage} /></Route>
       <Route path="/kyc"><ProtectedRoute component={KycPage} /></Route>
 
       {/* Admin auth — login now lives inside /auth */}
