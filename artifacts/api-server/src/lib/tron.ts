@@ -337,8 +337,8 @@ export async function getTrc20TxDetails(txid: string): Promise<{ from: string; t
     }
     const rawAmount = transfer.result?.value ?? transfer.result?.amount ?? "0";
     return {
-      from: transfer.caller_contract_address ?? transfer.result?.from ?? "",
-      to: transfer.result?.to ?? "",
+      from: transfer.caller_contract_address || transfer.result?.from || "",
+      to: transfer.result?.to || "",
       amount: rawToUsdt(rawAmount),
       confirmed: true,
     };
