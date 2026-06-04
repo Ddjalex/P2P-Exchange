@@ -1,17 +1,307 @@
 import { useAuth } from "@/hooks/use-auth";
 import { AppLayout } from "@/components/layout";
-import { Bell, Settings, Eye, EyeOff, ArrowDownToLine, ArrowUpFromLine } from "lucide-react";
+import { Bell, Settings, Eye, EyeOff, ArrowDownToLine, ArrowUpFromLine, X, Copy, Check, Loader2, AlertCircle } from "lucide-react";
 import { Link, useLocation } from "wouter";
-import { useGetWallet } from "@workspace/api-client-react";
-import { useState } from "react";
+import { useGetWallet, getGetWalletQueryKey } from "@workspace/api-client-react";
+import { useState, useEffect } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
+import { useQueryClient } from "@tanstack/react-query";
+
+const TOKEN_KEY = "p2p_token";
+function getToken() { return localStorage.getItem(TOKEN_KEY); }
+
+// ─── Deposit Modal ───────────────────────────────────────────────────────────
+
+function DepositModal({ onClose }: { onClose: () => void }) {
+  const [network, setNetwork] = useState<"TRC20" | "ERC20">("TRC20");
+  const [address, setAddress] = useState("");
+  const [minDeposit, setMinDeposit] = useState("1");
+  const [loading, setLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [error, setError] = useState("");
+  const { toast } = useToast();
+
+  const fetchAddress = async (net: "TRC20" | "ERC20") => {
+    setLoading(true);
+    setError("");
+    setAddress("");
+    try {
+      const res = await fetch(`/api/wallet/deposit-address?network=${net}`, {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to load address");
+      setAddress(data.address);
+      setMinDeposit(data.minDeposit ?? "1");
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchAddress(network); }, [network]);
+
+  const copyAddress = async () => {
+    if (!address) return;
+    await navigator.clipboard.writeText(address);
+    setCopied(true);
+    toast({ title: "Address copied!" });
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/60" />
+      <div
+        className="relative w-full max-w-[480px] bg-card rounded-t-2xl p-6 space-y-5"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between">
+          <h2 className="font-bold text-lg">Deposit USDT</h2>
+          <button onClick={onClose} className="p-1 rounded-lg hover:bg-secondary/50">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Network selector */}
+        <div>
+          <label className="text-xs text-muted-foreground mb-2 block">Select Network</label>
+          <div className="grid grid-cols-2 gap-2">
+            {(["TRC20", "ERC20"] as const).map(net => (
+              <button
+                key={net}
+                onClick={() => setNetwork(net)}
+                className={`py-2.5 rounded-xl text-sm font-semibold border transition-colors ${network === net ? "bg-primary/10 border-primary text-primary" : "bg-secondary border-border text-muted-foreground hover:bg-secondary/80"}`}
+              >
+                {net}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Address display */}
+        <div>
+          <label className="text-xs text-muted-foreground mb-2 block">Deposit Address ({network})</label>
+          {loading ? (
+            <div className="flex items-center justify-center h-20 bg-secondary rounded-xl">
+              <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : error ? (
+            <div className="flex items-start space-x-2 p-4 bg-destructive/10 border border-destructive/20 rounded-xl">
+              <AlertCircle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
+              <p className="text-sm text-destructive">{error}</p>
+            </div>
+          ) : (
+            <div className="bg-secondary rounded-xl p-4 space-y-3">
+              <p className="text-sm font-mono break-all leading-relaxed">{address}</p>
+              <button
+                onClick={copyAddress}
+                className="w-full flex items-center justify-center space-x-2 py-2 bg-primary/10 hover:bg-primary/20 text-primary rounded-lg text-sm font-medium transition-colors"
+              >
+                {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                <span>{copied ? "Copied!" : "Copy Address"}</span>
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Warning */}
+        <div className="bg-warning/10 border border-warning/20 rounded-xl p-4 space-y-1">
+          <p className="text-xs font-semibold text-warning">⚠️ Important</p>
+          <ul className="text-xs text-muted-foreground space-y-1 list-disc list-inside">
+            <li>Only send <strong>USDT ({network})</strong> to this address</li>
+            <li>Minimum deposit: <strong>{minDeposit} USDT</strong></li>
+            <li>Sending other tokens may result in permanent loss</li>
+            <li>Deposits are credited after blockchain confirmation</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Withdraw Modal ──────────────────────────────────────────────────────────
+
+function WithdrawModal({
+  availableBalance,
+  onClose,
+  onSuccess,
+}: {
+  availableBalance: string;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [network, setNetwork] = useState<"TRC20" | "ERC20">("TRC20");
+  const [address, setAddress] = useState("");
+  const [amount, setAmount] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const { toast } = useToast();
+
+  const avail = parseFloat(availableBalance || "0");
+  const amt = parseFloat(amount || "0");
+  const fee = amt > 0 ? (amt * 0.001).toFixed(4) : "0";
+  const youGet = amt > 0 ? Math.max(0, amt - parseFloat(fee)).toFixed(4) : "0";
+
+  const handleSetMax = () => setAmount(avail.toFixed(2));
+
+  const handleWithdraw = async () => {
+    setError("");
+    if (!address.trim()) { setError("Enter a destination wallet address"); return; }
+    if (amt <= 0) { setError("Enter a valid amount"); return; }
+    if (amt > avail) { setError("Insufficient available balance"); return; }
+    if (amt < 1) { setError("Minimum withdrawal is 1 USDT"); return; }
+
+    setLoading(true);
+    try {
+      const res = await fetch("/api/wallet/withdraw", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${getToken()}`,
+        },
+        body: JSON.stringify({ address: address.trim(), network, amount }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Withdrawal failed");
+      toast({ title: "Withdrawal submitted!", description: "Your request is being processed." });
+      onSuccess();
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/60" />
+      <div
+        className="relative w-full max-w-[480px] bg-card rounded-t-2xl p-6 space-y-5"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between">
+          <h2 className="font-bold text-lg">Withdraw USDT</h2>
+          <button onClick={onClose} className="p-1 rounded-lg hover:bg-secondary/50">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Network selector */}
+        <div>
+          <label className="text-xs text-muted-foreground mb-2 block">Select Network</label>
+          <div className="grid grid-cols-2 gap-2">
+            {(["TRC20", "ERC20"] as const).map(net => (
+              <button
+                key={net}
+                onClick={() => setNetwork(net)}
+                className={`py-2.5 rounded-xl text-sm font-semibold border transition-colors ${network === net ? "bg-primary/10 border-primary text-primary" : "bg-secondary border-border text-muted-foreground hover:bg-secondary/80"}`}
+              >
+                {net}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Destination address */}
+        <div>
+          <label className="text-xs text-muted-foreground mb-2 block">Destination Address ({network})</label>
+          <input
+            type="text"
+            placeholder="Paste wallet address"
+            value={address}
+            onChange={e => setAddress(e.target.value)}
+            className="w-full bg-secondary border border-border rounded-xl px-4 py-3 text-sm font-mono focus:outline-none focus:border-primary placeholder:text-muted-foreground"
+          />
+        </div>
+
+        {/* Amount */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <label className="text-xs text-muted-foreground">Amount (USDT)</label>
+            <span className="text-xs text-muted-foreground">
+              Available: <span className="text-foreground font-medium">{avail.toLocaleString()} USDT</span>
+            </span>
+          </div>
+          <div className="relative">
+            <input
+              type="number"
+              placeholder="0.00"
+              value={amount}
+              onChange={e => setAmount(e.target.value)}
+              min="1"
+              max={avail}
+              step="0.01"
+              className="w-full bg-secondary border border-border rounded-xl px-4 py-3 pr-16 text-sm font-mono focus:outline-none focus:border-primary placeholder:text-muted-foreground"
+            />
+            <button
+              onClick={handleSetMax}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-primary font-bold hover:underline"
+            >
+              MAX
+            </button>
+          </div>
+        </div>
+
+        {/* Fee summary */}
+        {amt > 0 && (
+          <div className="bg-secondary rounded-xl p-4 space-y-2 text-sm">
+            <div className="flex justify-between text-muted-foreground">
+              <span>Network Fee (0.1%)</span>
+              <span className="font-mono">{fee} USDT</span>
+            </div>
+            <div className="flex justify-between font-semibold border-t border-border pt-2">
+              <span>You Receive</span>
+              <span className="font-mono text-primary">{youGet} USDT</span>
+            </div>
+          </div>
+        )}
+
+        {error && (
+          <div className="flex items-start space-x-2 p-3 bg-destructive/10 border border-destructive/20 rounded-xl">
+            <AlertCircle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
+            <p className="text-sm text-destructive">{error}</p>
+          </div>
+        )}
+
+        <button
+          onClick={handleWithdraw}
+          disabled={loading || !address || amt <= 0 || amt > avail}
+          className="w-full bg-primary text-primary-foreground rounded-xl py-3 text-sm font-semibold disabled:opacity-50 flex items-center justify-center space-x-2"
+        >
+          {loading ? (
+            <><Loader2 className="w-4 h-4 animate-spin" /><span>Submitting...</span></>
+          ) : (
+            <><ArrowUpFromLine className="w-4 h-4" /><span>Confirm Withdrawal</span></>
+          )}
+        </button>
+
+        <p className="text-center text-xs text-muted-foreground">
+          Minimum withdrawal: 1 USDT · Processing time: ~30 minutes
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Wallet Page ────────────────────────────────────────────────────────
 
 export default function WalletPage() {
   const { user } = useAuth();
   const { data: wallet, isLoading } = useGetWallet();
   const [showBalance, setShowBalance] = useState(true);
   const [, setLocation] = useLocation();
+  const [showDeposit, setShowDeposit] = useState(false);
+  const [showWithdraw, setShowWithdraw] = useState(false);
+  const queryClient = useQueryClient();
+
+  const handleWithdrawSuccess = () => {
+    setShowWithdraw(false);
+    queryClient.invalidateQueries({ queryKey: getGetWalletQueryKey() });
+  };
 
   return (
     <AppLayout>
@@ -43,7 +333,7 @@ export default function WalletPage() {
               {user?.kycStatus === "rejected" && "KYC Rejected — Resubmit your documents"}
               {user?.kycStatus === "more_info_required" && "Action Required — Update your submission"}
             </div>
-            {user?.kycStatus === "none" && (
+            {(user?.kycStatus === "none") && (
               <Link href="/kyc" className="text-sm underline font-semibold">Verify Now</Link>
             )}
             {user?.kycStatus === "rejected" && (
@@ -62,7 +352,7 @@ export default function WalletPage() {
               {showBalance ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
             </button>
           </div>
-          
+
           <div className="space-y-1">
             {isLoading ? (
               <Skeleton className="h-10 w-32" />
@@ -81,11 +371,17 @@ export default function WalletPage() {
           </div>
 
           <div className="flex space-x-3 pt-2">
-            <Button className="flex-1 bg-secondary text-secondary-foreground hover:bg-secondary/80">
+            <Button
+              className="flex-1 bg-secondary text-secondary-foreground hover:bg-secondary/80"
+              onClick={() => setShowDeposit(true)}
+            >
               <ArrowDownToLine className="w-4 h-4 mr-2" />
               Deposit
             </Button>
-            <Button className="flex-1 bg-secondary text-secondary-foreground hover:bg-secondary/80">
+            <Button
+              className="flex-1 bg-secondary text-secondary-foreground hover:bg-secondary/80"
+              onClick={() => setShowWithdraw(true)}
+            >
               <ArrowUpFromLine className="w-4 h-4 mr-2" />
               Withdraw
             </Button>
@@ -119,6 +415,15 @@ export default function WalletPage() {
           </Link>
         </div>
       </div>
+
+      {showDeposit && <DepositModal onClose={() => setShowDeposit(false)} />}
+      {showWithdraw && (
+        <WithdrawModal
+          availableBalance={wallet?.availableBalance ?? "0"}
+          onClose={() => setShowWithdraw(false)}
+          onSuccess={handleWithdrawSuccess}
+        />
+      )}
     </AppLayout>
   );
 }
