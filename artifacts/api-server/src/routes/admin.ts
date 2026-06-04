@@ -879,17 +879,19 @@ router.post("/test-blockchain", adminAuth, async (req: any, res) => {
     }
 
     if (provider === "bscscan") {
-      // Etherscan unified V2 API with chainid=56 for BNB Smart Chain (BSCScan v1 is deprecated)
-      const url = `https://api.etherscan.io/v2/api?chainid=56&module=stats&action=bnbsupply&apikey=${encodeURIComponent(apiKey)}`;
+      // Verify key by fetching the USDT contract's token supply on BSC — a stable, always-valid call.
+      // Uses Etherscan unified V2 API with chainid=56 (BSCScan v1 is deprecated).
+      const USDT_BSC = "0x55d398326f99059ff775485246999027b3197955";
+      const url = `https://api.etherscan.io/v2/api?chainid=56&module=account&action=balance&address=${USDT_BSC}&tag=latest&apikey=${encodeURIComponent(apiKey)}`;
       const r = await fetch(url, { signal: AbortSignal.timeout(10_000) });
-      if (!r.ok) return res.json({ ok: false, error: `BSCScan returned HTTP ${r.status}.` });
+      if (!r.ok) return res.json({ ok: false, error: `API returned HTTP ${r.status}.` });
       const body = await r.json().catch(() => ({})) as any;
       if (body?.status === "0" || body?.message === "NOTOK") {
-        const msg = body?.result ?? "Unknown error";
-        if (msg.toLowerCase().includes("invalid") || msg.toLowerCase().includes("missing")) {
-          return res.json({ ok: false, error: "Invalid API key — please check you copied it correctly." });
+        const msg: string = body?.result ?? "Unknown error";
+        if (msg.toLowerCase().includes("invalid") || msg.toLowerCase().includes("missing apikey")) {
+          return res.json({ ok: false, error: "Invalid API key — please check you copied it correctly from bscscan.com." });
         }
-        return res.json({ ok: false, error: `BSCScan error: ${msg}` });
+        return res.json({ ok: false, error: `API error: ${msg}` });
       }
       return res.json({ ok: true, message: "BSCScan API key is valid and working." });
     }
