@@ -460,7 +460,7 @@ export default function WalletPage() {
 
         <div className="p-5 rounded-xl bg-card border border-card-border space-y-4">
           <div className="flex items-center justify-between text-muted-foreground">
-            <span className="text-sm">Total Balance</span>
+            <span className="text-sm">Available Balance</span>
             <button onClick={() => setShowBalance(!showBalance)}>
               {showBalance ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
             </button>
@@ -469,12 +469,21 @@ export default function WalletPage() {
           <div className="space-y-1">
             {isLoading ? <Skeleton className="h-10 w-32" /> : (
               <div className="text-3xl font-bold font-mono">
-                {showBalance ? `${Number(wallet?.totalBalance || 0).toLocaleString()} USDT` : "*****"}
+                {showBalance ? `${Number(wallet?.availableBalance || 0).toLocaleString()} USDT` : "*****"}
               </div>
             )}
             {isLoading ? <Skeleton className="h-5 w-24" /> : (
               <div className="text-sm text-muted-foreground">
-                {showBalance ? `≈ ${Number(wallet?.etbValue || 0).toLocaleString()} ETB` : "*****"}
+                {showBalance
+                  ? `≈ ${(Number(wallet?.availableBalance || 0) * Number(wallet?.etbRate || 0)).toLocaleString()} ETB`
+                  : "*****"}
+              </div>
+            )}
+            {!isLoading && Number(wallet?.frozenBalance || 0) > 0 && (
+              <div className="flex items-center space-x-1.5 pt-1">
+                <span className="text-xs text-warning/80">
+                  🔒 {showBalance ? `${Number(wallet?.frozenBalance || 0).toLocaleString()} USDT frozen in active orders` : "*****"}
+                </span>
               </div>
             )}
           </div>
@@ -511,10 +520,16 @@ export default function WalletPage() {
             </div>
             <div className="text-right">
               {isLoading ? <Skeleton className="h-5 w-16 mb-1" /> : (
-                <div className="font-mono font-medium">{showBalance ? Number(wallet?.totalBalance || 0).toLocaleString() : "***"}</div>
+                <div className="font-mono font-medium">{showBalance ? Number(wallet?.availableBalance || 0).toLocaleString() : "***"}</div>
               )}
               {isLoading ? <Skeleton className="h-4 w-12" /> : (
-                <div className="text-xs text-muted-foreground">{showBalance ? `≈ ${Number(wallet?.etbValue || 0).toLocaleString()} Br` : "***"}</div>
+                <div className="text-xs text-muted-foreground">
+                  {showBalance
+                    ? Number(wallet?.frozenBalance || 0) > 0
+                      ? `🔒 ${Number(wallet?.frozenBalance || 0).toLocaleString()} frozen`
+                      : `≈ ${(Number(wallet?.availableBalance || 0) * Number(wallet?.etbRate || 0)).toLocaleString()} Br`
+                    : "***"}
+                </div>
               )}
             </div>
           </Link>
