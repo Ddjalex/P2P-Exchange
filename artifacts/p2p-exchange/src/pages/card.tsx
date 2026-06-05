@@ -1,8 +1,13 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import { AppLayout } from "@/components/layout";
 
-function CardSvg() {
+function getToken() {
+  return localStorage.getItem("p2p_token") ?? "";
+}
+
+function CardSvg({ holderName, nameColor }: { holderName: string; nameColor: string }) {
   return (
     <svg viewBox="0 0 380 220" style={{ width: "100%", borderRadius: "18px", display: "block" }}>
       <defs>
@@ -49,7 +54,7 @@ function CardSvg() {
       <text x="24" y="145" fontFamily="'Courier New', monospace" fontSize="15" fontWeight="600" fill="white" letterSpacing="3">4521  ••••  ••••  8842</text>
 
       <text x="24" y="174" fontFamily="Poppins, sans-serif" fontSize="9" fill="rgb(0,212,255)" fillOpacity="0.7" letterSpacing="2">CARD HOLDER</text>
-      <text x="24" y="192" fontFamily="Poppins, sans-serif" fontSize="13" fontWeight="600" fill="white" letterSpacing="1">ALMESEGED WONDIMU</text>
+      <text x="24" y="192" fontFamily="Poppins, sans-serif" fontSize="13" fontWeight="600" fill={nameColor} letterSpacing="1">{holderName}</text>
 
       <text x="298" y="174" fontFamily="Poppins, sans-serif" fontSize="9" fill="rgb(0,212,255)" fillOpacity="0.7" letterSpacing="2">EXPIRES</text>
       <text x="298" y="192" fontFamily="Poppins, sans-serif" fontSize="13" fontWeight="600" fill="white">12/28</text>
@@ -63,6 +68,47 @@ function CardSvg() {
 export default function CardPage() {
   const [, setLocation] = useLocation();
   const [notified, setNotified] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const { data: meData } = useQuery({
+    queryKey: ["me-card"],
+    queryFn: () =>
+      fetch("/api/auth/me", {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      }).then((r) => r.json()),
+  });
+
+  const { data: waitlistStatus } = useQuery({
+    queryKey: ["card-waitlist-status"],
+    queryFn: () =>
+      fetch("/api/card/notify/status", {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      }).then((r) => r.json()),
+  });
+
+  useEffect(() => {
+    if (waitlistStatus?.isOnWaitlist) setNotified(true);
+  }, [waitlistStatus]);
+
+  const kycName = meData?.kycFullName ?? meData?.username ?? null;
+  const cardHolderName = kycName ? kycName.toUpperCase().slice(0, 22) : "COMPLETE KYC";
+  const nameColor = kycName ? "#ffffff" : "#556677";
+
+  const handleNotifyMe = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/card/notify", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      const data = await res.json();
+      if (res.ok || data.alreadyJoined) setNotified(true);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <AppLayout>
@@ -84,7 +130,7 @@ export default function CardPage() {
         }}
       >
         <div style={{ width: "100%", maxWidth: "380px", marginBottom: "32px" }}>
-          <CardSvg />
+          <CardSvg holderName={cardHolderName} nameColor={nameColor} />
         </div>
 
         <h2 style={{ color: "#ffffff", fontSize: "28px", fontWeight: 800, marginBottom: "8px", textAlign: "center" }}>
@@ -115,7 +161,8 @@ export default function CardPage() {
 
         {!notified ? (
           <button
-            onClick={() => setNotified(true)}
+            onClick={handleNotifyMe}
+            disabled={loading}
             style={{
               width: "100%",
               maxWidth: "300px",
@@ -126,10 +173,11 @@ export default function CardPage() {
               color: "#1a1a2e",
               fontSize: "15px",
               fontWeight: 700,
-              cursor: "pointer",
+              cursor: loading ? "not-allowed" : "pointer",
+              opacity: loading ? 0.7 : 1,
             }}
           >
-            🔔 Notify Me When Available
+            {loading ? "Joining..." : "🔔 Notify Me When Available"}
           </button>
         ) : (
           <div
@@ -142,7 +190,7 @@ export default function CardPage() {
               maxWidth: "300px",
             }}
           >
-            <p style={{ color: "#00d4ff", fontSize: "15px", fontWeight: 700, margin: 0 }}>✅ You're on the list!</p>
+            <p style={{ color: "#00d4ff", fontSize: "15px", fontWeight: 700, margin: 0 }}>✅ You are on the waitlist!</p>
             <p style={{ color: "#8899aa", fontSize: "12px", margin: "4px 0 0" }}>
               We'll notify you when the card launches
             </p>

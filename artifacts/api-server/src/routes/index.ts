@@ -14,6 +14,7 @@ import statsRouter from "./stats";
 import adminRouter from "./admin";
 import sseRouter from "./sse";
 import usersRouter from "./users";
+import cardRouter from "./card";
 
 const router: IRouter = Router();
 
@@ -32,6 +33,7 @@ router.use("/notifications", userAuth, notificationsRouter);
 router.use("/stats", userAuth, statsRouter);
 router.use("/sse", sseRouter);
 router.use("/users", userAuth, usersRouter);
+router.use("/card", cardRouter);
 
 router.use("/admin", adminRouter);
 

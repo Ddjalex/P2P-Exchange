@@ -32,10 +32,12 @@ function StatCard({ label, value, icon: Icon, color = "primary", href }: { label
 export default function AdminDashboardPage() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [activity, setActivity] = useState<any>(null);
+  const [waitlist, setWaitlist] = useState<{ total: number; users: any[] } | null>(null);
 
   useEffect(() => {
     adminGet<Stats>("/stats/overview").then(setStats).catch(() => {});
     adminGet<any>("/stats/activity").then(setActivity).catch(() => {});
+    adminGet<any>("/card/waitlist").then(setWaitlist).catch(() => {});
   }, []);
 
   const kycPieData = stats ? [
@@ -106,6 +108,57 @@ export default function AdminDashboardPage() {
               ))}
             </div>
           </div>
+        </div>
+
+        {/* Card Waitlist */}
+        <div className="bg-card border border-border rounded-xl p-5 mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold text-sm">💳 Card Waitlist</h3>
+            <div className="flex items-center gap-3">
+              <span className="text-2xl font-bold font-mono text-primary">{waitlist?.total ?? 0}</span>
+              <span className="text-xs text-muted-foreground">users waiting</span>
+              <button
+                onClick={() => {
+                  if (!waitlist?.users?.length) return;
+                  const csv = "Username,KYC Name,Email,Joined\n" +
+                    waitlist.users.map((u: any) =>
+                      `${u.username ?? ""},${u.kycName ?? ""},${u.email ?? ""},${u.joinedAt}`
+                    ).join("\n");
+                  const blob = new Blob([csv], { type: "text/csv" });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url; a.download = "card-waitlist.csv"; a.click();
+                }}
+                className="text-xs px-3 py-1.5 rounded-lg border border-border text-primary hover:bg-primary/10 transition-colors"
+              >
+                📥 Export CSV
+              </button>
+            </div>
+          </div>
+          {waitlist?.users?.length ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border">
+                    <th className="text-left text-xs text-muted-foreground pb-2 font-medium">Username</th>
+                    <th className="text-left text-xs text-muted-foreground pb-2 font-medium">KYC Name</th>
+                    <th className="text-left text-xs text-muted-foreground pb-2 font-medium">Joined</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {waitlist.users.map((u: any) => (
+                    <tr key={u.id} className="border-b border-border/40">
+                      <td className="py-2 text-sm">{u.username}</td>
+                      <td className="py-2 text-sm text-muted-foreground">{u.kycName ?? "—"}</td>
+                      <td className="py-2 text-xs text-muted-foreground">{new Date(u.joinedAt).toLocaleDateString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">No users on waitlist yet.</p>
+          )}
         </div>
 
         {/* Quick actions + Recent activity */}

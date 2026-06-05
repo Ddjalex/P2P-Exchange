@@ -15,3 +15,4 @@ export * from "./verification";
 export * from "./follows";
 export * from "./blocked_users";
 export * from "./deposit_verifications";
+export * from "./card_waitlist";

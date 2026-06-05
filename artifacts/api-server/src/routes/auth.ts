@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { usersTable, walletsTable, verificationCodesTable, systemSettingsTable } from "@workspace/db";
+import { usersTable, walletsTable, verificationCodesTable, systemSettingsTable, kycSubmissionsTable } from "@workspace/db";
 import { eq, and, gt } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
@@ -160,7 +160,8 @@ router.get("/me", async (req, res) => {
     const user = await db.select().from(usersTable).where(eq(usersTable.id, payload.sub)).then(r => r[0]);
     if (!user) return res.status(401).json({ error: "User not found" });
     if (user.isSuspended) return res.status(403).json({ error: "Account suspended" });
-    res.json(formatUser(user));
+    const kyc = await db.select().from(kycSubmissionsTable).where(eq(kycSubmissionsTable.userId, user.id)).then(r => r[0]);
+    res.json({ ...formatUser(user), kycFullName: kyc?.fullName ?? null });
   } catch (err) {
     req.log.error({ err }, "Failed to get user");
     res.status(500).json({ error: "Internal server error" });

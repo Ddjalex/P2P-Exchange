@@ -6,7 +6,7 @@ import {
   usersTable, adsTable, ordersTable, kycSubmissionsTable, appealsTable,
   transactionsTable, walletsTable, messagesTable, notificationsTable,
   adminLogsTable, systemSettingsTable, notificationHistoryTable, fraudFlagsTable,
-  depositVerificationsTable,
+  depositVerificationsTable, cardWaitlistTable,
 } from "@workspace/db";
 import { eq, desc, and, or, ilike, sql, ne, count } from "drizzle-orm";
 
@@ -1124,6 +1124,18 @@ router.get("/logs", adminAuth, async (req, res) => {
   } catch (err) {
     req.log.error({ err }, "Admin logs list failed");
     res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ─── CARD WAITLIST ───────────────────────────────────────────────────────────
+
+router.get("/card/waitlist", adminAuth, async (req, res) => {
+  try {
+    const waitlist = await db.select().from(cardWaitlistTable).orderBy(desc(cardWaitlistTable.joinedAt));
+    return res.json({ total: waitlist.length, users: waitlist });
+  } catch (err) {
+    req.log.error({ err }, "Admin card waitlist failed");
+    return res.status(500).json({ error: "Internal server error" });
   }
 });
 
