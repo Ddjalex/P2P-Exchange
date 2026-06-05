@@ -149,6 +149,8 @@ export default function TradePage() {
 
   const [viewStep, setViewStep] = useState<"order" | "payInstructions">("order");
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [showReleaseDialog, setShowReleaseDialog] = useState(false);
+  const [showCancelDialog, setShowCancelDialog] = useState(false);
   const [showPlatformNotice, setShowPlatformNotice] = useState(false);
   const [paymentTimeLeft, setPaymentTimeLeft] = useState(0);
   const [appealTimeLeft, setAppealTimeLeft] = useState(-1);
@@ -164,6 +166,19 @@ export default function TradePage() {
 
   const isBuyer = user?.id === order?.buyerId;
   const isSeller = !isBuyer;
+
+  const sendBrowserNotification = (title: string, body: string) => {
+    if (!('Notification' in window)) return;
+    if (Notification.permission === 'granted') {
+      new Notification(title, { body, icon: '/favicon.ico', badge: '/favicon.ico' });
+    }
+  };
+
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  }, []);
 
   // Payment countdown
   useEffect(() => {
@@ -199,17 +214,29 @@ export default function TradePage() {
     }
   }, [order?.status, isBuyer, orderId]);
 
-  // Watch for status changes and show live toast notifications
+  // Watch for status changes and show live toast + browser notifications
   const prevStatusRef = useRef<string | undefined>(undefined);
   useEffect(() => {
     if (!order) return;
     const prev = prevStatusRef.current;
     const curr = order.status;
     if (prev && prev !== curr) {
-      if (curr === 'paid') toast({ title: '✅ Buyer has marked payment as sent!' });
-      if (curr === 'completed') toast({ title: '🎉 Order completed! USDT released to wallet.' });
-      if (curr === 'cancelled') toast({ title: '❌ Order has been cancelled.', variant: 'destructive' });
-      if (curr === 'appeal') toast({ title: '⚠️ Appeal has been raised on this order.', variant: 'destructive' });
+      if (curr === 'paid') {
+        toast({ title: '✅ Buyer has marked payment as sent!' });
+        if (isSeller) sendBrowserNotification('Payment Received', 'Buyer has marked payment as sent. Please verify and release crypto.');
+      }
+      if (curr === 'completed') {
+        toast({ title: '🎉 Order completed! USDT released to wallet.' });
+        sendBrowserNotification('Order Completed 🎉', isBuyer ? 'USDT has been released to your wallet!' : `Order completed. ${Number(order.amountEtb).toLocaleString()} ETB received.`);
+      }
+      if (curr === 'cancelled') {
+        toast({ title: '❌ Order has been cancelled.', variant: 'destructive' });
+        sendBrowserNotification('Order Cancelled', 'The order has been cancelled.');
+      }
+      if (curr === 'appeal') {
+        toast({ title: '⚠️ Appeal has been raised on this order.', variant: 'destructive' });
+        sendBrowserNotification('Appeal Raised ⚠️', 'An appeal has been submitted on this order. Admin is reviewing.');
+      }
     }
     prevStatusRef.current = curr;
   }, [order?.status]);
@@ -232,22 +259,26 @@ export default function TradePage() {
     });
   };
 
-  const handleRelease = async () => {
-    if (!confirm("Confirm payment received? This will release crypto to the buyer.")) return;
+  const handleRelease = () => setShowReleaseDialog(true);
+
+  const doRelease = () => {
+    setShowReleaseDialog(false);
     setActing(true);
     releaseCrypto.mutate({ id: orderId, data: undefined as any }, {
       onSuccess: refreshOrder,
-      onError: () => toast({ title: "Failed", variant: "destructive" }),
+      onError: () => toast({ title: "Failed to release", variant: "destructive" }),
       onSettled: () => setActing(false),
     });
   };
 
-  const handleCancel = async () => {
-    if (!confirm("Are you sure you want to cancel this order?")) return;
+  const handleCancel = () => setShowCancelDialog(true);
+
+  const doCancel = () => {
+    setShowCancelDialog(false);
     setActing(true);
     cancelOrder.mutate({ id: orderId, data: { reason: "User cancelled" } }, {
       onSuccess: () => navigate("/orders"),
-      onError: () => toast({ title: "Failed", variant: "destructive" }),
+      onError: () => toast({ title: "Failed to cancel", variant: "destructive" }),
       onSettled: () => setActing(false),
     });
   };
@@ -498,6 +529,45 @@ export default function TradePage() {
   if (order.status === "paid" && isSeller) {
     return (
       <AppLayout showNav={false}>
+        {/* Release Confirm Modal */}
+        {showReleaseDialog && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+            <div className="bg-card border border-border rounded-2xl p-6 max-w-sm w-full shadow-2xl">
+              <div className="w-12 h-12 rounded-full bg-success/20 flex items-center justify-center mx-auto mb-4">
+                <CheckCircle className="w-7 h-7 text-success" />
+              </div>
+              <h3 className="font-bold text-center text-lg mb-2">Confirm Release</h3>
+              <p className="text-sm text-muted-foreground text-center mb-1">
+                You are about to release
+              </p>
+              <p className="text-2xl font-bold font-mono text-primary text-center mb-1">
+                {parseFloat(order.amountUsdt).toFixed(4)} USDT
+              </p>
+              <p className="text-xs text-muted-foreground text-center mb-5">
+                to <span className="font-semibold text-foreground">{order.buyerUsername}</span>. This action cannot be undone.
+              </p>
+              <div className="bg-warning/10 border border-warning/20 rounded-xl p-3 mb-5 text-xs text-warning text-center">
+                ⚠ Only release after you have verified the payment in your bank or wallet.
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={() => setShowReleaseDialog(false)}
+                  className="py-3 rounded-xl font-bold border border-border text-foreground"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={doRelease}
+                  disabled={acting}
+                  className="py-3 rounded-xl font-bold bg-success text-white disabled:opacity-50"
+                >
+                  {acting ? "Releasing..." : "Release USDT"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         <header className="flex items-center justify-between p-4 border-b border-border sticky top-0 bg-background z-10">
           <button onClick={() => navigate("/orders")}><ArrowLeft className="w-5 h-5" /></button>
           <span className="font-bold text-sm">Payment Received</span>
@@ -528,10 +598,33 @@ export default function TradePage() {
     );
   }
 
+  const CancelDialog = () => showCancelDialog ? (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+      <div className="bg-card border border-border rounded-2xl p-6 max-w-sm w-full shadow-2xl">
+        <div className="w-12 h-12 rounded-full bg-destructive/20 flex items-center justify-center mx-auto mb-4">
+          <X className="w-6 h-6 text-destructive" />
+        </div>
+        <h3 className="font-bold text-center text-lg mb-2">Cancel Order?</h3>
+        <p className="text-sm text-muted-foreground text-center mb-5">
+          Are you sure you want to cancel this order? This cannot be undone.
+        </p>
+        <div className="grid grid-cols-2 gap-3">
+          <button onClick={() => setShowCancelDialog(false)} className="py-3 rounded-xl font-bold border border-border text-foreground">
+            Keep Order
+          </button>
+          <button onClick={doCancel} disabled={acting} className="py-3 rounded-xl font-bold bg-destructive text-white disabled:opacity-50">
+            {acting ? "Cancelling..." : "Yes, Cancel"}
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : null;
+
   // ── PAYMENT INSTRUCTIONS (buyer clicked "Pay") ─────────────────────────────
   if (order.status === "unpaid" && isBuyer && viewStep === "payInstructions") {
     return (
       <AppLayout showNav={false}>
+        <CancelDialog />
         {showConfirmDialog && (
           <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60">
             <div className="bg-card border border-border rounded-t-2xl p-6 w-full sm:max-w-[480px]">
@@ -651,6 +744,7 @@ export default function TradePage() {
   if (order.status === "unpaid" && isBuyer) {
     return (
       <AppLayout showNav={false}>
+        <CancelDialog />
         <header className="flex items-center justify-between p-4 border-b border-border sticky top-0 bg-background z-10">
           <button onClick={() => navigate("/orders")}><ArrowLeft className="w-5 h-5" /></button>
           <div />

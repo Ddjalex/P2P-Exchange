@@ -161,10 +161,11 @@ router.post("/", async (req, res) => {
     if (ad.userId === userId) return res.status(400).json({ message: "Cannot trade your own advertisement" });
 
     const etb = parseFloat(amountEtb);
+    const usdtRequested = parseFloat(amountUsdt);
     const minLimit = parseFloat(ad.minLimit);
     const maxLimit = parseFloat(ad.maxLimit);
-    if (minLimit > 0 && etb < minLimit) return res.status(400).json({ message: `Minimum order amount is Br ${minLimit.toLocaleString()}` });
-    if (maxLimit > 0 && etb > maxLimit) return res.status(400).json({ message: `Maximum order amount is Br ${maxLimit.toLocaleString()}` });
+    if (minLimit > 0 && usdtRequested < minLimit) return res.status(400).json({ message: `Minimum order amount is ${minLimit.toLocaleString()} USDT` });
+    if (maxLimit > 0 && usdtRequested > maxLimit) return res.status(400).json({ message: `Maximum order amount is ${maxLimit.toLocaleString()} USDT` });
 
     const adPaymentMethods: string[] = JSON.parse(ad.paymentMethods);
     const pmLower = paymentMethod.toLowerCase().replace(/\s+/g, "");
