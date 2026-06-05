@@ -1,0 +1,409 @@
+Fix these 2 things only. Do not touch anything else.
+
+FIX 1 — Replace browser alert with proper Appeal UI + fix "Failed to raise appeal"
+Problem: Appeal is using browser's native prompt() dialog (ugly, shows URL). Replace with a proper in-app bottom sheet and fix the API error.
+Step A — Build proper Appeal bottom sheet in src/pages/trade.tsx:
+typescript// Add state for appeal sheet
+const [showAppealSheet, setShowAppealSheet] = useState(false);
+const [appealReason, setAppealReason] = useState('');
+const [appealDescription, setAppealDescription] = useState('');
+const [appealImages, setAppealImages] = useState<File[]>([]);
+const [appealLoading, setAppealLoading] = useState(false);
+const [appealError, setAppealError] = useState('');
+
+// Appeal bottom sheet UI:
+{showAppealSheet && (
+  <div style={{
+    position: 'fixed', inset: 0,
+    background: 'rgba(0,0,0,0.7)',
+    zIndex: 1000,
+    display: 'flex',
+    alignItems: 'flex-end'
+  }}>
+    <div style={{
+      background: '#16213e',
+      width: '100%',
+      borderRadius: '16px 16px 0 0',
+      padding: '24px 20px',
+      maxHeight: '85vh',
+      overflowY: 'auto'
+    }}>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
+        <h3 style={{ color: '#fff', fontSize: '18px', fontWeight: 700 }}>Raise Appeal</h3>
+        <button onClick={() => setShowAppealSheet(false)}
+          style={{ background: 'none', border: 'none', color: '#8899aa', fontSize: '20px' }}>×</button>
+      </div>
+
+      {appealError && (
+        <div style={{ background: '#ff4444', padding: '10px', borderRadius: '8px', marginBottom: '16px', color: '#fff', fontSize: '13px' }}>
+          {appealError}
+        </div>
+      )}
+
+      {/* Reason selection */}
+      <div style={{ marginBottom: '16px' }}>
+        <label style={{ color: '#8899aa', fontSize: '12px', marginBottom: '8px', display: 'block' }}>
+          SELECT REASON *
+        </label>
+        {[
+          'I have paid but seller has not released',
+          'Seller is asking for extra fees',
+          'Seller is unresponsive',
+          'I made a wrong payment',
+          'Other'
+        ].map(reason => (
+          <div key={reason}
+            onClick={() => setAppealReason(reason)}
+            style={{
+              padding: '12px 16px',
+              marginBottom: '8px',
+              borderRadius: '8px',
+              border: appealReason === reason ? '1.5px solid #00d4ff' : '1px solid #334455',
+              background: appealReason === reason ? 'rgba(0,212,255,0.08)' : 'transparent',
+              color: appealReason === reason ? '#00d4ff' : '#fff',
+              fontSize: '13px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}>
+            <span style={{
+              width: '16px', height: '16px',
+              borderRadius: '50%',
+              border: appealReason === reason ? '5px solid #00d4ff' : '2px solid #556677',
+              flexShrink: 0
+            }}/>
+            {reason}
+          </div>
+        ))}
+      </div>
+
+      {/* Description */}
+      <div style={{ marginBottom: '16px' }}>
+        <label style={{ color: '#8899aa', fontSize: '12px', marginBottom: '8px', display: 'block' }}>
+          DESCRIPTION (OPTIONAL)
+        </label>
+        <textarea
+          value={appealDescription}
+          onChange={e => setAppealDescription(e.target.value.slice(0, 500))}
+          placeholder="Describe your issue..."
+          maxLength={500}
+          style={{
+            width: '100%', height: '100px',
+            background: 'rgba(255,255,255,0.05)',
+            border: '1px solid #334455',
+            borderRadius: '8px',
+            color: '#fff', fontSize: '13px',
+            padding: '10px', resize: 'none',
+            outline: 'none'
+          }}
+        />
+        <div style={{ textAlign: 'right', fontSize: '11px', color: '#8899aa' }}>
+          {appealDescription.length}/500
+        </div>
+      </div>
+
+      {/* Image upload */}
+      <div style={{ marginBottom: '20px' }}>
+        <label style={{ color: '#8899aa', fontSize: '12px', marginBottom: '8px', display: 'block' }}>
+          EVIDENCE (UP TO 3 SCREENSHOTS)
+        </label>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          {appealImages.map((img, i) => (
+            <div key={i} style={{ position: 'relative' }}>
+              <img src={URL.createObjectURL(img)}
+                style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '8px' }} />
+              <button
+                onClick={() => setAppealImages(prev => prev.filter((_, j) => j !== i))}
+                style={{
+                  position: 'absolute', top: '-6px', right: '-6px',
+                  background: '#ff4444', border: 'none', borderRadius: '50%',
+                  width: '18px', height: '18px', color: '#fff', fontSize: '11px',
+                  cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center'
+                }}>×</button>
+            </div>
+          ))}
+          {appealImages.length < 3 && (
+            <label style={{
+              width: '80px', height: '80px',
+              border: '1.5px dashed #00d4ff',
+              borderRadius: '8px',
+              display: 'flex', flexDirection: 'column',
+              alignItems: 'center', justifyContent: 'center',
+              cursor: 'pointer', color: '#00d4ff', fontSize: '11px', gap: '4px'
+            }}>
+              <span style={{ fontSize: '24px' }}>+</span>
+              <span>Upload</span>
+              <input type="file" accept="image/*" style={{ display: 'none' }}
+                onChange={e => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  if (file.size > 5 * 1024 * 1024) {
+                    setAppealError('Image must be under 5MB');
+                    return;
+                  }
+                  setAppealImages(prev => [...prev, file]);
+                  e.target.value = '';
+                }} />
+            </label>
+          )}
+        </div>
+      </div>
+
+      {/* Warning */}
+      <div style={{
+        background: 'rgba(255,165,0,0.1)',
+        border: '1px solid rgba(255,165,0,0.3)',
+        borderRadius: '8px', padding: '10px 12px',
+        fontSize: '12px', color: '#ffaa00',
+        marginBottom: '20px'
+      }}>
+        ⚠️ Only raise appeal if you have genuinely paid.
+        False appeals may result in account suspension.
+      </div>
+
+      {/* Submit button */}
+      <button
+        disabled={!appealReason || appealLoading}
+        onClick={handleSubmitAppeal}
+        style={{
+          width: '100%', height: '48px',
+          background: appealReason && !appealLoading ? '#00d4ff' : '#334455',
+          border: 'none', borderRadius: '24px',
+          color: appealReason ? '#1a1a2e' : '#8899aa',
+          fontSize: '15px', fontWeight: 700,
+          cursor: appealReason ? 'pointer' : 'not-allowed'
+        }}>
+        {appealLoading ? 'Submitting...' : 'Submit Appeal'}
+      </button>
+    </div>
+  </div>
+)}
+Step B — Fix the appeal submit function:
+typescriptconst handleSubmitAppeal = async () => {
+  if (!appealReason) {
+    setAppealError('Please select a reason');
+    return;
+  }
+  setAppealLoading(true);
+  setAppealError('');
+  try {
+    // Upload images first if any
+    const evidenceUrls: string[] = [];
+    for (const img of appealImages) {
+      const formData = new FormData();
+      formData.append('image', img);
+      const uploadRes = await fetch('/api/upload', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData
+      });
+      if (uploadRes.ok) {
+        const { url } = await uploadRes.json();
+        evidenceUrls.push(url);
+      }
+    }
+
+    // Submit appeal
+    const res = await fetch(`/api/orders/${order.id}/appeal`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        reason: appealReason,
+        description: appealDescription,
+        evidenceUrls
+      })
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      setAppealError(data.message || 'Failed to raise appeal');
+      return;
+    }
+
+    // Success
+    setShowAppealSheet(false);
+    queryClient.invalidateQueries({ queryKey: ['order', order.id] });
+    toast.success('Appeal submitted successfully');
+
+  } catch (e) {
+    setAppealError('Network error. Please try again.');
+  } finally {
+    setAppealLoading(false);
+  }
+};
+Step C — Fix backend POST /api/orders/:id/appeal:
+typescriptapp.post('/api/orders/:id/appeal', authenticate, async (req, res) => {
+  try {
+    const orderId = parseInt(req.params.id);
+    const { reason, description, evidenceUrls } = req.body;
+
+    if (!reason) {
+      return res.status(400).json({ message: 'Please select a reason for appeal' });
+    }
+
+    const order = await db.query.orders.findFirst({
+      where: eq(orders.id, orderId)
+    });
+
+    if (!order) {
+      return res.status(404).json({ message: 'Order not found' });
+    }
+
+    // Only buyer or seller can appeal
+    if (order.buyerId !== req.user.id && order.sellerId !== req.user.id) {
+      return res.status(403).json({ message: 'Not authorized' });
+    }
+
+    // Order must be in paid status
+    if (order.status !== 'paid') {
+      return res.status(400).json({ message: 'Can only appeal orders that are in paid status' });
+    }
+
+    // Insert appeal
+    await db.insert(appeals).values({
+      orderId,
+      raisedBy: req.user.id,
+      reason,
+      description: description || '',
+      evidenceUrls: evidenceUrls || [],
+      status: 'pending',
+      createdAt: new Date()
+    });
+
+    // Update order status to appeal
+    await db.update(orders)
+      .set({ status: 'appeal' })
+      .where(eq(orders.id, orderId));
+
+    // Notify counterparty
+    const counterpartyId = req.user.id === order.buyerId
+      ? order.sellerId
+      : order.buyerId;
+
+    await db.insert(notifications).values({
+      userId: counterpartyId,
+      type: 'appeal_raised',
+      title: 'Appeal Raised',
+      message: `An appeal has been raised for order #${order.orderNo}`,
+      relatedOrderId: orderId,
+      createdAt: new Date()
+    });
+
+    return res.json({ message: 'Appeal submitted successfully' });
+
+  } catch (error) {
+    console.error('Appeal error:', error);
+    return res.status(500).json({ message: 'Failed to raise appeal. Please try again.' });
+  }
+});
+Replace the appeal button to open sheet:
+typescript// Replace old appeal button with:
+<button
+  onClick={() => setShowAppealSheet(true)}
+  disabled={appealTimeLeft > 0}
+  style={{
+    width: '100%', height: '48px',
+    background: 'transparent',
+    border: `1.5px solid ${appealTimeLeft > 0 ? '#334455' : '#ff8800'}`,
+    borderRadius: '24px',
+    color: appealTimeLeft > 0 ? '#556677' : '#ff8800',
+    fontSize: '14px', fontWeight: 600
+  }}>
+  {appealTimeLeft > 0
+    ? `Appeal (${appealMinutes}:${String(appealSeconds).padStart(2,'0')})`
+    : 'Appeal — File Dispute'}
+</button>
+
+FIX 2 — Real-time order notifications for buyer and seller
+Use polling every 5 seconds on the trade page to get live updates:
+In src/pages/trade.tsx:
+typescript// Poll order status every 5 seconds
+const { data: order } = useQuery({
+  queryKey: ['order', orderId],
+  queryFn: () => fetch(`/api/orders/${orderId}`, {
+    headers: { Authorization: `Bearer ${token}` }
+  }).then(r => r.json()),
+  refetchInterval: 5000,         // every 5 seconds
+  refetchIntervalInBackground: true  // even when tab is in background
+});
+
+// Watch for status changes and show toast notifications:
+const prevStatusRef = useRef(order?.status);
+useEffect(() => {
+  if (!order) return;
+  const prev = prevStatusRef.current;
+  const curr = order.status;
+  if (prev && prev !== curr) {
+    // Status changed — show notification
+    if (curr === 'paid') {
+      toast.success('✅ Buyer has marked payment as sent!');
+    }
+    if (curr === 'completed') {
+      toast.success('🎉 Order completed! USDT released to wallet.');
+    }
+    if (curr === 'cancelled') {
+      toast.error('❌ Order has been cancelled.');
+    }
+    if (curr === 'appeal') {
+      toast.warning('⚠️ Appeal has been raised on this order.');
+    }
+  }
+  prevStatusRef.current = curr;
+}, [order?.status]);
+In-app notification bell — poll every 10 seconds:
+typescript// In src/components/layout.tsx or navbar:
+const { data: notifData } = useQuery({
+  queryKey: ['notifications'],
+  queryFn: () => fetch('/api/notifications/unread-count', {
+    headers: { Authorization: `Bearer ${token}` }
+  }).then(r => r.json()),
+  refetchInterval: 10000  // every 10 seconds
+});
+
+// Show red badge on bell icon:
+// notifData?.count > 0 → show badge
+Add GET /api/notifications/unread-count backend:
+typescriptapp.get('/api/notifications/unread-count', authenticate, async (req, res) => {
+  try {
+    const result = await db.query.notifications.findMany({
+      where: and(
+        eq(notifications.userId, req.user.id),
+        eq(notifications.isRead, false)
+      )
+    });
+    return res.json({ count: result.length });
+  } catch (e) {
+    return res.json({ count: 0 });
+  }
+});
+Show notification toast when new order arrives (for seller):
+typescript// In p2p.tsx or orders page — poll for new orders every 10 seconds:
+const { data: openOrders } = useQuery({
+  queryKey: ['open-orders'],
+  queryFn: () => fetch('/api/orders?status=unpaid', {
+    headers: { Authorization: `Bearer ${token}` }
+  }).then(r => r.json()),
+  refetchInterval: 10000
+});
+
+// Watch for new orders:
+const prevOrderCountRef = useRef(0);
+useEffect(() => {
+  if (!openOrders) return;
+  const count = openOrders.length;
+  if (count > prevOrderCountRef.current && prevOrderCountRef.current > 0) {
+    toast.success('🔔 New order received!', { duration: 5000 });
+    // Play notification sound
+    new Audio('/notification.mp3').play().catch(() => {});
+  }
+  prevOrderCountRef.current = count;
+}, [openOrders?.length]);
+Add notification sound file:
+Add a short notification sound file at:
+public/notification.mp3
+(any short beep/chime sound, under 100KB)
