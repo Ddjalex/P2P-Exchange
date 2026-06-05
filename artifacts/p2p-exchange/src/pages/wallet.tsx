@@ -1,6 +1,6 @@
 import { useAuth } from "@/hooks/use-auth";
 import { AppLayout } from "@/components/layout";
-import { Bell, Settings, Eye, EyeOff, ArrowDownToLine, ArrowUpFromLine, X, Copy, Check, Loader2, AlertCircle } from "lucide-react";
+import { Settings, Eye, EyeOff, ArrowDownToLine, ArrowUpFromLine, X, Copy, Check, Loader2, AlertCircle } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useGetWallet, getGetWalletQueryKey } from "@workspace/api-client-react";
 import { useState, useEffect } from "react";
@@ -426,9 +426,6 @@ export default function WalletPage() {
           <button onClick={() => setLocation("/p2p")} className="text-muted-foreground font-medium">P2P</button>
         </div>
         <div className="flex items-center space-x-4 text-muted-foreground">
-          <Link href="/profile?tab=notifications">
-            <Bell className="w-5 h-5 hover:text-foreground transition-colors cursor-pointer" />
-          </Link>
           <Link href="/profile?tab=others">
             <Settings className="w-5 h-5 hover:text-foreground transition-colors cursor-pointer" />
           </Link>
