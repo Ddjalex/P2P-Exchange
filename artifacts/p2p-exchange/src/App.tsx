@@ -28,6 +28,7 @@ import BlockedUsersPage from "@/pages/blocked-users";
 import TraderProfilePage from "@/pages/trader-profile";
 import HelpCenterPage from "@/pages/help-center";
 import AboutPage from "@/pages/about";
+import SharedAdPage from "@/pages/shared-ad";
 
 // Admin pages
 import AdminLoginPage from "@/pages/admin-login";
@@ -80,10 +81,13 @@ function Router() {
         {isLoading ? null : user ? <Redirect to="/wallet" /> : <Redirect to="/auth" />}
       </Route>
 
-      {/* Auth page — redirect to /wallet if already logged in */}
+      {/* Auth page — handles own redirect after login/register */}
       <Route path="/auth">
-        {isLoading ? null : user ? <Redirect to="/wallet" /> : <AuthPage />}
+        {isLoading ? null : <AuthPage />}
       </Route>
+
+      {/* Shared ad link — public, handles own auth redirect */}
+      <Route path="/p2p/ad/:adId" component={SharedAdPage} />
 
       {/* KYC-gated pages — show verification wall if not verified */}
       <Route path="/wallet"><KycProtectedRoute component={WalletPage} /></Route>

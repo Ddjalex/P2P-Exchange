@@ -5,6 +5,7 @@ import { useParams, useLocation } from "wouter";
 import { useState } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 
 const PM_COLORS: Record<string, string> = {
   "Tele Birr": "bg-red-500",
@@ -23,6 +24,7 @@ export default function BuyConfirmPage() {
   const { adId } = useParams();
   const [, navigate] = useLocation();
   const { toast } = useToast();
+  const { user } = useAuth();
   const { data: ad, isLoading } = useGetAd(Number(adId), { query: { enabled: !!adId } });
 
   const [etbAmount, setEtbAmount] = useState("");
@@ -91,7 +93,43 @@ export default function BuyConfirmPage() {
     }
   };
 
-  if (isLoading || !ad) {
+  if (isLoading) {
+    return (
+      <AppLayout showNav={false}>
+        <div className="p-4 space-y-4">
+          <Skeleton className="h-12 w-full" />
+          <Skeleton className="h-40 w-full" />
+          <Skeleton className="h-32 w-full" />
+        </div>
+      </AppLayout>
+    );
+  }
+
+  if (ad && user && (ad as any).userId === user.id) {
+    return (
+      <AppLayout showNav={false}>
+        <header className="flex items-center p-4 border-b border-border">
+          <button onClick={() => navigate("/p2p")} className="mr-3">
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <h1 className="font-bold">Trade Offer</h1>
+        </header>
+        <div className="flex flex-col items-center justify-center p-10 text-center space-y-4">
+          <span className="text-5xl">🪞</span>
+          <h2 className="font-bold text-lg">This is your own ad</h2>
+          <p className="text-sm text-muted-foreground">You cannot trade with yourself.</p>
+          <button
+            onClick={() => navigate("/p2p")}
+            className="text-primary font-medium text-sm"
+          >
+            Browse other ads →
+          </button>
+        </div>
+      </AppLayout>
+    );
+  }
+
+  if (!ad) {
     return (
       <AppLayout showNav={false}>
         <div className="p-4 space-y-4">

@@ -97,7 +97,12 @@ export default function AuthPage() {
   const searchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (!isLoading && user) setLocation("/wallet");
+    if (!isLoading && user) {
+      const params = new URLSearchParams(window.location.search);
+      const dest = params.get("redirect") || localStorage.getItem("redirect_after_auth") || "/wallet";
+      localStorage.removeItem("redirect_after_auth");
+      setLocation(dest);
+    }
   }, [user, isLoading, setLocation]);
 
   useEffect(() => {
@@ -178,7 +183,10 @@ export default function AuthPage() {
       const data = await res.json();
       if (!res.ok) { setLoginErr(data.error || "Login failed"); return; }
       login(data.token, data.user);
-      setLocation("/wallet");
+      const params = new URLSearchParams(window.location.search);
+      const dest = params.get("redirect") || localStorage.getItem("redirect_after_auth") || "/wallet";
+      localStorage.removeItem("redirect_after_auth");
+      setLocation(dest);
     } catch {
       setLoginErr("Network error. Please try again.");
     } finally {
@@ -260,7 +268,10 @@ export default function AuthPage() {
         return;
       }
       login(data.token, data.user);
-      setLocation("/wallet");
+      const params = new URLSearchParams(window.location.search);
+      const dest = params.get("redirect") || localStorage.getItem("redirect_after_auth") || "/wallet";
+      localStorage.removeItem("redirect_after_auth");
+      setLocation(dest);
     } catch { setOtpErr("Network error. Please try again."); }
     finally { setRegLoading(false); }
   }

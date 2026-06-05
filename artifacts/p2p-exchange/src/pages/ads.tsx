@@ -35,6 +35,23 @@ export default function AdsPage() {
     }
   };
 
+  const handleShareAd = (adId: number) => {
+    const shareUrl = `${window.location.origin}/p2p/ad/${adId}`;
+    if (navigator.share) {
+      navigator.share({
+        title: "EthioP2P Trade Offer",
+        text: "Trade USDT with me on EthioP2P!",
+        url: shareUrl,
+      }).catch(() => {});
+    } else {
+      navigator.clipboard.writeText(shareUrl).then(() => {
+        toast({ title: "Link copied to clipboard!" });
+      }).catch(() => {
+        toast({ title: "Could not copy link", variant: "destructive" });
+      });
+    }
+  };
+
   return (
     <AppLayout>
       <header className="flex items-center justify-between p-4 border-b border-border">
@@ -99,6 +116,12 @@ export default function AdsPage() {
                   ))}
                 </div>
                 <div className="flex items-center space-x-3">
+                  <button
+                    onClick={() => handleShareAd(ad.id)}
+                    className="text-xs text-primary flex items-center gap-1 hover:opacity-80 transition-opacity"
+                  >
+                    🔗 Share
+                  </button>
                   <Link href={`/ads/edit/${ad.id}`} className="text-xs text-primary flex items-center gap-1 hover:opacity-80 transition-opacity">
                     <Pencil className="w-3 h-3" /> Edit
                   </Link>
