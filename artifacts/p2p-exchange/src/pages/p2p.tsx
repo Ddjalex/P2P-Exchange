@@ -1,7 +1,7 @@
 import { AppLayout } from "@/components/layout";
-import { Bell, Filter, ShieldCheck, Lock, X, ChevronDown } from "lucide-react";
+import { Bell, Filter, ShieldCheck, Lock, X, ChevronDown, RefreshCw } from "lucide-react";
 import { useListAds } from "@workspace/api-client-react";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Link, useLocation } from "wouter";
 
@@ -45,8 +45,26 @@ export default function P2PPage() {
   if (appliedAmount) filterParams.min_amount = appliedAmount;
   if (selectedPayment !== "All") filterParams.payment_method = selectedPayment;
 
-  const { data: adsRaw, isLoading } = useListAds(filterParams as any);
+  const { data: adsRaw, isLoading, isFetching, dataUpdatedAt } = useListAds(filterParams as any, {
+    query: { refetchInterval: 30_000 },
+  });
   const ads = Array.isArray(adsRaw) ? adsRaw : [];
+
+  // Live "X seconds ago" counter
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setTick(n => n + 1), 5000);
+    return () => clearInterval(t);
+  }, []);
+
+  const updatedLabel = useMemo(() => {
+    if (!dataUpdatedAt) return null;
+    const secs = Math.floor((Date.now() - dataUpdatedAt) / 1000);
+    if (secs < 10) return "just now";
+    if (secs < 60) return `${Math.floor(secs / 5) * 5}s ago`;
+    return `${Math.floor(secs / 60)}m ago`;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dataUpdatedAt, Math.floor(Date.now() / 5000)]);
 
   const hasFilters = appliedAmount || selectedPayment !== "All";
 
@@ -178,6 +196,19 @@ export default function P2PPage() {
                 Apply
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Refresh indicator */}
+      {updatedLabel && (
+        <div className="px-4 mb-2 flex items-center justify-between">
+          <span className="text-[11px] text-muted-foreground">
+            {ads.length} {ads.length === 1 ? "ad" : "ads"} · refreshes every 30s
+          </span>
+          <div className="flex items-center space-x-1 text-[11px] text-muted-foreground">
+            <RefreshCw className={`w-3 h-3 ${isFetching ? "animate-spin text-primary" : ""}`} />
+            <span>{updatedLabel}</span>
           </div>
         </div>
       )}
