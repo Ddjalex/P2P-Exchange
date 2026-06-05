@@ -84,6 +84,44 @@ export default function ChatThreadPage() {
 
   const isBuyer = user?.id === order?.buyerId;
   const counterpartyName = isBuyer ? order?.sellerUsername : order?.buyerUsername;
+  const counterpartyId = order ? (isBuyer ? order.sellerId : order.buyerId) : null;
+
+  // Live online status for counterparty
+  const [counterpartyOnline, setCounterpartyOnline] = useState(false);
+  const [counterpartyLastActive, setCounterpartyLastActive] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!counterpartyId) return;
+    const token = localStorage.getItem("p2p_token");
+    const poll = () => {
+      fetch(`/api/users/${counterpartyId}/status`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+          if (data) {
+            setCounterpartyOnline(data.online);
+            setCounterpartyLastActive(data.lastActiveAt ?? null);
+          }
+        })
+        .catch(() => {});
+    };
+    poll();
+    const interval = setInterval(poll, 30_000);
+    return () => clearInterval(interval);
+  }, [counterpartyId]);
+
+  function lastSeenShort(lastActiveAt: string | null): string {
+    if (!lastActiveAt) return "last seen a while ago";
+    const diffMs = Date.now() - new Date(lastActiveAt).getTime();
+    const mins = Math.floor(diffMs / 60000);
+    if (mins < 1) return "last seen just now";
+    if (mins < 60) return `last seen ${mins}m ago`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return `last seen ${hours}h ago`;
+    return `last seen ${Math.floor(hours / 24)}d ago`;
+  }
+
   const statusText = {
     unpaid: "Waiting for payment",
     paid: "Payment marked — awaiting release",
@@ -103,7 +141,19 @@ export default function ChatThreadPage() {
             </Link>
             <div>
               <h1 className="font-bold text-sm">{counterpartyName ?? "Loading..."}</h1>
-              <p className="text-xs text-muted-foreground">{statusText}</p>
+              {counterpartyOnline ? (
+                <div className="flex items-center space-x-1">
+                  <span className="relative flex w-1.5 h-1.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75" />
+                    <span className="relative inline-flex rounded-full w-1.5 h-1.5 bg-success" />
+                  </span>
+                  <span className="text-xs text-success">Online</span>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  {counterpartyLastActive ? lastSeenShort(counterpartyLastActive) : statusText}
+                </p>
+              )}
             </div>
           </div>
           {order && (
@@ -212,7 +262,7 @@ export default function ChatThreadPage() {
       </div>
 
       {/* Input */}
-      <div className="fixed bottom-0 left-0 right-0 p-3 bg-background border-t border-border sm:max-w-[480px] sm:mx-auto">
+      <div className="fixed bottom-0 left-0 right-0 bg-background border-t border-border sm:max-w-[480px] sm:mx-auto" style={{ padding: "12px 16px 12px 12px" }}>
         <input
           ref={fileInputRef}
           type="file"

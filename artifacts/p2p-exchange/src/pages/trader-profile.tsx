@@ -49,16 +49,23 @@ interface TraderProfile {
   }[];
 }
 
+const ONLINE_THRESHOLD_MS = 5 * 60 * 1000;
+
+function isOnline(lastActiveAt: string | null): boolean {
+  if (!lastActiveAt) return false;
+  return Date.now() - new Date(lastActiveAt).getTime() < ONLINE_THRESHOLD_MS;
+}
+
 function lastSeenText(lastActiveAt: string | null): string {
   if (!lastActiveAt) return "a while ago";
   const diffMs = Date.now() - new Date(lastActiveAt).getTime();
   const mins = Math.floor(diffMs / 60000);
   if (mins < 1) return "just now";
-  if (mins < 60) return `${mins} min(s) ago`;
+  if (mins < 60) return `${mins}m ago`;
   const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours} hour(s) ago`;
+  if (hours < 24) return `${hours}h ago`;
   const days = Math.floor(hours / 24);
-  return `${days} day(s) ago`;
+  return `${days}d ago`;
 }
 
 export default function TraderProfilePage() {
@@ -72,6 +79,8 @@ export default function TraderProfilePage() {
   const [tab, setTab] = useState<"info" | "ads" | "feedback">("info");
   const [following, setFollowing] = useState(false);
   const [followLoading, setFollowLoading] = useState(false);
+  const [liveOnline, setLiveOnline] = useState(false);
+  const [liveLastActive, setLiveLastActive] = useState<string | null>(null);
 
   useEffect(() => {
     if (!userId) return;
@@ -88,10 +97,33 @@ export default function TraderProfilePage() {
         }
         setProfile(data);
         setFollowing(data.isFollowing ?? false);
+        setLiveLastActive(data.lastActiveAt ?? null);
+        setLiveOnline(isOnline(data.lastActiveAt));
       })
       .catch(() => toast({ title: "Failed to load profile", variant: "destructive" }))
       .finally(() => setLoading(false));
   }, [userId]);
+
+  // Poll live status every 30 seconds
+  useEffect(() => {
+    if (!userId || !profile) return;
+    const token = localStorage.getItem("p2p_token");
+    const poll = () => {
+      fetch(`/api/users/${userId}/status`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+          if (data) {
+            setLiveOnline(data.online);
+            setLiveLastActive(data.lastActiveAt);
+          }
+        })
+        .catch(() => {});
+    };
+    const interval = setInterval(poll, 30_000);
+    return () => clearInterval(interval);
+  }, [userId, profile]);
 
   const handleFollow = async () => {
     if (!userId) return;
@@ -172,10 +204,20 @@ export default function TraderProfilePage() {
                 <span className="text-xs bg-warning/20 text-warning px-2 py-0.5 rounded-full font-semibold">Merchant</span>
               )}
             </div>
-            <div className="flex items-center justify-center space-x-1 mt-0.5 text-xs text-muted-foreground">
-              <span className="w-1.5 h-1.5 rounded-full bg-success inline-block" />
-              <span>Last seen {lastSeenText(profile.lastActiveAt)}</span>
-            </div>
+            {liveOnline ? (
+              <div className="flex items-center justify-center space-x-1 mt-0.5 text-xs text-success">
+                <span className="relative flex w-2 h-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75" />
+                  <span className="relative inline-flex rounded-full w-2 h-2 bg-success" />
+                </span>
+                <span>Online</span>
+              </div>
+            ) : (
+              <div className="flex items-center justify-center space-x-1 mt-0.5 text-xs text-muted-foreground">
+                <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/40 inline-block" />
+                <span>Last seen {lastSeenText(liveLastActive ?? profile.lastActiveAt)}</span>
+              </div>
+            )}
           </div>
 
           <div className="flex flex-wrap justify-center gap-2 text-xs mt-1">

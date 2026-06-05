@@ -5,6 +5,32 @@ import { eq, or, and, desc } from "drizzle-orm";
 
 const router = Router();
 
+const ONLINE_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes = "online"
+
+// ── GET /api/users/:id/status — lightweight online status check ───────────────
+router.get("/:id/status", async (req, res) => {
+  try {
+    const targetId = parseInt(req.params.id);
+    if (isNaN(targetId)) return res.status(400).json({ message: "Invalid user ID" });
+
+    const row = await db
+      .select({ lastActiveAt: usersTable.lastActiveAt })
+      .from(usersTable)
+      .where(eq(usersTable.id, targetId))
+      .then(r => r[0]);
+
+    if (!row) return res.status(404).json({ message: "Not found" });
+
+    const online = row.lastActiveAt
+      ? Date.now() - new Date(row.lastActiveAt).getTime() < ONLINE_THRESHOLD_MS
+      : false;
+
+    return res.json({ online, lastActiveAt: row.lastActiveAt ?? null });
+  } catch (err: any) {
+    return res.status(500).json({ message: "Internal server error" });
+  }
+});
+
 router.get("/:id/profile", async (req, res) => {
   try {
     const targetId = parseInt(req.params.id);
