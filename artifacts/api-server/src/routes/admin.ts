@@ -6,7 +6,7 @@ import {
   usersTable, adsTable, ordersTable, kycSubmissionsTable, appealsTable,
   transactionsTable, walletsTable, messagesTable, notificationsTable,
   adminLogsTable, systemSettingsTable, notificationHistoryTable, fraudFlagsTable,
-  depositVerificationsTable, cardWaitlistTable,
+  depositVerificationsTable, cardWaitlistTable, feeSettingsTable, platformWalletTable,
 } from "@workspace/db";
 import { eq, desc, and, or, ilike, sql, ne, count } from "drizzle-orm";
 
@@ -1302,6 +1302,53 @@ router.get("/card/waitlist", adminAuth, async (req, res) => {
   } catch (err) {
     req.log.error({ err }, "Admin card waitlist failed");
     return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ─── FEE MANAGEMENT ──────────────────────────────────────────────────────────
+
+router.get("/fees", adminAuth, async (req, res) => {
+  try {
+    const fees = await db.select().from(feeSettingsTable);
+    const feeMap: Record<string, number> = {};
+    fees.forEach(f => { feeMap[f.feeType] = Number(f.value); });
+
+    const platformWalletRow = await db.select().from(platformWalletTable)
+      .where(eq(platformWalletTable.asset, "USDT")).then(r => r[0]);
+
+    return res.json({
+      ...feeMap,
+      totalCollected: Number(platformWalletRow?.totalCollected ?? 0),
+    });
+  } catch (err) {
+    req.log.error({ err }, "Admin fees fetch failed");
+    return res.status(500).json({ error: "Failed to fetch fees" });
+  }
+});
+
+router.patch("/fees", adminAuth, async (req, res) => {
+  try {
+    const { feeType, value } = req.body;
+
+    if (typeof value !== "number" || value < 0 || value > 10) {
+      return res.status(400).json({ error: "Fee value must be between 0 and 10" });
+    }
+
+    const validTypes = ["maker_fee_percent", "taker_fee_percent", "withdrawal_fee_trc20", "withdrawal_fee_erc20"];
+    if (!validTypes.includes(feeType)) {
+      return res.status(400).json({ error: "Invalid fee type" });
+    }
+
+    await db.update(feeSettingsTable)
+      .set({ value: String(value), updatedAt: new Date() })
+      .where(eq(feeSettingsTable.feeType, feeType));
+
+    await log(req.adminEmail, "update_fee", "fee_settings", undefined, `Updated ${feeType} to ${value}`);
+
+    return res.json({ message: "Fee updated successfully" });
+  } catch (err) {
+    req.log.error({ err }, "Admin fee update failed");
+    return res.status(500).json({ error: "Failed to update fee" });
   }
 });
 

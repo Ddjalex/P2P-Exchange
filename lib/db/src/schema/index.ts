@@ -16,3 +16,6 @@ export * from "./follows";
 export * from "./blocked_users";
 export * from "./deposit_verifications";
 export * from "./card_waitlist";
+export * from "./fee_settings";
+export * from "./platform_wallet";
+export * from "./fee_transactions";

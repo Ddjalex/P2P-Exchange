@@ -15,11 +15,13 @@ import adminRouter from "./admin";
 import sseRouter from "./sse";
 import usersRouter from "./users";
 import cardRouter from "./card";
+import feesRouter from "./fees";
 
 const router: IRouter = Router();
 
 router.use(healthRouter);
 router.use("/auth", authRouter);
+router.use("/fees", feesRouter);
 
 // All routes below require a valid user JWT
 router.use("/wallet", userAuth, walletRouter);

@@ -3,6 +3,7 @@ import { ArrowLeft, X, AlertCircle } from "lucide-react";
 import { useGetAd } from "@workspace/api-client-react";
 import { useParams, useLocation } from "wouter";
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
@@ -27,8 +28,16 @@ export default function BuyConfirmPage() {
   const { user } = useAuth();
   const { data: ad, isLoading } = useGetAd(Number(adId), { query: { enabled: !!adId } });
 
-  // ETB mode: user enters ETB to pay → calculates USDT to receive
-  // USDT mode: user enters USDT to receive → calculates ETB to pay
+  const { data: feeData } = useQuery({
+    queryKey: ["fees"],
+    queryFn: () => fetch("/api/fees").then(r => r.json()),
+    staleTime: 60_000,
+  });
+
+  const makerFeePercent: number = feeData?.makerFeePercent ?? 0.20;
+  const takerFeePercent: number = feeData?.takerFeePercent ?? 0.10;
+  const totalFeePercent: number = makerFeePercent + takerFeePercent;
+
   const [inputMode, setInputMode] = useState<"ETB" | "USDT">("ETB");
   const [inputValue, setInputValue] = useState("");
   const [selectedPayment, setSelectedPayment] = useState<string | null>(null);
@@ -42,12 +51,14 @@ export default function BuyConfirmPage() {
   const maxLimit = safeNum(ad?.maxLimit);
   const available = safeNum(ad?.availableAmount);
 
-  // Derived amounts
   const inputNum = parseFloat(inputValue) || 0;
   const usdtNum = inputMode === "ETB" ? (price > 0 ? inputNum / price : 0) : inputNum;
   const etbNum  = inputMode === "USDT" ? inputNum * price : inputNum;
   const usdtDisplay = usdtNum > 0 ? usdtNum.toFixed(4) : "0.0000";
   const etbDisplay  = etbNum > 0  ? etbNum.toFixed(2)  : "0.00";
+
+  const feeUsdt = usdtNum * totalFeePercent / 100;
+  const netUsdt = usdtNum - feeUsdt;
 
   const handleToggle = () => {
     setInputMode(m => m === "ETB" ? "USDT" : "ETB");
@@ -69,7 +80,6 @@ export default function BuyConfirmPage() {
 
   const handleClear = () => { setInputValue(""); setError(null); };
 
-  // Validate against USDT limits (limits are stored in USDT)
   const withinLimits =
     (minLimit === 0 || usdtNum >= minLimit) &&
     (maxLimit === 0 || usdtNum <= maxLimit);
@@ -194,7 +204,7 @@ export default function BuyConfirmPage() {
           </div>
         )}
 
-        {/* Amount Input — ETB or USDT mode */}
+        {/* Amount Input */}
         <div className="bg-card border border-border rounded-xl p-4">
           <label className="text-xs text-muted-foreground block mb-2">
             {inputMode === "ETB" ? "I want to pay" : "I want to receive"}
@@ -218,7 +228,6 @@ export default function BuyConfirmPage() {
             >
               Max
             </button>
-            {/* Clickable toggle between ETB and USDT */}
             <button
               onClick={handleToggle}
               title="Tap to switch input currency"
@@ -232,22 +241,58 @@ export default function BuyConfirmPage() {
           </p>
         </div>
 
-        {/* Calculated other side */}
+        {/* I will receive — with fee breakdown */}
         <div className="bg-card border border-border rounded-xl p-4">
           <label className="text-xs text-muted-foreground block mb-2">
             {inputMode === "ETB" ? "I will receive" : "I will pay"}
           </label>
-          <div className="flex items-center space-x-2">
-            <span className="flex-1 text-xl font-bold font-mono">
-              {inputMode === "ETB" ? usdtDisplay : etbDisplay}
-            </span>
-            <span className="px-2.5 py-1 rounded-md bg-secondary text-xs font-bold text-muted-foreground flex-shrink-0">
-              {inputMode === "ETB" ? "USDT" : "ETB"}
-            </span>
-          </div>
-          <p className="text-[11px] text-muted-foreground mt-1">
-            Price: {Number(ad.price).toLocaleString()} ETB/USDT
-          </p>
+          {inputMode === "ETB" ? (
+            <>
+              <div className="flex items-center space-x-2 mb-1">
+                <span className="flex-1 text-2xl font-bold font-mono text-foreground">
+                  {netUsdt > 0 ? netUsdt.toFixed(4) : "0.0000"}
+                </span>
+                <span className="px-2.5 py-1 rounded-md bg-secondary text-xs font-bold text-muted-foreground flex-shrink-0">
+                  USDT
+                </span>
+              </div>
+              <p className="text-[11px] text-muted-foreground mb-3">
+                Price: {Number(ad.price).toLocaleString()} ETB/USDT
+              </p>
+              {usdtNum > 0 && (
+                <div className="border-t border-border pt-3 space-y-1.5">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground text-[11px]">Gross amount</span>
+                    <span className="text-foreground text-[11px]">{usdtNum.toFixed(4)} USDT</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground text-[11px]">Maker fee ({makerFeePercent}%)</span>
+                    <span className="text-orange-400 text-[11px]">-{(usdtNum * makerFeePercent / 100).toFixed(4)} USDT</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground text-[11px]">Taker fee ({takerFeePercent}%)</span>
+                    <span className="text-orange-400 text-[11px]">-{(usdtNum * takerFeePercent / 100).toFixed(4)} USDT</span>
+                  </div>
+                  <div className="flex justify-between border-t border-border pt-1.5 mt-1">
+                    <span className="text-primary text-[12px] font-semibold">You receive</span>
+                    <span className="text-primary text-[12px] font-bold">{netUsdt.toFixed(4)} USDT</span>
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <div className="flex items-center space-x-2">
+                <span className="flex-1 text-xl font-bold font-mono">{etbDisplay}</span>
+                <span className="px-2.5 py-1 rounded-md bg-secondary text-xs font-bold text-muted-foreground flex-shrink-0">
+                  ETB
+                </span>
+              </div>
+              <p className="text-[11px] text-muted-foreground mt-1">
+                Price: {Number(ad.price).toLocaleString()} ETB/USDT
+              </p>
+            </>
+          )}
         </div>
 
         {/* Payment Method */}

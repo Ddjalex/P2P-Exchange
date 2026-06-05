@@ -1,4 +1,4 @@
-import { pgTable, serial, integer, text, timestamp, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, serial, integer, text, timestamp, pgEnum, numeric } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -24,6 +24,12 @@ export const ordersTable = pgTable("orders", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
   paidAt: timestamp("paid_at"),
   completedAt: timestamp("completed_at"),
+  makerFeePercent: numeric("maker_fee_percent", { precision: 10, scale: 4 }).default("0.20"),
+  takerFeePercent: numeric("taker_fee_percent", { precision: 10, scale: 4 }).default("0.10"),
+  makerFeeAmount: numeric("maker_fee_amount", { precision: 20, scale: 8 }).default("0"),
+  takerFeeAmount: numeric("taker_fee_amount", { precision: 20, scale: 8 }).default("0"),
+  makerNetAmount: numeric("maker_net_amount", { precision: 20, scale: 8 }).default("0"),
+  takerNetAmount: numeric("taker_net_amount", { precision: 20, scale: 8 }).default("0"),
 });
 
 export const insertOrderSchema = createInsertSchema(ordersTable).omit({ id: true, createdAt: true });

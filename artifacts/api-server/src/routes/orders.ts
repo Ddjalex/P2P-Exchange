@@ -1,8 +1,9 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { ordersTable, adsTable, usersTable, messagesTable, appealsTable, feedbackTable, walletsTable, paymentMethodsTable } from "@workspace/db";
-import { eq, and, or, desc } from "drizzle-orm";
+import { ordersTable, adsTable, usersTable, messagesTable, appealsTable, feedbackTable, walletsTable, paymentMethodsTable, transactionsTable, feeTransactionsTable, platformWalletTable } from "@workspace/db";
+import { eq, and, or, desc, sql } from "drizzle-orm";
 import { notify } from "../lib/notify.js";
+import { getFeePercents, calculateFees } from "../helpers/fees.js";
 
 const router = Router();
 
@@ -30,20 +31,6 @@ async function freezeSellerUsdt(sellerId: number, amountUsdt: string) {
   }
 }
 
-async function releaseUsdtToBuyer(sellerId: number, buyerId: number, amountUsdt: string) {
-  const amount = parseFloat(amountUsdt);
-  const sellerWallet = await getOrCreateWallet(sellerId);
-  const sellerFrozen = parseFloat(sellerWallet.frozenBalance);
-  await db.update(walletsTable).set({
-    frozenBalance: Math.max(0, sellerFrozen - amount).toFixed(4),
-  }).where(eq(walletsTable.userId, sellerId));
-  const buyerWallet = await getOrCreateWallet(buyerId);
-  const buyerAvailable = parseFloat(buyerWallet.availableBalance);
-  await db.update(walletsTable).set({
-    availableBalance: (buyerAvailable + amount).toFixed(4),
-  }).where(eq(walletsTable.userId, buyerId));
-}
-
 async function returnUsdtToSeller(sellerId: number, amountUsdt: string) {
   const amount = parseFloat(amountUsdt);
   const wallet = await getOrCreateWallet(sellerId);
@@ -61,7 +48,6 @@ async function getSellerPaymentDetails(sellerId: number, paymentMethod: string):
   const methods = await db.select().from(paymentMethodsTable).where(eq(paymentMethodsTable.userId, sellerId));
   if (methods.length === 0) return { accountName: "", accountNumber: "" };
 
-  // Try to match by type (case-insensitive prefix match)
   const pm = paymentMethod.toLowerCase().replace(/\s+/g, "");
   const match = methods.find(m => {
     const t = m.type.toLowerCase().replace(/\s+/g, "");
@@ -114,6 +100,12 @@ async function formatOrder(order: any, viewerId?: number) {
     adminNote: order.adminNote ?? null,
     sellerAccountName: accountName,
     sellerAccountNumber: accountNumber,
+    makerFeePercent: order.makerFeePercent ?? "0.20",
+    takerFeePercent: order.takerFeePercent ?? "0.10",
+    makerFeeAmount: order.makerFeeAmount ?? "0",
+    takerFeeAmount: order.takerFeeAmount ?? "0",
+    makerNetAmount: order.makerNetAmount ?? "0",
+    takerNetAmount: order.takerNetAmount ?? "0",
   };
 }
 
@@ -190,9 +182,6 @@ router.post("/", async (req, res) => {
     const buyerId = isBuying ? userId : ad.userId;
     const sellerId = isBuying ? ad.userId : userId;
 
-    // USDT was already frozen when the ad was posted — only check ad.availableAmount (done above).
-    // Do NOT re-check the wallet here; that balance is already frozen and will always appear low.
-
     const now = new Date();
     const appealAvailableAt = new Date(now.getTime() + ad.paymentTimeLimit * 60 * 1000);
 
@@ -210,12 +199,10 @@ router.post("/", async (req, res) => {
       appealAvailableAt,
     }).returning();
 
-    // Reduce ad available amount only — wallet was already frozen at ad-post time.
     await db.update(adsTable).set({
       availableAmount: Math.max(0, available - usdt).toFixed(4),
     }).where(eq(adsTable.id, adId));
 
-    // System message
     await db.insert(messagesTable).values({
       orderId: order.id,
       senderId: 0,
@@ -225,7 +212,6 @@ router.post("/", async (req, res) => {
       isRead: false,
     });
 
-    // Notify seller of new order
     await notify({
       userId: sellerId,
       type: "order_created",
@@ -281,7 +267,6 @@ router.post("/:id/mark-paid", async (req, res) => {
       isRead: false,
     });
 
-    // Notify seller payment was sent
     await notify({
       userId: order.sellerId,
       type: "payment_sent",
@@ -308,29 +293,125 @@ router.post("/:id/release", async (req, res) => {
     if (order.sellerId !== userId) return res.status(403).json({ message: "Only the seller can release crypto" });
     if (order.status !== "paid") return res.status(400).json({ message: "Order has not been marked as paid" });
 
+    const { makerFeePercent, takerFeePercent } = await getFeePercents();
+    const grossUsdt = Number(order.amountUsdt);
+    const { makerFee, takerFee, totalFee, netUsdt } = calculateFees(grossUsdt, makerFeePercent, takerFeePercent);
+
+    const ad = await db.select().from(adsTable).where(eq(adsTable.id, order.adId)).then(r => r[0]);
+    const makerId = ad?.userId ?? order.sellerId;
+    const takerId = makerId === order.buyerId ? order.sellerId : order.buyerId;
+    const buyerReceives = netUsdt;
     const now = new Date();
-    const [updated] = await db.update(ordersTable)
-      .set({ status: "completed", completedAt: now, releasedAt: now })
-      .where(eq(ordersTable.id, id))
-      .returning();
 
-    await releaseUsdtToBuyer(order.sellerId, order.buyerId, order.amountUsdt);
+    await db.transaction(async (tx) => {
+      // 1. Release seller frozen USDT
+      const sellerWallet = await tx.select().from(walletsTable).where(eq(walletsTable.userId, order.sellerId)).then(r => r[0]);
+      if (sellerWallet) {
+        const sellerFrozen = parseFloat(sellerWallet.frozenBalance);
+        await tx.update(walletsTable)
+          .set({ frozenBalance: Math.max(0, sellerFrozen - grossUsdt).toFixed(8) })
+          .where(eq(walletsTable.userId, order.sellerId));
+      }
 
-    await db.insert(messagesTable).values({
-      orderId: id,
-      senderId: 0,
-      receiverId: order.buyerId,
-      content: "Seller has released the crypto. Order is now completed!",
-      type: "system",
-      isRead: false,
+      // 2. Credit buyer with NET amount (after fees)
+      const buyerWallet = await tx.select().from(walletsTable).where(eq(walletsTable.userId, order.buyerId)).then(r => r[0]);
+      const buyerAvailable = buyerWallet ? parseFloat(buyerWallet.availableBalance) : 0;
+      if (buyerWallet) {
+        await tx.update(walletsTable)
+          .set({ availableBalance: (buyerAvailable + buyerReceives).toFixed(8) })
+          .where(eq(walletsTable.userId, order.buyerId));
+      } else {
+        await tx.insert(walletsTable).values({
+          userId: order.buyerId,
+          availableBalance: buyerReceives.toFixed(8),
+          frozenBalance: "0.00",
+        });
+      }
+
+      // 3. Add fees to platform wallet (upsert)
+      const existingPlatformWallet = await tx.select().from(platformWalletTable)
+        .where(eq(platformWalletTable.asset, "USDT")).then(r => r[0]);
+      if (existingPlatformWallet) {
+        const current = parseFloat(String(existingPlatformWallet.totalCollected));
+        await tx.update(platformWalletTable)
+          .set({ totalCollected: (current + totalFee).toFixed(8), updatedAt: now })
+          .where(eq(platformWalletTable.asset, "USDT"));
+      } else {
+        await tx.insert(platformWalletTable).values({ asset: "USDT", totalCollected: totalFee.toFixed(8) });
+      }
+
+      // 4. Update order with fee details and complete
+      await tx.update(ordersTable)
+        .set({
+          status: "completed",
+          makerFeePercent: String(makerFeePercent),
+          takerFeePercent: String(takerFeePercent),
+          makerFeeAmount: makerFee.toFixed(8),
+          takerFeeAmount: takerFee.toFixed(8),
+          makerNetAmount: (grossUsdt - makerFee).toFixed(8),
+          takerNetAmount: buyerReceives.toFixed(8),
+          releasedAt: now,
+          completedAt: now,
+        })
+        .where(eq(ordersTable.id, id));
+
+      // 5. Log fee transactions
+      await tx.insert(feeTransactionsTable).values([
+        {
+          orderId: id,
+          userId: makerId,
+          feeType: "maker",
+          feePercent: String(makerFeePercent),
+          grossAmount: grossUsdt.toFixed(8),
+          feeAmount: makerFee.toFixed(8),
+          netAmount: (grossUsdt - makerFee).toFixed(8),
+        },
+        {
+          orderId: id,
+          userId: takerId,
+          feeType: "taker",
+          feePercent: String(takerFeePercent),
+          grossAmount: grossUsdt.toFixed(8),
+          feeAmount: takerFee.toFixed(8),
+          netAmount: buyerReceives.toFixed(8),
+        },
+      ]);
+
+      // 6. Transaction records
+      await tx.insert(transactionsTable).values([
+        {
+          userId: order.buyerId,
+          type: "p2p_buy",
+          amount: buyerReceives.toFixed(8),
+          status: "completed",
+          note: `Bought ${grossUsdt} USDT. Fee: ${totalFee.toFixed(8)} USDT. Received: ${buyerReceives.toFixed(8)} USDT`,
+        },
+        {
+          userId: order.sellerId,
+          type: "p2p_sell",
+          amount: grossUsdt.toFixed(8),
+          status: "completed",
+          note: `Sold ${grossUsdt} USDT`,
+        },
+      ]);
+
+      // 7. System chat message
+      await tx.insert(messagesTable).values({
+        orderId: id,
+        senderId: 0,
+        receiverId: order.buyerId,
+        content: "Seller has released the crypto. Order is now completed!",
+        type: "system",
+        isRead: false,
+      });
     });
 
-    // Notify both parties of completion
+    // 8. Notifications (outside tx)
     await notify({
       userId: order.buyerId,
       type: "order_completed",
       title: "✅ Order Completed",
-      message: `${parseFloat(order.amountUsdt).toFixed(4)} USDT has been deposited to your wallet!`,
+      message: `You received ${buyerReceives.toFixed(4)} USDT (fee: ${totalFee.toFixed(4)} USDT deducted)`,
       relatedOrderId: id,
     });
     await notify({
@@ -341,10 +422,11 @@ router.post("/:id/release", async (req, res) => {
       relatedOrderId: id,
     });
 
+    const updated = await db.select().from(ordersTable).where(eq(ordersTable.id, id)).then(r => r[0]);
     res.json(await formatOrder(updated, userId));
   } catch (err) {
     req.log.error({ err }, "Failed to release crypto");
-    res.status(500).json({ message: "Internal server error" });
+    res.status(500).json({ message: "Failed to release crypto" });
   }
 });
 
@@ -366,7 +448,6 @@ router.post("/:id/cancel", async (req, res) => {
 
     await returnUsdtToSeller(order.sellerId, order.amountUsdt);
 
-    // Restore ad available amount
     const ad = await db.select().from(adsTable).where(eq(adsTable.id, order.adId)).then(r => r[0]);
     if (ad) {
       const restored = parseFloat(ad.availableAmount) + parseFloat(order.amountUsdt);
@@ -376,7 +457,6 @@ router.post("/:id/cancel", async (req, res) => {
       }).where(eq(adsTable.id, order.adId));
     }
 
-    // Notify counterparty of cancellation
     const cancelledByRole = userId === order.buyerId ? "buyer" : "seller";
     const counterpartyId = userId === order.buyerId ? order.sellerId : order.buyerId;
     await notify({
@@ -426,7 +506,6 @@ router.post("/:id/appeal", async (req, res) => {
       isRead: false,
     });
 
-    // Notify counterparty of appeal
     const appealCounterpartyId = userId === order.buyerId ? order.sellerId : order.buyerId;
     await notify({
       userId: appealCounterpartyId,
@@ -435,7 +514,6 @@ router.post("/:id/appeal", async (req, res) => {
       message: `An appeal has been filed on order #${id}. Admin will review shortly.`,
       relatedOrderId: id,
     });
-    // Notify admin (userId 1)
     await notify({
       userId: 1,
       type: "appeal_admin",
