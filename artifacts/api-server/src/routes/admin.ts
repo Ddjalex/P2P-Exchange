@@ -918,41 +918,6 @@ router.put("/settings", adminAuth, async (req: any, res) => {
 
 // ─── FEES ────────────────────────────────────────────────────────────────────
 
-const DEFAULT_FEES: Record<string, string> = {
-  makerFee: "0.20",
-  takerFee: "0.10",
-  withdrawFeesTRC20: "1.00",
-  withdrawFeesERC20: "5.00",
-  minOrderAmount: "500",
-  maxOrderAmount: "1000000",
-};
-
-router.get("/fees", adminAuth, async (req, res) => {
-  try {
-    const rows = await db.select().from(systemSettingsTable);
-    const fees = { ...DEFAULT_FEES };
-    for (const row of rows) if (row.key in fees) fees[row.key] = row.value;
-    res.json(fees);
-  } catch (err) {
-    req.log.error({ err }, "Admin fees get failed");
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-router.put("/fees", adminAuth, async (req: any, res) => {
-  try {
-    const updates = req.body ?? {};
-    for (const [key, value] of Object.entries(updates)) {
-      await db.insert(systemSettingsTable).values({ key, value: String(value), updatedAt: new Date() })
-        .onConflictDoUpdate({ target: systemSettingsTable.key, set: { value: String(value), updatedAt: new Date() } });
-    }
-    await log(req.adminEmail, "update_fees", "fees", undefined, Object.keys(updates).join(", "));
-    res.json({ success: true });
-  } catch (err) {
-    req.log.error({ err }, "Admin fees update failed");
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
 
 // ─── TEST INTEGRATIONS ────────────────────────────────────────────────────────
 
@@ -1330,13 +1295,20 @@ router.patch("/fees", adminAuth, async (req, res) => {
   try {
     const { feeType, value } = req.body;
 
-    if (typeof value !== "number" || value < 0 || value > 10) {
-      return res.status(400).json({ error: "Fee value must be between 0 and 10" });
-    }
-
     const validTypes = ["maker_fee_percent", "taker_fee_percent", "withdrawal_fee_trc20", "withdrawal_fee_erc20"];
     if (!validTypes.includes(feeType)) {
       return res.status(400).json({ error: "Invalid fee type" });
+    }
+
+    if (typeof value !== "number" || value < 0) {
+      return res.status(400).json({ error: "Fee value must be a non-negative number" });
+    }
+    const isPercent = feeType.endsWith("_percent");
+    if (isPercent && value > 50) {
+      return res.status(400).json({ error: "Percentage fee cannot exceed 50%" });
+    }
+    if (!isPercent && value > 1000) {
+      return res.status(400).json({ error: "Withdrawal fee cannot exceed 1000 USDT" });
     }
 
     await db.update(feeSettingsTable)
