@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { ordersTable, adsTable, usersTable, messagesTable, appealsTable, feedbackTable, walletsTable, paymentMethodsTable } from "@workspace/db";
 import { eq, and, or, desc } from "drizzle-orm";
+import { notify } from "../lib/notify.js";
 
 const router = Router();
 
@@ -224,6 +225,15 @@ router.post("/", async (req, res) => {
       isRead: false,
     });
 
+    // Notify seller of new order
+    await notify({
+      userId: sellerId,
+      type: "order_created",
+      title: "🔔 New Order",
+      message: `New order received for ${parseFloat(order.amountUsdt).toFixed(4)} USDT (Br ${Number(order.amountEtb).toLocaleString()})`,
+      relatedOrderId: order.id,
+    });
+
     res.status(201).json(await formatOrder(order, userId));
   } catch (err) {
     req.log.error({ err }, "Failed to create order");
@@ -271,6 +281,15 @@ router.post("/:id/mark-paid", async (req, res) => {
       isRead: false,
     });
 
+    // Notify seller payment was sent
+    await notify({
+      userId: order.sellerId,
+      type: "payment_sent",
+      title: "💰 Payment Sent",
+      message: `Buyer has marked payment as sent for order #${id}. Please verify and release crypto.`,
+      relatedOrderId: id,
+    });
+
     res.json(await formatOrder(updated, userId));
   } catch (err) {
     req.log.error({ err }, "Failed to mark order paid");
@@ -304,6 +323,22 @@ router.post("/:id/release", async (req, res) => {
       content: "Seller has released the crypto. Order is now completed!",
       type: "system",
       isRead: false,
+    });
+
+    // Notify both parties of completion
+    await notify({
+      userId: order.buyerId,
+      type: "order_completed",
+      title: "✅ Order Completed",
+      message: `${parseFloat(order.amountUsdt).toFixed(4)} USDT has been deposited to your wallet!`,
+      relatedOrderId: id,
+    });
+    await notify({
+      userId: order.sellerId,
+      type: "order_completed",
+      title: "✅ Order Completed",
+      message: `Order #${id} completed. Br ${Number(order.amountEtb).toLocaleString()} received.`,
+      relatedOrderId: id,
     });
 
     res.json(await formatOrder(updated, userId));
@@ -340,6 +375,17 @@ router.post("/:id/cancel", async (req, res) => {
         availableAmount: Math.min(restored, cap).toFixed(4),
       }).where(eq(adsTable.id, order.adId));
     }
+
+    // Notify counterparty of cancellation
+    const cancelledByRole = userId === order.buyerId ? "buyer" : "seller";
+    const counterpartyId = userId === order.buyerId ? order.sellerId : order.buyerId;
+    await notify({
+      userId: counterpartyId,
+      type: "order_cancelled",
+      title: "❌ Order Cancelled",
+      message: `Order #${id} has been cancelled by the ${cancelledByRole}.`,
+      relatedOrderId: id,
+    });
 
     res.json(await formatOrder(updated, userId));
   } catch (err) {
@@ -378,6 +424,24 @@ router.post("/:id/appeal", async (req, res) => {
       content: "An appeal has been raised. Admin is reviewing the dispute. USDT is frozen until resolved.",
       type: "system",
       isRead: false,
+    });
+
+    // Notify counterparty of appeal
+    const appealCounterpartyId = userId === order.buyerId ? order.sellerId : order.buyerId;
+    await notify({
+      userId: appealCounterpartyId,
+      type: "appeal_raised",
+      title: "⚠️ Appeal Raised",
+      message: `An appeal has been filed on order #${id}. Admin will review shortly.`,
+      relatedOrderId: id,
+    });
+    // Notify admin (userId 1)
+    await notify({
+      userId: 1,
+      type: "appeal_admin",
+      title: "🚨 New Appeal",
+      message: `Appeal filed on order #${id}.`,
+      relatedOrderId: id,
     });
 
     res.status(201).json({

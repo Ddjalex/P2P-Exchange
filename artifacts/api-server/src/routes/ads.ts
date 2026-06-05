@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { adsTable, usersTable, ordersTable, walletsTable } from "@workspace/db";
 import { eq, and, ne, desc, asc } from "drizzle-orm";
+import { notify } from "../lib/notify.js";
 
 const router = Router();
 
@@ -162,6 +163,16 @@ router.post("/", async (req, res) => {
       region: region || "Ethiopia Only",
       status: status || "online",
     }).returning();
+
+    // Notify seller their USDT was frozen (sell ads only)
+    if (type === "sell") {
+      await notify({
+        userId,
+        type: "usdt_frozen",
+        title: "🔒 USDT Locked",
+        message: `${parseFloat(totalAmount).toFixed(4)} USDT has been locked as collateral for your sell ad.`,
+      });
+    }
 
     res.status(201).json(await formatAd(ad));
   } catch (err) {

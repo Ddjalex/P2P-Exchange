@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { messagesTable, ordersTable, usersTable } from "@workspace/db";
 import { eq, and, or, desc, ne } from "drizzle-orm";
+import { notify } from "../lib/notify.js";
 import multer from "multer";
 import path from "node:path";
 import { mkdirSync } from "node:fs";
@@ -117,6 +118,15 @@ router.post("/:orderId", async (req, res) => {
 
     const sender = await db.select().from(usersTable).where(eq(usersTable.id, (req as any).userId)).then(r => r[0]);
 
+    // Notify receiver of new message
+    await notify({
+      userId: receiverId,
+      type: "new_message",
+      title: "💬 New Message",
+      message: `${sender?.username ?? "Someone"}: ${content.slice(0, 50)}${content.length > 50 ? "..." : ""}`,
+      relatedOrderId: orderId,
+    });
+
     res.status(201).json({
       id: msg.id,
       orderId: msg.orderId,
@@ -155,6 +165,15 @@ router.post("/:orderId/image", chatUpload.single("image"), async (req, res) => {
     }).returning();
 
     const sender = await db.select().from(usersTable).where(eq(usersTable.id, (req as any).userId)).then(r => r[0]);
+
+    // Notify receiver of image message
+    await notify({
+      userId: receiverId,
+      type: "new_message",
+      title: "💬 New Message",
+      message: `${sender?.username ?? "Someone"} sent an image`,
+      relatedOrderId: orderId,
+    });
 
     res.status(201).json({
       id: msg.id,

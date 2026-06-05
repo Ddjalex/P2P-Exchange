@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { kycSubmissionsTable, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import { notify } from "../lib/notify.js";
 import multer from "multer";
 import path from "node:path";
 import { mkdirSync } from "node:fs";
@@ -108,6 +109,15 @@ router.post("/submit", async (req, res) => {
     }
 
     await db.update(usersTable).set({ kycStatus: "pending" }).where(eq(usersTable.id, (req as any).userId));
+
+    // Notify admin of new KYC submission
+    const submitter = await db.select().from(usersTable).where(eq(usersTable.id, (req as any).userId)).then(r => r[0]);
+    await notify({
+      userId: 1,
+      type: "kyc_submitted",
+      title: "📋 New KYC Submission",
+      message: `${submitter?.username ?? "A user"} submitted KYC documents for review.`,
+    });
 
     res.status(201).json({
       status: "pending",

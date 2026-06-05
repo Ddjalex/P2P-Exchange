@@ -17,8 +17,8 @@ function formatCountdown(ms: number) {
 export default function ChatThreadPage() {
   const { orderId: id } = useParams();
   const orderId = Number(id);
-  const { data: messages, isLoading: loadingMsgs } = useGetMessages(orderId, { query: { enabled: !!orderId, queryKey: getGetMessagesQueryKey(orderId) } });
-  const { data: order } = useGetOrder(orderId, { query: { enabled: !!orderId } });
+  const { data: messages, isLoading: loadingMsgs } = useGetMessages(orderId, { query: { enabled: !!orderId, queryKey: getGetMessagesQueryKey(orderId), refetchInterval: 3000, refetchIntervalInBackground: false } });
+  const { data: order } = useGetOrder(orderId, { query: { enabled: !!orderId, refetchInterval: 5000 } });
   const { user } = useAuth();
   const { toast } = useToast();
   const [content, setContent] = useState("");
