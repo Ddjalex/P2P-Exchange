@@ -67,7 +67,13 @@ export default function BuyConfirmPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.message || "Something went wrong");
+        const msg: string = data.message || "Something went wrong";
+        if (msg.toLowerCase().includes("insufficient") || msg.toLowerCase().includes("balance")) {
+          setError("This seller no longer has sufficient balance. Please choose another ad.");
+          setTimeout(() => navigate("/p2p"), 3000);
+        } else {
+          setError(msg);
+        }
         setCreating(false);
         return;
       }

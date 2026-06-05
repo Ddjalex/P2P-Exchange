@@ -189,11 +189,8 @@ router.post("/", async (req, res) => {
     const buyerId = isBuying ? userId : ad.userId;
     const sellerId = isBuying ? ad.userId : userId;
 
-    // Check seller wallet balance
-    const sellerWallet = await getOrCreateWallet(sellerId);
-    if (parseFloat(sellerWallet.availableBalance) < usdt) {
-      return res.status(400).json({ message: "Seller has insufficient balance" });
-    }
+    // USDT was already frozen when the ad was posted — only check ad.availableAmount (done above).
+    // Do NOT re-check the wallet here; that balance is already frozen and will always appear low.
 
     const now = new Date();
     const appealAvailableAt = new Date(now.getTime() + ad.paymentTimeLimit * 60 * 1000 + 30 * 60 * 1000);
@@ -212,8 +209,7 @@ router.post("/", async (req, res) => {
       appealAvailableAt,
     }).returning();
 
-    // Freeze seller's USDT and reduce ad available amount
-    await freezeSellerUsdt(sellerId, amountUsdt);
+    // Reduce ad available amount only — wallet was already frozen at ad-post time.
     await db.update(adsTable).set({
       availableAmount: Math.max(0, available - usdt).toFixed(4),
     }).where(eq(adsTable.id, adId));
