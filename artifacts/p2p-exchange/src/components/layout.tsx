@@ -1,8 +1,6 @@
 import React from "react";
 import { Link, useLocation } from "wouter";
 import { Users, Clock, Megaphone, MessageSquare, User } from "lucide-react";
-import { NotificationBell } from "./notification-bell";
-import { useAuth } from "@/hooks/use-auth";
 
 export function BottomNav() {
   const [location] = useLocation();
@@ -41,47 +39,18 @@ export function BottomNav() {
   );
 }
 
-function TopBar() {
-  const { user } = useAuth();
-  if (!user) return null;
-  return (
-    <div
-      style={{
-        position: "fixed",
-        top: 0,
-        left: "50%",
-        transform: "translateX(-50%)",
-        width: "100%",
-        maxWidth: "480px",
-        zIndex: 40,
-        display: "flex",
-        justifyContent: "flex-end",
-        padding: "8px 12px",
-        pointerEvents: "none",
-      }}
-    >
-      <div style={{ pointerEvents: "auto" }}>
-        <NotificationBell />
-      </div>
-    </div>
-  );
-}
-
 export function AppLayout({
   children,
   showNav = true,
-  showBell = true,
 }: {
   children: React.ReactNode;
   showNav?: boolean;
-  showBell?: boolean;
 }) {
   return (
     <div className="min-h-screen bg-background text-foreground sm:bg-black/90">
       <div className="min-h-screen bg-background sm:max-w-[480px] sm:mx-auto sm:border-x sm:border-border relative pb-[64px]">
         {children}
         {showNav && <BottomNav />}
-        {showBell && showNav && <TopBar />}
       </div>
     </div>
   );
