@@ -166,15 +166,17 @@ export default function TradePage() {
     return () => clearInterval(t);
   }, [order]);
 
-  // Appeal unlock countdown (30 min after paidAt)
+  // Appeal unlock countdown — uses appealAvailableAt set by backend when buyer marks paid
   useEffect(() => {
-    if (!order || order.status !== "paid" || !order.paidAt) return;
-    const appealAt = new Date(order.paidAt).getTime() + APPEAL_DELAY_MS;
+    if (!order || order.status !== "paid") return;
+    const appealAt = order.appealAvailableAt
+      ? new Date(order.appealAvailableAt).getTime()
+      : (order.paidAt ? new Date(order.paidAt).getTime() + APPEAL_DELAY_MS : Date.now() + APPEAL_DELAY_MS);
     const tick = () => setAppealTimeLeft(Math.max(0, Math.floor((appealAt - Date.now()) / 1000)));
     tick();
     const t = setInterval(tick, 1000);
     return () => clearInterval(t);
-  }, [order?.status, order?.paidAt]);
+  }, [order?.status, order?.appealAvailableAt, order?.paidAt]);
 
   // Platform notice — show once per order when buyer's status becomes paid
   useEffect(() => {

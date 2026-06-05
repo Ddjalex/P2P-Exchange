@@ -1,11 +1,12 @@
 import { AppLayout } from "@/components/layout";
-import { ArrowLeft, Send, AlertTriangle, ChevronRight } from "lucide-react";
+import { ArrowLeft, Send, AlertTriangle, ChevronRight, Paperclip } from "lucide-react";
 import { useGetMessages, useSendMessage, useGetOrder, getGetMessagesQueryKey } from "@workspace/api-client-react";
 import { useParams, Link } from "wouter";
 import { useState, useRef, useEffect } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
+import { useToast } from "@/hooks/use-toast";
 
 function formatCountdown(ms: number) {
   if (ms <= 0) return "00:00";
@@ -19,12 +20,15 @@ export default function ChatThreadPage() {
   const { data: messages, isLoading: loadingMsgs } = useGetMessages(orderId, { query: { enabled: !!orderId, queryKey: getGetMessagesQueryKey(orderId) } });
   const { data: order } = useGetOrder(orderId, { query: { enabled: !!orderId } });
   const { user } = useAuth();
+  const { toast } = useToast();
   const [content, setContent] = useState("");
   const [warningExpanded, setWarningExpanded] = useState(false);
   const [paymentCountdown, setPaymentCountdown] = useState(0);
+  const [uploadingImage, setUploadingImage] = useState(false);
   const sendMessage = useSendMessage();
   const queryClient = useQueryClient();
   const bottomRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -39,6 +43,33 @@ export default function ChatThreadPage() {
     const t = setInterval(tick, 1000);
     return () => clearInterval(t);
   }, [order]);
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      toast({ title: "Image must be under 5MB", variant: "destructive" });
+      return;
+    }
+    setUploadingImage(true);
+    try {
+      const token = localStorage.getItem("p2p_token");
+      const formData = new FormData();
+      formData.append("image", file);
+      const res = await fetch(`/api/messages/${orderId}/image`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData,
+      });
+      if (!res.ok) throw new Error("Upload failed");
+      queryClient.invalidateQueries({ queryKey: getGetMessagesQueryKey(orderId) });
+    } catch {
+      toast({ title: "Failed to send image", variant: "destructive" });
+    } finally {
+      setUploadingImage(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
 
   const handleSend = (e: React.FormEvent) => {
     e.preventDefault();
@@ -148,6 +179,20 @@ export default function ChatThreadPage() {
                   </div>
                 );
               }
+              if (msg.type === "image") {
+                return (
+                  <div key={msg.id} className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
+                    <div className={`max-w-[75%] px-2 py-2 rounded-2xl ${
+                      isMe ? "bg-primary/20 rounded-br-sm" : "bg-card border border-border rounded-bl-sm"
+                    }`}>
+                      <img src={msg.content} alt="Image" style={{ maxWidth: "200px", borderRadius: "8px", display: "block" }} />
+                      <span className={`text-[10px] block mt-1 ${isMe ? "text-primary/70 text-right" : "text-muted-foreground"}`}>
+                        {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                  </div>
+                );
+              }
               return (
                 <div key={msg.id} className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
                   <div className={`max-w-[75%] px-4 py-2.5 rounded-2xl text-sm ${
@@ -168,7 +213,26 @@ export default function ChatThreadPage() {
 
       {/* Input */}
       <div className="fixed bottom-0 left-0 right-0 p-3 bg-background border-t border-border sm:max-w-[480px] sm:mx-auto">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          style={{ display: "none" }}
+          onChange={handleImageUpload}
+        />
         <form onSubmit={handleSend} className="flex items-center space-x-2">
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploadingImage}
+            className="p-2.5 bg-secondary text-muted-foreground rounded-full disabled:opacity-50 flex-shrink-0 hover:bg-secondary/80 transition-colors"
+          >
+            {uploadingImage ? (
+              <span className="w-4 h-4 block border-2 border-muted-foreground border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <Paperclip className="w-4 h-4" />
+            )}
+          </button>
           <input
             type="text"
             value={content}

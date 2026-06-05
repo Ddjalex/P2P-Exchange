@@ -7,6 +7,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Check } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Link } from "wouter";
 
 const EMPTY_AD: Partial<AdInput> = {
   type: "buy",
@@ -24,6 +25,13 @@ const EMPTY_AD: Partial<AdInput> = {
   status: "online",
 };
 
+interface UserPaymentMethod {
+  id: number;
+  type: string;
+  accountName: string;
+  accountNumber: string;
+}
+
 export default function PostAdPage() {
   const params = useParams<{ id?: string }>();
   const editId = params.id ? Number(params.id) : undefined;
@@ -32,6 +40,9 @@ export default function PostAdPage() {
   const [step, setStep] = useState(1);
   const [ad, setAd] = useState<Partial<AdInput>>(EMPTY_AD);
   const [loaded, setLoaded] = useState(!isEdit);
+  const [userPaymentMethods, setUserPaymentMethods] = useState<UserPaymentMethod[]>([]);
+  const [loadingPaymentMethods, setLoadingPaymentMethods] = useState(true);
+  const [step2Error, setStep2Error] = useState("");
 
   const { data: existingAd, isLoading: loadingAd } = useGetAd(editId!, {
     query: { enabled: isEdit },
@@ -58,13 +69,39 @@ export default function PostAdPage() {
     }
   }, [existingAd, loaded]);
 
+  useEffect(() => {
+    const token = localStorage.getItem("p2p_token");
+    fetch("/api/profile/payment-methods", {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then(r => r.json())
+      .then(data => setUserPaymentMethods(Array.isArray(data) ? data : []))
+      .catch(() => setUserPaymentMethods([]))
+      .finally(() => setLoadingPaymentMethods(false));
+  }, []);
+
   const createAd = useCreateAd();
   const updateAd = useUpdateAd();
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
 
-  const handleNext = () => setStep(s => Math.min(3, s + 1));
+  const handleNext = () => {
+    if (step === 2) {
+      setStep2Error("");
+      if ((ad.paymentMethods ?? []).length === 0) {
+        setStep2Error("Please select at least one payment method");
+        return;
+      }
+      if (ad.minLimit && ad.maxLimit) {
+        if (Number(ad.minLimit) >= Number(ad.maxLimit)) {
+          setStep2Error("Minimum limit must be less than maximum limit");
+          return;
+        }
+      }
+    }
+    setStep(s => Math.min(3, s + 1));
+  };
   const handleBack = () => setStep(s => Math.max(1, s - 1));
 
   const submit = () => {
@@ -178,7 +215,7 @@ export default function PostAdPage() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">Order Limit</label>
+              <label className="text-sm font-medium">Order Limit <span className="text-muted-foreground font-normal">(Optional)</span></label>
               <div className="flex items-center space-x-2">
                 <input type="number" placeholder="Min" value={ad.minLimit} onChange={e => setAd({ ...ad, minLimit: e.target.value })} className="w-full p-3 bg-card border border-border rounded outline-none font-mono text-sm" />
                 <span className="text-muted-foreground">~</span>
@@ -189,26 +226,41 @@ export default function PostAdPage() {
 
             <div className="space-y-2">
               <label className="text-sm font-medium">Payment Methods</label>
-              <div className="flex flex-wrap gap-2">
-                {["CBE", "Telebirr", "Awash", "Dashen", "Abyssinia", "HelloCash", "MPesa", "CBEBirr", "Amhara", "Wegagen", "Coopbank", "Hibret", "Nib", "Oromia"].map(pm => {
-                  const isSelected = (ad.paymentMethods ?? []).includes(pm);
-                  return (
-                    <button
-                      key={pm}
-                      onClick={() => {
-                        setAd(prev => {
-                          const m = prev.paymentMethods ?? [];
-                          const selected = m.includes(pm);
-                          return { ...prev, paymentMethods: selected ? m.filter(x => x !== pm) : [...m, pm] };
-                        });
-                      }}
-                      className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${isSelected ? "bg-primary/20 border-primary text-primary" : "bg-secondary border-border text-muted-foreground"}`}
-                    >
-                      {pm}
-                    </button>
-                  );
-                })}
-              </div>
+              {loadingPaymentMethods ? (
+                <div className="flex flex-wrap gap-2">
+                  {[1, 2, 3].map(i => <div key={i} className="h-8 w-20 rounded-full bg-secondary animate-pulse" />)}
+                </div>
+              ) : userPaymentMethods.length === 0 ? (
+                <div className="bg-secondary/50 border border-border rounded-xl p-4 text-center space-y-2">
+                  <p className="text-sm text-muted-foreground">You have no payment methods saved.</p>
+                  <p className="text-xs text-muted-foreground">Add payment methods in Profile → Payment Methods first.</p>
+                  <Link href="/payment-methods" className="inline-block mt-1 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-xs font-semibold">
+                    Go to Payment Methods →
+                  </Link>
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {userPaymentMethods.map(pm => {
+                    const isSelected = (ad.paymentMethods ?? []).includes(pm.type);
+                    return (
+                      <button
+                        key={pm.id}
+                        onClick={() => {
+                          setStep2Error("");
+                          setAd(prev => {
+                            const m = prev.paymentMethods ?? [];
+                            return { ...prev, paymentMethods: m.includes(pm.type) ? m.filter(x => x !== pm.type) : [...m, pm.type] };
+                          });
+                        }}
+                        className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${isSelected ? "bg-primary/20 border-primary text-primary" : "bg-secondary border-border text-muted-foreground"}`}
+                      >
+                        {pm.type}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              {step2Error && <p className="text-xs text-destructive mt-1">{step2Error}</p>}
             </div>
           </div>
         )}

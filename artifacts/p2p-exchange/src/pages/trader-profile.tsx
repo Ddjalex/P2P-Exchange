@@ -139,8 +139,8 @@ export default function TraderProfilePage() {
     );
   }
 
-  const totalFeedback = profile.stats.positiveFeedback + profile.stats.negativeFeedback;
-  const positiveRate = totalFeedback > 0 ? Math.round((profile.stats.positiveFeedback / totalFeedback) * 100) : 100;
+  const totalFeedback = (profile?.stats?.positiveFeedback ?? 0) + (profile?.stats?.negativeFeedback ?? 0);
+  const positiveRate = totalFeedback > 0 ? Math.round(((profile?.stats?.positiveFeedback ?? 0) / totalFeedback) * 100) : 100;
   const isOwnProfile = currentUser?.id === profile.id;
 
   return (

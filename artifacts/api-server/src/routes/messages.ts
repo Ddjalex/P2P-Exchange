@@ -2,6 +2,30 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { messagesTable, ordersTable, usersTable } from "@workspace/db";
 import { eq, and, or, desc, ne } from "drizzle-orm";
+import multer from "multer";
+import path from "node:path";
+import { mkdirSync } from "node:fs";
+import { randomBytes } from "node:crypto";
+
+const chatUploadsDir = path.resolve(process.cwd(), "uploads", "chat");
+mkdirSync(chatUploadsDir, { recursive: true });
+
+const chatStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, chatUploadsDir),
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase() || ".jpg";
+    cb(null, randomBytes(16).toString("hex") + ext);
+  },
+});
+
+const chatUpload = multer({
+  storage: chatStorage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype.startsWith("image/")) cb(null, true);
+    else cb(new Error("Only image files are allowed"));
+  },
+});
 
 const router = Router();
 
@@ -106,6 +130,46 @@ router.post("/:orderId", async (req, res) => {
     });
   } catch (err) {
     req.log.error({ err }, "Failed to send message");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/:orderId/image", chatUpload.single("image"), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: "No image uploaded" });
+
+    const orderId = parseInt(req.params.orderId);
+    const order = await db.select().from(ordersTable).where(eq(ordersTable.id, orderId)).then(r => r[0]);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+
+    const imageUrl = `/uploads/chat/${req.file.filename}`;
+    const receiverId = order.buyerId === (req as any).userId ? order.sellerId : order.buyerId;
+
+    const [msg] = await db.insert(messagesTable).values({
+      orderId,
+      senderId: (req as any).userId,
+      receiverId,
+      content: imageUrl,
+      type: "image",
+      isRead: false,
+    }).returning();
+
+    const sender = await db.select().from(usersTable).where(eq(usersTable.id, (req as any).userId)).then(r => r[0]);
+
+    res.status(201).json({
+      id: msg.id,
+      orderId: msg.orderId,
+      senderId: msg.senderId,
+      senderUsername: sender?.username ?? "Unknown",
+      receiverId: msg.receiverId,
+      content: msg.content,
+      type: msg.type,
+      isRead: msg.isRead,
+      createdAt: msg.createdAt,
+      imageUrl,
+    });
+  } catch (err) {
+    req.log.error({ err }, "Failed to upload chat image");
     res.status(500).json({ error: "Internal server error" });
   }
 });
