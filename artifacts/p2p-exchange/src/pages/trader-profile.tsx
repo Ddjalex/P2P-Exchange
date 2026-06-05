@@ -77,10 +77,14 @@ export default function TraderProfilePage() {
     if (!userId) return;
     setLoading(true);
     fetch(`/api/users/${userId}/profile`)
-      .then(r => r.json())
-      .then(data => {
+      .then(async r => {
+        const data = await r.json();
+        if (!r.ok) {
+          toast({ title: data.message || "Failed to load profile", variant: "destructive" });
+          return;
+        }
         setProfile(data);
-        setFollowing(data.isFollowing);
+        setFollowing(data.isFollowing ?? false);
       })
       .catch(() => toast({ title: "Failed to load profile", variant: "destructive" }))
       .finally(() => setLoading(false));
