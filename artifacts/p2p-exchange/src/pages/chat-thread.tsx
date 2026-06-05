@@ -222,6 +222,29 @@ export default function ChatThreadPage() {
             )}
             {messages?.map((msg) => {
               const isMe = msg.senderId === user?.id;
+              if (msg.type === "admin" && msg.receiverId === user?.id) {
+                return (
+                  <div key={msg.id} className="my-3 px-1">
+                    <div style={{
+                      background: "rgba(0,230,118,0.08)",
+                      border: "1px solid rgba(0,230,118,0.25)",
+                      borderRadius: "10px",
+                      borderLeft: "3px solid #00e676",
+                      padding: "10px 14px"
+                    }}>
+                      <div style={{ color: "#00e676", fontSize: "10px", fontWeight: 600, marginBottom: "4px" }}>
+                        ⚖️ Message from Admin
+                      </div>
+                      <p style={{ color: "var(--foreground)", fontSize: "13px", margin: 0, lineHeight: 1.5 }}>
+                        {msg.content}
+                      </p>
+                      <span className="text-[10px] text-muted-foreground block mt-1">
+                        {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                    </div>
+                  </div>
+                );
+              }
               if (msg.type === "system") {
                 return (
                   <div key={msg.id} className="flex justify-center my-3">

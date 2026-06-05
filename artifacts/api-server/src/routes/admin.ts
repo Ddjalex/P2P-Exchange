@@ -650,12 +650,74 @@ router.get("/messages/orders/:orderId", adminAuth, async (req, res) => {
     const orderId = parseInt(req.params.orderId);
     const msgs = await db.select().from(messagesTable).where(eq(messagesTable.orderId, orderId)).orderBy(messagesTable.createdAt);
     const enriched = await Promise.all(msgs.map(async m => {
-      const sender = await db.select({ username: usersTable.username }).from(usersTable).where(eq(usersTable.id, m.senderId)).then(r => r[0]);
-      return { ...m, senderUsername: sender?.username ?? "System" };
+      const sender = m.senderId
+        ? await db.select({ username: usersTable.username }).from(usersTable).where(eq(usersTable.id, m.senderId)).then(r => r[0])
+        : null;
+      return { ...m, senderUsername: sender?.username ?? "Admin" };
     }));
     res.json(enriched);
   } catch (err) {
     req.log.error({ err }, "Admin messages failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.get("/orders/:orderId/messages", adminAuth, async (req, res) => {
+  try {
+    const orderId = parseInt(req.params.orderId);
+    const msgs = await db.select().from(messagesTable).where(eq(messagesTable.orderId, orderId)).orderBy(messagesTable.createdAt);
+    const enriched = await Promise.all(msgs.map(async m => {
+      const sender = m.senderId
+        ? await db.select({ username: usersTable.username }).from(usersTable).where(eq(usersTable.id, m.senderId)).then(r => r[0])
+        : null;
+      return { ...m, senderUsername: sender?.username ?? "Admin" };
+    }));
+    res.json({ messages: enriched });
+  } catch (err) {
+    req.log.error({ err }, "Admin order messages failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/disputes/:id/message", adminAuth, async (req, res) => {
+  try {
+    const disputeId = parseInt(req.params.id);
+    const { receiverId, content } = req.body ?? {};
+    if (!receiverId || !content?.trim()) return res.status(400).json({ error: "receiverId and content required" });
+
+    const appeal = await db.select().from(appealsTable).where(eq(appealsTable.id, disputeId)).then(r => r[0]);
+    if (!appeal) return res.status(404).json({ error: "Dispute not found" });
+
+    const order = await db.select().from(ordersTable).where(eq(ordersTable.id, appeal.orderId)).then(r => r[0]);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+
+    if (receiverId !== order.buyerId && receiverId !== order.sellerId) {
+      return res.status(400).json({ error: "Receiver must be buyer or seller of this order" });
+    }
+
+    await db.insert(messagesTable).values({
+      orderId: order.id,
+      senderId: null,
+      receiverId,
+      content: content.trim(),
+      type: "admin",
+      isRead: false,
+    });
+
+    await db.insert(notificationsTable).values({
+      userId: receiverId,
+      type: "system",
+      title: "⚖️ Message from Admin",
+      message: content.trim().slice(0, 80) + (content.length > 80 ? "..." : ""),
+      relatedOrderId: order.id,
+      isRead: false,
+    });
+
+    emitToUser(receiverId, { type: "admin_message", orderId: order.id });
+
+    return res.json({ success: true });
+  } catch (err) {
+    req.log.error({ err }, "Admin send message failed");
     res.status(500).json({ error: "Internal server error" });
   }
 });

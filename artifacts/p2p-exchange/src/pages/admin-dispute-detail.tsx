@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { AdminLayout, AdminGuard } from "@/components/admin-layout";
-import { adminGet, adminPut } from "@/lib/admin-api";
+import { adminGet, adminPost, adminPut } from "@/lib/admin-api";
 import { Link } from "wouter";
 import { ArrowLeft, Lock } from "lucide-react";
 
@@ -11,12 +11,42 @@ export default function AdminDisputeDetailPage({ params }: { params: { id: strin
   const [loading, setLoading] = useState(true);
   const [resolving, setResolving] = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [chatData, setChatData] = useState<{ messages: any[] } | null>(null);
+  const [activeAdminChat, setActiveAdminChat] = useState<"buyer" | "seller" | null>(null);
+  const [adminMessage, setAdminMessage] = useState("");
+  const [sending, setSending] = useState(false);
 
   const load = () => {
     setLoading(true);
     adminGet<any>(`/disputes/${params.id}`).then(setData).catch(() => {}).finally(() => setLoading(false));
   };
   useEffect(load, [params.id]);
+
+  useEffect(() => {
+    if (!data?.order?.id) return;
+    adminGet<{ messages: any[] }>(`/orders/${data.order.id}/messages`).then(setChatData).catch(() => {});
+  }, [data?.order?.id]);
+
+  const reloadChat = () => {
+    if (!data?.order?.id) return;
+    adminGet<{ messages: any[] }>(`/orders/${data.order.id}/messages`).then(setChatData).catch(() => {});
+  };
+
+  const handleSendAdminMessage = async () => {
+    if (!adminMessage.trim() || !activeAdminChat || !data) return;
+    const { appeal, order } = data;
+    const receiverId = activeAdminChat === "buyer" ? order.buyerId : order.sellerId;
+    setSending(true);
+    try {
+      await adminPost(`/disputes/${appeal.id}/message`, { receiverId, content: adminMessage.trim() });
+      setAdminMessage("");
+      reloadChat();
+    } catch {
+      alert("Failed to send message. Please try again.");
+    } finally {
+      setSending(false);
+    }
+  };
 
   const resolve = async () => {
     if (!decision) { alert("Please select a decision."); return; }
@@ -150,26 +180,133 @@ export default function AdminDisputeDetailPage({ params }: { params: { id: strin
 
             {/* Chat History */}
             <div className="bg-card border border-border rounded-xl p-5">
-              <h3 className="font-semibold text-sm mb-3">Full Chat History ({messages.length})</h3>
-              <div className="space-y-2 max-h-72 overflow-y-auto">
-                {messages.length === 0
-                  ? <div className="text-muted-foreground text-sm text-center py-4">No messages</div>
-                  : messages.map((m: any) => (
-                    <div key={m.id} className={`flex ${m.senderId === buyer?.id ? "justify-start" : m.senderId === seller?.id ? "justify-end" : "justify-center"}`}>
-                      <div>
-                        {m.type === 'system' ? (
-                          <div className="px-3 py-1 rounded-full bg-secondary text-muted-foreground text-xs italic text-center">{m.content}</div>
-                        ) : (
-                          <div className={`px-3 py-1.5 rounded-xl text-sm max-w-xs ${m.senderId === buyer?.id ? 'bg-primary/10 border border-primary/20' : 'bg-card border border-border'}`}>
-                            <div className="text-[10px] text-muted-foreground mb-0.5">{m.senderId === buyer?.id ? 'Buyer' : 'Seller'}</div>
-                            {m.content}
-                          </div>
+              <div style={{ background: "#0a1628", borderRadius: "12px", padding: "16px", maxHeight: "400px", overflowY: "auto" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "16px" }}>
+                  <h3 style={{ color: "#fff", fontSize: "16px", fontWeight: 700, margin: 0 }}>
+                    Full Chat History ({chatData?.messages?.length ?? messages.length})
+                  </h3>
+                  <span style={{ color: "#8899aa", fontSize: "12px" }}>Read only</span>
+                </div>
+
+                {(chatData?.messages ?? messages).length === 0 ? (
+                  <div style={{ color: "#8899aa", fontSize: "13px", textAlign: "center", padding: "24px 0" }}>No messages</div>
+                ) : (chatData?.messages ?? messages).map((msg: any) => {
+                  const isBuyerMsg = msg.senderId === buyer?.id;
+                  const isSellerMsg = msg.senderId === seller?.id;
+                  const isAdmin = !msg.senderId || msg.type === "admin";
+
+                  if (msg.type === "system" || (!msg.senderId && msg.type !== "admin")) {
+                    return (
+                      <div key={msg.id} style={{ textAlign: "center", margin: "8px 0" }}>
+                        <span style={{ background: "rgba(255,255,255,0.06)", color: "#8899aa", fontSize: "11px", padding: "4px 12px", borderRadius: "12px", display: "inline-block" }}>
+                          {msg.content}
+                        </span>
+                        <div style={{ color: "#445566", fontSize: "10px", marginTop: "2px" }}>{new Date(msg.createdAt).toLocaleString()}</div>
+                      </div>
+                    );
+                  }
+
+                  if (isAdmin) {
+                    return (
+                      <div key={msg.id} style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", marginBottom: "12px" }}>
+                        <span style={{ color: "#00e676", fontSize: "10px", fontWeight: 600, marginBottom: "3px" }}>Admin (private)</span>
+                        <div style={{ maxWidth: "75%", background: "rgba(0,230,118,0.08)", border: "1px solid rgba(0,230,118,0.2)", borderRadius: "12px", padding: "8px 12px" }}>
+                          <p style={{ color: "#fff", fontSize: "13px", margin: 0, lineHeight: 1.5 }}>{msg.content}</p>
+                        </div>
+                        <span style={{ color: "#445566", fontSize: "10px", marginTop: "2px" }}>{new Date(msg.createdAt).toLocaleString()}</span>
+                      </div>
+                    );
+                  }
+
+                  const senderLabel = isBuyerMsg ? "Buyer" : isSellerMsg ? "Seller" : "Other";
+                  const senderColor = isBuyerMsg ? "#00d4ff" : "#ff8800";
+                  const alignRight = isBuyerMsg;
+
+                  return (
+                    <div key={msg.id} style={{ display: "flex", flexDirection: "column", alignItems: alignRight ? "flex-end" : "flex-start", marginBottom: "12px" }}>
+                      <span style={{ color: senderColor, fontSize: "10px", fontWeight: 600, marginBottom: "3px" }}>
+                        {senderLabel} · {msg.senderUsername ?? ""}
+                      </span>
+                      <div style={{ maxWidth: "75%", background: alignRight ? "rgba(0,212,255,0.1)" : "rgba(255,136,0,0.08)", border: `1px solid ${alignRight ? "rgba(0,212,255,0.2)" : "rgba(255,136,0,0.2)"}`, borderRadius: "12px", padding: "8px 12px" }}>
+                        {msg.type === "image" && msg.content && (
+                          <img src={msg.content} alt="Evidence" style={{ maxWidth: "200px", maxHeight: "200px", borderRadius: "8px", display: "block", cursor: "pointer" }} onClick={() => setLightboxUrl(msg.content)} />
                         )}
-                        <div className="text-[10px] text-muted-foreground mt-0.5 text-center">{new Date(m.createdAt).toLocaleString()}</div>
+                        {msg.content && msg.type !== "image" && (
+                          <p style={{ color: "#fff", fontSize: "13px", margin: 0, lineHeight: 1.5 }}>{msg.content}</p>
+                        )}
+                      </div>
+                      <span style={{ color: "#445566", fontSize: "10px", marginTop: "2px" }}>{new Date(msg.createdAt).toLocaleString()}</span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Admin Chat Buttons */}
+              {order && appeal.status !== "resolved" && (
+                <>
+                  <div style={{ display: "flex", gap: "12px", marginTop: "16px" }}>
+                    <button
+                      onClick={() => setActiveAdminChat(activeAdminChat === "buyer" ? null : "buyer")}
+                      style={{ flex: 1, padding: "12px", background: activeAdminChat === "buyer" ? "rgba(0,212,255,0.15)" : "transparent", border: `1.5px solid ${activeAdminChat === "buyer" ? "#00d4ff" : "#334455"}`, borderRadius: "10px", color: activeAdminChat === "buyer" ? "#00d4ff" : "#8899aa", fontSize: "13px", fontWeight: 600, cursor: "pointer" }}
+                    >
+                      💬 Chat with Buyer
+                      <div style={{ fontSize: "10px", fontWeight: 400, marginTop: "2px", opacity: 0.7 }}>{buyer?.username ?? "—"}</div>
+                    </button>
+                    <button
+                      onClick={() => setActiveAdminChat(activeAdminChat === "seller" ? null : "seller")}
+                      style={{ flex: 1, padding: "12px", background: activeAdminChat === "seller" ? "rgba(255,136,0,0.15)" : "transparent", border: `1.5px solid ${activeAdminChat === "seller" ? "#ff8800" : "#334455"}`, borderRadius: "10px", color: activeAdminChat === "seller" ? "#ff8800" : "#8899aa", fontSize: "13px", fontWeight: 600, cursor: "pointer" }}
+                    >
+                      💬 Chat with Seller
+                      <div style={{ fontSize: "10px", fontWeight: 400, marginTop: "2px", opacity: 0.7 }}>{seller?.username ?? "—"}</div>
+                    </button>
+                  </div>
+
+                  {activeAdminChat && (
+                    <div style={{ marginTop: "16px", background: "#0a1628", border: `1px solid ${activeAdminChat === "buyer" ? "rgba(0,212,255,0.3)" : "rgba(255,136,0,0.3)"}`, borderRadius: "12px", overflow: "hidden" }}>
+                      <div style={{ padding: "12px 16px", background: activeAdminChat === "buyer" ? "rgba(0,212,255,0.08)" : "rgba(255,136,0,0.08)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <span style={{ color: activeAdminChat === "buyer" ? "#00d4ff" : "#ff8800", fontSize: "13px", fontWeight: 600 }}>
+                          🔒 Private — Admin → {activeAdminChat === "buyer" ? "Buyer" : "Seller"}
+                        </span>
+                        <button onClick={() => setActiveAdminChat(null)} style={{ background: "none", border: "none", color: "#8899aa", cursor: "pointer", fontSize: "18px", lineHeight: 1 }}>×</button>
+                      </div>
+
+                      <div style={{ padding: "12px 16px", maxHeight: "200px", overflowY: "auto" }}>
+                        {(() => {
+                          const targetId = activeAdminChat === "buyer" ? order.buyerId : order.sellerId;
+                          const adminMsgs = chatData?.messages?.filter((m: any) => m.type === "admin" && m.receiverId === targetId) ?? [];
+                          return adminMsgs.length === 0 ? (
+                            <p style={{ color: "#556677", fontSize: "12px", textAlign: "center" }}>No messages yet. Send a private message below.</p>
+                          ) : adminMsgs.map((m: any) => (
+                            <div key={m.id} style={{ marginBottom: "8px" }}>
+                              <div style={{ background: "rgba(0,230,118,0.08)", border: "1px solid rgba(0,230,118,0.2)", borderRadius: "8px", padding: "8px 12px", display: "inline-block", maxWidth: "80%" }}>
+                                <p style={{ color: "#fff", fontSize: "12px", margin: 0 }}>{m.content}</p>
+                              </div>
+                              <div style={{ color: "#445566", fontSize: "10px", marginTop: "2px" }}>Admin · {new Date(m.createdAt).toLocaleString()}</div>
+                            </div>
+                          ));
+                        })()}
+                      </div>
+
+                      <div style={{ padding: "12px 16px", borderTop: "1px solid #1e2d3d", display: "flex", gap: "8px" }}>
+                        <input
+                          value={adminMessage}
+                          onChange={e => setAdminMessage(e.target.value)}
+                          onKeyDown={e => e.key === "Enter" && !e.shiftKey && handleSendAdminMessage()}
+                          placeholder={`Private message to ${activeAdminChat === "buyer" ? "buyer" : "seller"}...`}
+                          style={{ flex: 1, background: "rgba(255,255,255,0.05)", border: "1px solid #334455", borderRadius: "8px", padding: "10px 12px", color: "#fff", fontSize: "13px", outline: "none" }}
+                        />
+                        <button
+                          onClick={handleSendAdminMessage}
+                          disabled={!adminMessage.trim() || sending}
+                          style={{ padding: "10px 16px", background: activeAdminChat === "buyer" ? "#00d4ff" : "#ff8800", border: "none", borderRadius: "8px", color: "#1a1a2e", fontWeight: 700, cursor: "pointer", fontSize: "13px", opacity: (!adminMessage.trim() || sending) ? 0.5 : 1 }}
+                        >
+                          {sending ? "..." : "Send"}
+                        </button>
                       </div>
                     </div>
-                  ))}
-              </div>
+                  )}
+                </>
+              )}
             </div>
           </div>
 

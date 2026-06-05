@@ -2,12 +2,12 @@ import { pgTable, serial, integer, text, boolean, timestamp, pgEnum } from "driz
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
-export const messageTypeEnum = pgEnum("message_type", ["text", "image", "system"]);
+export const messageTypeEnum = pgEnum("message_type", ["text", "image", "system", "admin"]);
 
 export const messagesTable = pgTable("messages", {
   id: serial("id").primaryKey(),
   orderId: integer("order_id").notNull(),
-  senderId: integer("sender_id").notNull(),
+  senderId: integer("sender_id"),
   receiverId: integer("receiver_id").notNull(),
   content: text("content").notNull(),
   type: messageTypeEnum("type").notNull().default("text"),
