@@ -1,0 +1,123 @@
+Add a Card tab to the navigation and build a Coming Soon page. Do not touch anything else.
+
+STEP 1 — Add "Card" to top navigation tabs
+The app currently has Wallet | P2P tabs at the top. Add Card as the third tab:
+tsx// In wallet/p2p header navigation:
+<div style={{ display: 'flex', borderBottom: '1px solid #1e2d3d' }}>
+  <button onClick={() => navigate('/wallet')}
+    style={{ flex: 1, padding: '10px', color: isWallet ? '#00d4ff' : '#8899aa',
+    borderBottom: isWallet ? '2px solid #00d4ff' : 'none', background: 'none', border: 'none', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}>
+    Wallet
+  </button>
+  <button onClick={() => navigate('/p2p')}
+    style={{ flex: 1, padding: '10px', color: isP2P ? '#00d4ff' : '#8899aa',
+    borderBottom: isP2P ? '2px solid #00d4ff' : 'none', background: 'none', border: 'none', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}>
+    P2P
+  </button>
+  <button onClick={() => navigate('/card')}
+    style={{ flex: 1, padding: '10px', color: isCard ? '#00d4ff' : '#8899aa',
+    borderBottom: isCard ? '2px solid #00d4ff' : 'none', background: 'none', border: 'none', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}>
+    Card
+  </button>
+</div>
+
+STEP 2 — Add route in App.tsx
+tsximport CardPage from '@/pages/card';
+<Route path="/card" component={CardPage} />
+
+STEP 3 — Build src/pages/card.tsx Coming Soon page
+tsxexport default function CardPage() {
+  const [notified, setNotified] = useState(false);
+
+  return (
+    <div style={{ background: '#1a1a2e', minHeight: '100vh',
+      display: 'flex', flexDirection: 'column', alignItems: 'center',
+      padding: '20px', fontFamily: 'Poppins, sans-serif' }}>
+
+      {/* Card image SVG — paste the card SVG from the design I generated */}
+      <div style={{ width: '100%', maxWidth: '360px', marginBottom: '32px', marginTop: '20px' }}>
+        {/* PASTE THE CARD SVG HERE — the dark card with chip, NFC, card number */}
+        <svg viewBox="0 0 360 200" style={{ width: '100%', borderRadius: '18px' }}>
+          {/* Full card SVG code */}
+        </svg>
+      </div>
+
+      {/* Coming Soon text */}
+      <h2 style={{ color: '#ffffff', fontSize: '28px', fontWeight: 800,
+        marginBottom: '8px', textAlign: 'center' }}>
+        Coming Soon
+      </h2>
+      <p style={{ color: '#8899aa', fontSize: '14px', textAlign: 'center',
+        marginBottom: '32px', lineHeight: '1.6', maxWidth: '280px' }}>
+        The EthioP2P Card is on its way. Pay anywhere, buy crypto instantly,
+        and earn cashback on every transaction.
+      </p>
+
+      {/* Feature pills */}
+      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap',
+        justifyContent: 'center', marginBottom: '32px' }}>
+        {['💳 Buy Crypto', '🔄 P2P Pay', '💰 Cashback', '🔒 Secure', '⚡ Instant'].map(f => (
+          <span key={f} style={{
+            background: 'rgba(0,212,255,0.08)',
+            border: '1px solid rgba(0,212,255,0.3)',
+            borderRadius: '20px', padding: '6px 14px',
+            color: '#00d4ff', fontSize: '12px', fontWeight: 500
+          }}>{f}</span>
+        ))}
+      </div>
+
+      {/* Notify me button */}
+      {!notified ? (
+        <button
+          onClick={() => setNotified(true)}
+          style={{
+            width: '100%', maxWidth: '300px',
+            height: '50px', background: '#00d4ff',
+            border: 'none', borderRadius: '25px',
+            color: '#1a1a2e', fontSize: '15px',
+            fontWeight: 700, cursor: 'pointer'
+          }}>
+          🔔 Notify Me When Available
+        </button>
+      ) : (
+        <div style={{
+          background: 'rgba(0,212,255,0.1)',
+          border: '1px solid rgba(0,212,255,0.3)',
+          borderRadius: '12px', padding: '16px 24px',
+          textAlign: 'center', maxWidth: '300px'
+        }}>
+          <p style={{ color: '#00d4ff', fontSize: '15px', fontWeight: 700, margin: 0 }}>
+            ✅ You're on the list!
+          </p>
+          <p style={{ color: '#8899aa', fontSize: '12px', margin: '4px 0 0' }}>
+            We'll notify you when the card launches
+          </p>
+        </div>
+      )}
+
+      {/* Bottom note */}
+      <p style={{ color: '#556677', fontSize: '11px',
+        textAlign: 'center', marginTop: '24px' }}>
+        EthioP2P Card — Powered by blockchain technology
+      </p>
+    </div>
+  );
+}
+
+STEP 4 — Card SVG to embed in the page
+Use this exact card design (dark navy + neon cyan + gold chip):
+Background: #0a1628 dark navy
+Border: 1px solid #00d4ff (neon cyan)
+Chip: gold (#ffd700) with circuit lines
+NFC icon: cyan arcs (right of chip)
+Logo: "EthioP2P" white + cyan
+Card number: 4521 •••• •••• 8842
+Brand circles: red + yellow overlapping (top right)
+Bottom accent bar: cyan gradient
+
+STEP 5 — Later when card is ready
+When you're ready to activate the real card feature:
+
+Remove the Coming Soon content
+Replace with the real card dashboard
+The route /card and tab are already in place — just swap the page content
