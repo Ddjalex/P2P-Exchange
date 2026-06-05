@@ -1,5 +1,5 @@
 import { AppLayout } from "@/components/layout";
-import { Copy, ArrowLeft, MessageSquare, Phone, AlertTriangle, X, CheckCircle, Clock } from "lucide-react";
+import { Copy, ArrowLeft, MessageSquare, AlertTriangle, X, CheckCircle, Clock, ThumbsUp, ThumbsDown } from "lucide-react";
 import { useGetOrder, useMarkOrderPaid, useReleaseCrypto, useCancelOrder, getGetOrderQueryKey } from "@workspace/api-client-react";
 import { useParams, useLocation, Link } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -18,11 +18,119 @@ function formatTime(seconds: number) {
 
 function PaymentMethodDot({ method }: { method: string }) {
   const colors: Record<string, string> = {
-    "Tele Birr": "bg-red-500", "CBE": "bg-blue-600", "Awash Bank": "bg-yellow-500",
+    "Tele Birr": "bg-red-500", "Telebirr": "bg-red-500", "CBE": "bg-blue-600", "Awash Bank": "bg-yellow-500",
     "Abyssinia Bank": "bg-green-600", "Dashen Bank": "bg-purple-600",
   };
   const color = colors[method] ?? "bg-primary";
   return <span className={`inline-block w-2 h-2 rounded-full ${color} mr-1.5 flex-shrink-0`} />;
+}
+
+function CompletedScreen({ order, isBuyer, orderId }: { order: any; isBuyer: boolean; orderId: number }) {
+  const [, navigate] = useLocation();
+  const { toast } = useToast();
+  const [feedbackType, setFeedbackType] = useState<"positive" | "negative" | null>(null);
+  const [comment, setComment] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [feedbackDone, setFeedbackDone] = useState(false);
+
+  const submitFeedback = async () => {
+    if (!feedbackType) return;
+    setSubmitting(true);
+    try {
+      const token = localStorage.getItem("p2p_token");
+      const res = await fetch(`/api/orders/${orderId}/feedback`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { "Authorization": `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ type: feedbackType, comment: comment || undefined }),
+      });
+      if (res.ok) {
+        toast({ title: "Feedback submitted. Thank you!" });
+        setFeedbackDone(true);
+      } else {
+        const data = await res.json();
+        toast({ title: data.message || "Failed to submit feedback", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Network error", variant: "destructive" });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <AppLayout showNav={false}>
+      <div className="min-h-screen flex flex-col items-center justify-start p-6 pt-12">
+        {/* Success icon */}
+        <div className="w-24 h-24 rounded-full bg-success/20 border-4 border-success flex items-center justify-center mb-6">
+          <CheckCircle className="w-12 h-12 text-success" />
+        </div>
+        <p className="text-4xl font-bold font-mono mb-1">{parseFloat(order.amountUsdt).toFixed(4)}</p>
+        <p className="text-lg text-muted-foreground mb-1">USDT</p>
+        <p className="text-sm text-muted-foreground mb-8">
+          {isBuyer ? "Deposited to your wallet" : "Order completed"}
+        </p>
+
+        {/* Feedback section */}
+        {!feedbackDone ? (
+          <div className="w-full max-w-sm bg-card border border-border rounded-2xl p-5 mb-6">
+            <p className="text-sm font-semibold text-center mb-4">Rate your counterparty</p>
+            <div className="flex space-x-3 mb-4">
+              <button
+                onClick={() => setFeedbackType("positive")}
+                className={`flex-1 flex items-center justify-center space-x-2 py-3 rounded-xl border font-semibold text-sm transition-colors ${feedbackType === "positive" ? "border-success bg-success/10 text-success" : "border-border text-muted-foreground hover:border-success/50"}`}
+              >
+                <ThumbsUp className="w-4 h-4" />
+                <span>Positive</span>
+              </button>
+              <button
+                onClick={() => setFeedbackType("negative")}
+                className={`flex-1 flex items-center justify-center space-x-2 py-3 rounded-xl border font-semibold text-sm transition-colors ${feedbackType === "negative" ? "border-destructive bg-destructive/10 text-destructive" : "border-border text-muted-foreground hover:border-destructive/50"}`}
+              >
+                <ThumbsDown className="w-4 h-4" />
+                <span>Negative</span>
+              </button>
+            </div>
+            {feedbackType && (
+              <div className="mb-4">
+                <textarea
+                  value={comment}
+                  onChange={e => setComment(e.target.value.slice(0, 200))}
+                  placeholder="Add a comment (optional)..."
+                  rows={3}
+                  className="w-full bg-secondary rounded-xl px-4 py-3 text-sm outline-none resize-none placeholder:text-muted-foreground"
+                />
+                <p className="text-[11px] text-muted-foreground text-right mt-1">{comment.length}/200</p>
+              </div>
+            )}
+            <button
+              onClick={submitFeedback}
+              disabled={!feedbackType || submitting}
+              className="w-full py-3 rounded-xl font-bold text-sm bg-primary text-primary-foreground disabled:opacity-40 transition-opacity"
+            >
+              {submitting ? "Submitting..." : "Submit Feedback"}
+            </button>
+          </div>
+        ) : (
+          <div className="w-full max-w-sm bg-success/10 border border-success/30 rounded-2xl p-4 mb-6 text-center">
+            <CheckCircle className="w-6 h-6 text-success mx-auto mb-2" />
+            <p className="text-sm font-semibold text-success">Feedback submitted!</p>
+          </div>
+        )}
+
+        <div className="w-full max-w-sm space-y-3">
+          <button onClick={() => navigate("/wallet")} className="w-full py-3.5 rounded-xl font-bold bg-primary text-primary-foreground">
+            Complete
+          </button>
+          <button onClick={() => navigate("/wallet")} className="w-full py-3.5 rounded-xl font-bold border border-border text-foreground">
+            View Assets
+          </button>
+        </div>
+      </div>
+    </AppLayout>
+  );
 }
 
 export default function TradePage() {
@@ -146,25 +254,7 @@ export default function TradePage() {
 
   // ── COMPLETE SCREEN ────────────────────────────────────────────────────────
   if (order.status === "completed") {
-    return (
-      <AppLayout showNav={false}>
-        <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center">
-          <div className="w-24 h-24 rounded-full bg-success/20 border-4 border-success flex items-center justify-center mb-6">
-            <CheckCircle className="w-12 h-12 text-success" />
-          </div>
-          <p className="text-4xl font-bold font-mono mb-1">{parseFloat(order.amountUsdt).toFixed(4)}</p>
-          <p className="text-lg text-muted-foreground mb-2">USDT</p>
-          <p className="text-sm text-muted-foreground mb-8">
-            {isBuyer ? "Deposited to your wallet" : "Order completed"}
-          </p>
-          <p className="text-xs text-muted-foreground mb-8">Rate your counterparty</p>
-          <div className="w-full max-w-sm space-y-3">
-            <button onClick={() => navigate("/wallet")} className="w-full py-3.5 rounded-xl font-bold bg-primary text-primary-foreground">Complete</button>
-            <button onClick={() => navigate("/wallet")} className="w-full py-3.5 rounded-xl font-bold border border-border text-foreground">View Assets</button>
-          </div>
-        </div>
-      </AppLayout>
-    );
+    return <CompletedScreen order={order} isBuyer={isBuyer} orderId={orderId} />;
   }
 
   // ── CANCELLED SCREEN ───────────────────────────────────────────────────────

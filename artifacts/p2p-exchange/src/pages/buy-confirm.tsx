@@ -1,6 +1,6 @@
 import { AppLayout } from "@/components/layout";
-import { ArrowLeft, X, Copy } from "lucide-react";
-import { useGetAd, useCreateOrder } from "@workspace/api-client-react";
+import { ArrowLeft, X, AlertCircle } from "lucide-react";
+import { useGetAd } from "@workspace/api-client-react";
 import { useParams, useLocation } from "wouter";
 import { useState } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -8,6 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 
 const PM_COLORS: Record<string, string> = {
   "Tele Birr": "bg-red-500",
+  "Telebirr": "bg-red-500",
   "CBE": "bg-blue-600",
   "Awash Bank": "bg-yellow-500",
   "Abyssinia Bank": "bg-green-600",
@@ -27,8 +28,7 @@ export default function BuyConfirmPage() {
   const [etbAmount, setEtbAmount] = useState("");
   const [selectedPayment, setSelectedPayment] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
-
-  const createOrder = useCreateOrder();
+  const [error, setError] = useState<string | null>(null);
 
   const price = ad ? parseFloat(ad.price) : 0;
   const usdtAmount = etbAmount && price > 0 ? (parseFloat(etbAmount) / price).toFixed(4) : "0.0000";
@@ -38,7 +38,7 @@ export default function BuyConfirmPage() {
     setEtbAmount(ad.maxLimit.toString());
   };
 
-  const handleClearEtb = () => setEtbAmount("");
+  const handleClearEtb = () => { setEtbAmount(""); setError(null); };
 
   const canBuy =
     etbAmount &&
@@ -46,28 +46,36 @@ export default function BuyConfirmPage() {
     parseFloat(etbAmount) <= parseFloat(ad?.maxLimit ?? "0") &&
     selectedPayment;
 
-  const handleBuy = () => {
+  const handleBuy = async () => {
     if (!ad || !canBuy || !selectedPayment) return;
     setCreating(true);
-    createOrder.mutate(
-      {
-        data: {
+    setError(null);
+    try {
+      const token = localStorage.getItem("p2p_token");
+      const res = await fetch("/api/orders", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { "Authorization": `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
           adId: ad.id,
           amountUsdt: usdtAmount,
           amountEtb: etbAmount,
           paymentMethod: selectedPayment,
-        },
-      },
-      {
-        onSuccess: (order: any) => {
-          navigate(`/trade/${order.id}`);
-        },
-        onError: () => {
-          toast({ title: "Failed to create order", variant: "destructive" });
-          setCreating(false);
-        },
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.message || "Something went wrong");
+        setCreating(false);
+        return;
       }
-    );
+      navigate(`/trade/${data.id}`);
+    } catch {
+      setError("Network error. Please try again.");
+      setCreating(false);
+    }
   };
 
   if (isLoading || !ad) {
@@ -97,6 +105,19 @@ export default function BuyConfirmPage() {
       </header>
 
       <div className="p-4 pb-32 space-y-4">
+        {/* Error banner */}
+        {error && (
+          <div className="flex items-start space-x-3 p-4 rounded-xl bg-destructive/10 border border-destructive/30">
+            <AlertCircle className="w-5 h-5 text-destructive flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-sm text-destructive font-medium">{error}</p>
+            </div>
+            <button onClick={() => setError(null)} className="flex-shrink-0">
+              <X className="w-4 h-4 text-destructive/70" />
+            </button>
+          </div>
+        )}
+
         {/* ETB Amount Input */}
         <div className="bg-card border border-border rounded-xl p-4">
           <label className="text-xs text-muted-foreground block mb-2">I want to pay</label>
@@ -104,7 +125,7 @@ export default function BuyConfirmPage() {
             <input
               type="number"
               value={etbAmount}
-              onChange={e => setEtbAmount(e.target.value)}
+              onChange={e => { setEtbAmount(e.target.value); setError(null); }}
               placeholder="Enter amount"
               className="flex-1 bg-transparent text-xl font-bold outline-none min-w-0"
             />
@@ -149,7 +170,7 @@ export default function BuyConfirmPage() {
             {paymentMethods.map(method => (
               <button
                 key={method}
-                onClick={() => setSelectedPayment(method)}
+                onClick={() => { setSelectedPayment(method); setError(null); }}
                 className={`w-full flex items-center space-x-3 p-3 rounded-xl border transition-colors ${selectedPayment === method ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"}`}
               >
                 <PaymentMethodDot method={method} />

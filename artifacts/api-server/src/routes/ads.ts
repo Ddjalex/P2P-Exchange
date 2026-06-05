@@ -1,14 +1,27 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { adsTable, usersTable, ordersTable } from "@workspace/db";
-import { eq, and, or, gte, lte, desc, ne } from "drizzle-orm";
+import { adsTable, usersTable, ordersTable, walletsTable } from "@workspace/db";
+import { eq, and, ne, desc, asc } from "drizzle-orm";
 
 const router = Router();
+
+// ── Wallet helper ─────────────────────────────────────────────────────────────
+
+async function getOrCreateWallet(userId: number) {
+  let wallet = await db.select().from(walletsTable).where(eq(walletsTable.userId, userId)).then(r => r[0]);
+  if (!wallet) {
+    const [w] = await db.insert(walletsTable).values({ userId, availableBalance: "0.00", frozenBalance: "0.00" }).returning();
+    wallet = w;
+  }
+  return wallet;
+}
+
+// ── Format ad ─────────────────────────────────────────────────────────────────
 
 async function formatAd(ad: any) {
   const user = await db.select().from(usersTable).where(eq(usersTable.id, ad.userId)).then(r => r[0]);
   const orders = await db.select().from(ordersTable).where(
-    or(eq(ordersTable.buyerId, ad.userId), eq(ordersTable.sellerId, ad.userId))
+    eq(ordersTable.adId, ad.id)
   );
   const completed = orders.filter(o => o.status === "completed").length;
   const completionRate = orders.length > 0 ? ((completed / orders.length) * 100).toFixed(1) : "100.0";
@@ -40,41 +53,73 @@ async function formatAd(ad: any) {
   };
 }
 
+// ── LIST ADS ──────────────────────────────────────────────────────────────────
+
 router.get("/", async (req, res) => {
   try {
-    const { type, payment_method, mine, status } = req.query as Record<string, string>;
+    const { type, payment_method, min_amount, max_amount, mine, status } = req.query as Record<string, string>;
+    const userId = (req as any).userId;
 
-    const conditions = [];
+    const conditions: any[] = [];
     if (mine === "true") {
-      conditions.push(eq(adsTable.userId, (req as any).userId));
+      conditions.push(eq(adsTable.userId, userId));
+      if (status && ["online", "offline", "private"].includes(status)) {
+        conditions.push(eq(adsTable.status, status as any));
+      }
     } else {
-      conditions.push(ne(adsTable.userId, (req as any).userId));
-      if (!status) conditions.push(eq(adsTable.status, "online"));
+      conditions.push(ne(adsTable.userId, userId));
+      conditions.push(eq(adsTable.status, "online"));
     }
+
     if (type && ["buy", "sell"].includes(type)) {
       conditions.push(eq(adsTable.type, type as any));
     }
-    if (status && ["online", "offline", "private"].includes(status)) {
-      conditions.push(eq(adsTable.status, status as any));
-    }
+
+    // Sort: marketplace buy ads → price asc (cheapest first), sell ads → price desc
+    // For "mine", sort by createdAt desc
+    const sortOrder = mine === "true"
+      ? desc(adsTable.createdAt)
+      : type === "sell"
+        ? desc(adsTable.price)
+        : asc(adsTable.price);
 
     const ads = await db.select().from(adsTable)
       .where(conditions.length > 0 ? and(...conditions) : undefined)
-      .orderBy(desc(adsTable.createdAt));
+      .orderBy(sortOrder);
 
     const formatted = await Promise.all(ads.map(formatAd));
 
-    // Filter by payment method if specified
-    const filtered = payment_method
-      ? formatted.filter(a => a.paymentMethods.includes(payment_method))
-      : formatted;
+    let filtered = formatted;
+
+    // Filter by payment method (case-insensitive partial match)
+    if (payment_method) {
+      const pmLower = payment_method.toLowerCase().replace(/\s+/g, "");
+      filtered = filtered.filter(a =>
+        a.paymentMethods.some((m: string) => {
+          const ml = m.toLowerCase().replace(/\s+/g, "");
+          return ml === pmLower || ml.includes(pmLower) || pmLower.includes(ml);
+        })
+      );
+    }
+
+    // Filter by ETB amount (ad limits must cover the requested amount)
+    if (min_amount) {
+      const amt = parseFloat(min_amount);
+      filtered = filtered.filter(a => parseFloat(a.maxLimit) >= amt);
+    }
+    if (max_amount) {
+      const amt = parseFloat(max_amount);
+      filtered = filtered.filter(a => parseFloat(a.minLimit) <= amt);
+    }
 
     res.json(filtered);
   } catch (err) {
     req.log.error({ err }, "Failed to list ads");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ message: "Internal server error" });
   }
 });
+
+// ── CREATE AD ─────────────────────────────────────────────────────────────────
 
 router.post("/", async (req, res) => {
   try {
@@ -82,9 +127,24 @@ router.post("/", async (req, res) => {
       type, priceType, price, floatingMargin, totalAmount, minLimit, maxLimit,
       paymentMethods, paymentTimeLimit, autoReply, conditions, region, status
     } = req.body;
+    const userId = (req as any).userId;
+
+    // For sell ads: check and freeze USDT immediately
+    if (type === "sell") {
+      const wallet = await getOrCreateWallet(userId);
+      const available = parseFloat(wallet.availableBalance);
+      const amount = parseFloat(totalAmount);
+      if (available < amount) {
+        return res.status(400).json({ message: "Insufficient USDT balance to post this sell ad" });
+      }
+      await db.update(walletsTable).set({
+        availableBalance: (available - amount).toFixed(4),
+        frozenBalance: (parseFloat(wallet.frozenBalance) + amount).toFixed(4),
+      }).where(eq(walletsTable.userId, userId));
+    }
 
     const [ad] = await db.insert(adsTable).values({
-      userId: (req as any).userId,
+      userId,
       type,
       priceType: priceType || "fixed",
       price,
@@ -104,21 +164,25 @@ router.post("/", async (req, res) => {
     res.status(201).json(await formatAd(ad));
   } catch (err) {
     req.log.error({ err }, "Failed to create ad");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ message: "Internal server error" });
   }
 });
+
+// ── GET AD ────────────────────────────────────────────────────────────────────
 
 router.get("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const ad = await db.select().from(adsTable).where(eq(adsTable.id, id)).then(r => r[0]);
-    if (!ad) return res.status(404).json({ error: "Ad not found" });
+    if (!ad) return res.status(404).json({ message: "Ad not found" });
     res.json(await formatAd(ad));
   } catch (err) {
     req.log.error({ err }, "Failed to get ad");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ message: "Internal server error" });
   }
 });
+
+// ── UPDATE AD ─────────────────────────────────────────────────────────────────
 
 router.patch("/:id", async (req, res) => {
   try {
@@ -143,13 +207,15 @@ router.patch("/:id", async (req, res) => {
     if (status !== undefined) updates.status = status;
 
     const [updated] = await db.update(adsTable).set(updates).where(eq(adsTable.id, id)).returning();
-    if (!updated) return res.status(404).json({ error: "Ad not found" });
+    if (!updated) return res.status(404).json({ message: "Ad not found" });
     res.json(await formatAd(updated));
   } catch (err) {
     req.log.error({ err }, "Failed to update ad");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ message: "Internal server error" });
   }
 });
+
+// ── DELETE AD ─────────────────────────────────────────────────────────────────
 
 router.delete("/:id", async (req, res) => {
   try {
@@ -158,21 +224,23 @@ router.delete("/:id", async (req, res) => {
     res.status(204).send();
   } catch (err) {
     req.log.error({ err }, "Failed to delete ad");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ message: "Internal server error" });
   }
 });
+
+// ── TOGGLE STATUS ─────────────────────────────────────────────────────────────
 
 router.post("/:id/toggle-status", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const ad = await db.select().from(adsTable).where(eq(adsTable.id, id)).then(r => r[0]);
-    if (!ad) return res.status(404).json({ error: "Ad not found" });
+    if (!ad) return res.status(404).json({ message: "Ad not found" });
     const newStatus = ad.status === "online" ? "offline" : "online";
     const [updated] = await db.update(adsTable).set({ status: newStatus }).where(eq(adsTable.id, id)).returning();
     res.json(await formatAd(updated));
   } catch (err) {
     req.log.error({ err }, "Failed to toggle ad status");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ message: "Internal server error" });
   }
 });
 
