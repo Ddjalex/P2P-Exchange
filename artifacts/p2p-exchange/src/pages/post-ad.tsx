@@ -83,7 +83,11 @@ export default function PostAdPage() {
       createAd.mutate({ data: ad as AdInput }, {
         onSuccess: () => {
           toast({ title: "Ad posted successfully" });
-          queryClient.invalidateQueries({ queryKey: getListAdsQueryKey({ mine: true }) });
+          // Invalidate both "my ads" list and marketplace (buy/sell) lists
+          queryClient.invalidateQueries({ queryKey: getListAdsQueryKey({ mine: "true" } as any) });
+          queryClient.invalidateQueries({ queryKey: getListAdsQueryKey({ type: "buy" } as any) });
+          queryClient.invalidateQueries({ queryKey: getListAdsQueryKey({ type: "sell" } as any) });
+          queryClient.invalidateQueries({ queryKey: getListAdsQueryKey({} as any) });
           setLocation("/ads");
         },
         onError: () => {

@@ -1,0 +1,58 @@
+Fix these 2 specific bugs in the P2P marketplace. Do not touch anything else.
+
+BUG 1 — Buy/Sell ads showing on wrong tab
+The problem:
+When a user posts a Buy ad it shows on the Buy tab — this is WRONG.
+When a user posts a Sell ad it shows on the Sell tab — this is WRONG.
+Why it's wrong (MEXC logic):
+The Buy tab shows ads from people who want to SELL USDT to you.
+The Sell tab shows ads from people who want to BUY USDT from you.
+The fix:
+BUY tab in marketplace → fetch ads where type = 'sell'
+SELL tab in marketplace → fetch ads where type = 'buy'
+In src/pages/p2p.tsx find where ads are fetched and fix the query:
+typescript// When user is on BUY tab:
+fetch('/api/ads?type=sell&status=online')
+
+// When user is on SELL tab:
+fetch('/api/ads?type=buy&status=online')
+Logic explanation:
+
+I posted a SELL ad = I am selling USDT = other users see it on their BUY tab
+I posted a BUY ad = I am buying USDT = other users see it on their SELL tab
+
+
+BUG 2 — Posted ads not appearing in marketplace
+The problem:
+After a user posts an ad it does not appear in the /p2p marketplace at all.
+Check and fix all of these causes:
+Check 1 — API filter:
+In GET /api/ads make sure it does NOT filter out the ad by mistake.
+The only ads to exclude are the logged-in user's own ads.
+All other users' ads with status = 'online' must show.
+typescript// In GET /api/ads route:
+where(
+  and(
+    eq(ads.status, 'online'),
+    ne(ads.userId, req.user.id),  // exclude own ads only
+    eq(ads.asset, 'USDT'),
+    eq(ads.fiat, 'ETB')
+  )
+)
+Check 2 — availableAmount on insert:
+When posting an ad, make sure availableAmount is set equal to totalAmount.
+If availableAmount is NULL or 0 the ad may be filtered out.
+typescript// In POST /api/ads:
+await db.insert(ads).values({
+  ...adData,
+  availableAmount: totalAmount,  // ← must be set!
+  status: 'online',
+});
+Check 3 — Frontend not refreshing after post:
+After posting an ad, the marketplace query cache must be invalidated so the new ad appears immediately.
+typescript// In /ads/post after successful POST /api/ads:
+queryClient.invalidateQueries({ queryKey: ['p2p-ads'] });
+queryClient.invalidateQueries({ queryKey: ['ads'] });
+Check 4 — Status default:
+Make sure when an ad is inserted the status defaults to 'online' not null or 'offline'.
+typescriptstatus: formData.status || 'online'

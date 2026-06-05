@@ -41,7 +41,10 @@ export default function P2PPage() {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  const filterParams: Record<string, string> = { type };
+  // BUY tab → show ads where sellers are selling USDT (type=sell)
+  // SELL tab → show ads where buyers want to buy USDT (type=buy)
+  const apiType = type === "buy" ? "sell" : "buy";
+  const filterParams: Record<string, string> = { type: apiType };
   if (appliedAmount) filterParams.min_amount = appliedAmount;
   if (selectedPayment !== "All") filterParams.payment_method = selectedPayment;
 
