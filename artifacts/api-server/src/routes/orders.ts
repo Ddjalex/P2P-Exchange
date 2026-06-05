@@ -170,8 +170,8 @@ router.post("/", async (req, res) => {
     const etb = parseFloat(amountEtb);
     const minLimit = parseFloat(ad.minLimit);
     const maxLimit = parseFloat(ad.maxLimit);
-    if (etb < minLimit) return res.status(400).json({ message: `Minimum order amount is Br ${minLimit.toLocaleString()}` });
-    if (etb > maxLimit) return res.status(400).json({ message: `Maximum order amount is Br ${maxLimit.toLocaleString()}` });
+    if (minLimit > 0 && etb < minLimit) return res.status(400).json({ message: `Minimum order amount is Br ${minLimit.toLocaleString()}` });
+    if (maxLimit > 0 && etb > maxLimit) return res.status(400).json({ message: `Maximum order amount is Br ${maxLimit.toLocaleString()}` });
 
     const adPaymentMethods: string[] = JSON.parse(ad.paymentMethods);
     const pmLower = paymentMethod.toLowerCase().replace(/\s+/g, "");

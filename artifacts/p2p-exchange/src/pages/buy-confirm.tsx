@@ -40,10 +40,15 @@ export default function BuyConfirmPage() {
 
   const handleClearEtb = () => { setEtbAmount(""); setError(null); };
 
+  const minLimit = parseFloat(ad?.minLimit ?? "0");
+  const maxLimit = parseFloat(ad?.maxLimit ?? "0");
+  const etbNum = parseFloat(etbAmount);
+
   const canBuy =
     etbAmount &&
-    parseFloat(etbAmount) >= parseFloat(ad?.minLimit ?? "0") &&
-    parseFloat(etbAmount) <= parseFloat(ad?.maxLimit ?? "0") &&
+    etbNum > 0 &&
+    (minLimit === 0 || etbNum >= minLimit) &&
+    (maxLimit === 0 || etbNum <= maxLimit) &&
     selectedPayment;
 
   const handleBuy = async () => {
@@ -151,7 +156,14 @@ export default function BuyConfirmPage() {
             </span>
           </div>
           <p className="text-[11px] text-muted-foreground mt-2">
-            Limit Br {Number(ad.minLimit).toLocaleString()} – Br {Number(ad.maxLimit).toLocaleString()} &nbsp;|&nbsp; Time Limit {ad.paymentTimeLimit} min
+            {minLimit === 0 && maxLimit === 0
+              ? "No limit set"
+              : minLimit === 0
+                ? `Up to Br ${maxLimit.toLocaleString()}`
+                : maxLimit === 0
+                  ? `From Br ${minLimit.toLocaleString()}`
+                  : `Limit Br ${minLimit.toLocaleString()} – Br ${maxLimit.toLocaleString()}`
+            } &nbsp;|&nbsp; Time Limit {ad.paymentTimeLimit} min
           </p>
         </div>
 
@@ -229,12 +241,17 @@ export default function BuyConfirmPage() {
         )}
 
         {/* Validation warning */}
-        {etbAmount && (
-          parseFloat(etbAmount) < parseFloat(ad.minLimit) ||
-          parseFloat(etbAmount) > parseFloat(ad.maxLimit)
+        {etbAmount && etbNum > 0 && (
+          (minLimit > 0 && etbNum < minLimit) ||
+          (maxLimit > 0 && etbNum > maxLimit)
         ) && (
           <p className="text-xs text-destructive px-1">
-            Amount must be between Br {Number(ad.minLimit).toLocaleString()} and Br {Number(ad.maxLimit).toLocaleString()}
+            {minLimit > 0 && maxLimit > 0
+              ? `Amount must be between Br ${minLimit.toLocaleString()} and Br ${maxLimit.toLocaleString()}`
+              : minLimit > 0
+                ? `Minimum amount is Br ${minLimit.toLocaleString()}`
+                : `Maximum amount is Br ${maxLimit.toLocaleString()}`
+            }
           </p>
         )}
       </div>

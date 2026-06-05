@@ -1,0 +1,137 @@
+I can see 3 issues clearly. Here's the fix prompt:
+
+Replit Fix Prompt — 3 Bugs
+
+Fix these 3 bugs only. Do not touch anything else.
+
+BUG 1 — Cannot buy USDT: "Buy USDT" button is disabled (greyed out)
+Problem: The "Buy USDT" button is greyed out and unclickable. Looking at Image 1 and 2, the limit shows Br 0 – Br 0 which means the ad has minLimit = 0 and maxLimit = 0. The frontend validation is blocking the order because amount doesn't pass the limit check.
+Fix in src/pages/order-confirmation.tsx:
+typescript// WRONG — this blocks the button when limits are 0:
+const isValid = amount >= ad.minLimit && amount <= ad.maxLimit;
+
+// CORRECT — only validate limits if they are set (greater than 0):
+const isValid =
+  amount > 0 &&
+  selectedPaymentMethod &&
+  (ad.minLimit === 0 || amount >= ad.minLimit) &&
+  (ad.maxLimit === 0 || amount <= ad.maxLimit);
+
+// Also fix the limit display — if min/max are 0, show "No limit":
+const limitText = (ad.minLimit === 0 && ad.maxLimit === 0)
+  ? 'No limit set'
+  : `Limit Br ${ad.minLimit.toLocaleString()} – Br ${ad.maxLimit.toLocaleString()}`;
+Fix in POST /api/orders backend:
+typescript// Only validate limits if they are greater than 0:
+if (ad.minLimit > 0 && amountEtb < ad.minLimit) {
+  throw { status: 400, message: `Minimum order is Br ${Number(ad.minLimit).toLocaleString()}` };
+}
+if (ad.maxLimit > 0 && amountEtb > ad.maxLimit) {
+  throw { status: 400, message: `Maximum order is Br ${Number(ad.maxLimit).toLocaleString()}` };
+}
+
+BUG 2 — Limit showing Br 0 – Br 0 on ads
+Problem: When posting an ad with no Order Limit set, it saves 0 instead of null. This shows as Br 0 – Br 0 on the confirmation screen.
+Fix in POST /api/ads:
+typescript// Save null if limit fields are empty:
+minLimit: formData.minLimit ? Number(formData.minLimit) : 0,
+maxLimit: formData.maxLimit ? Number(formData.maxLimit) : 0,
+Fix display everywhere limits are shown:
+typescript// Helper function — use this everywhere:
+const formatLimit = (min: number, max: number) => {
+  if (!min && !max) return 'No limit';
+  if (!min) return `Up to Br ${max.toLocaleString()}`;
+  if (!max) return `From Br ${min.toLocaleString()}`;
+  return `Br ${min.toLocaleString()} – Br ${max.toLocaleString()}`;
+};
+
+BUG 3 — "Failed to load profile / Trader not found"
+Problem: The trader profile API GET /api/users/:id/profile returns 404 or fails.
+Fix in artifacts/api-server/src/routes/users.ts:
+Make sure the route exists and handles errors correctly:
+typescriptapp.get('/api/users/:id/profile', authenticate, async (req, res) => {
+  try {
+    const userId = parseInt(req.params.id);
+
+    if (isNaN(userId)) {
+      return res.status(400).json({ message: 'Invalid user ID' });
+    }
+
+    const user = await db.query.users.findFirst({
+      where: eq(users.id, userId)
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: 'Trader not found' });
+    }
+
+    // Get user's active ads
+    const userAds = await db.query.ads.findMany({
+      where: and(eq(ads.userId, userId), eq(ads.status, 'online'))
+    });
+
+    // Get user's received feedback
+    const userFeedback = await db.query.feedback.findMany({
+      where: eq(feedback.toUserId, userId),
+      orderBy: desc(feedback.createdAt),
+      limit: 20
+    });
+
+    // Calculate stats safely (never undefined)
+    const positiveFeedback = userFeedback.filter(f => f.type === 'positive').length;
+    const negativeFeedback = userFeedback.filter(f => f.type === 'negative').length;
+
+    return res.json({
+      id: user.id,
+      username: user.username,
+      kycStatus: user.kycStatus,
+      isMerchant: user.isMerchant ?? false,
+      createdAt: user.createdAt,
+      lastActiveAt: user.lastActiveAt ?? user.createdAt,
+      verifications: {
+        email: !!user.email,
+        sms: !!user.phone,
+        kyc: user.kycStatus === 'verified',
+        address: false
+      },
+      stats: {
+        trades30d: user.totalTrades ?? 0,
+        completionRate30d: user.completionRate ?? 100,
+        avgReleaseTimeMinutes: user.avgReleaseTimeMinutes ?? 0,
+        avgPayTimeMinutes: user.avgPayTimeMinutes ?? 0,
+        allTrades: user.totalTrades ?? 0,
+        buyTrades: user.buyTrades ?? 0,
+        sellTrades: user.sellTrades ?? 0,
+        positiveFeedback,   // never undefined
+        negativeFeedback,   // never undefined
+        tradingCounterparties: user.tradingCounterparties ?? 0,
+        firstTradeAt: user.firstTradeAt ?? null,
+        depositCollateral: 0
+      },
+      ads: userAds,
+      feedback: userFeedback
+    });
+
+  } catch (error) {
+    console.error('Trader profile error:', error);
+    return res.status(500).json({ message: 'Failed to load profile' });
+  }
+});
+Fix in src/pages/trader-profile.tsx — make sure it uses correct URL:
+typescript// Make sure it calls the right endpoint with the user ID:
+const { data: profile } = useQuery({
+  queryKey: ['trader-profile', userId],
+  queryFn: async () => {
+    const res = await fetch(`/api/users/${userId}/profile`, {
+      headers: { Authorization: `Bearer ${localStorage.getItem('p2p_token')}` }
+    });
+    if (!res.ok) throw new Error('Failed to load profile');
+    return res.json();
+  },
+  enabled: !!userId  // only fetch when userId exists
+});
+
+// Check userId is coming from route params correctly:
+const { userId } = useParams();
+// Make sure route is: /trader/:userId
+// And navigate is: navigate(`/trader/${order.sellerId}`)

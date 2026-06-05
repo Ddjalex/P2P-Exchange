@@ -76,7 +76,10 @@ export default function TraderProfilePage() {
   useEffect(() => {
     if (!userId) return;
     setLoading(true);
-    fetch(`/api/users/${userId}/profile`)
+    const token = localStorage.getItem("p2p_token");
+    fetch(`/api/users/${userId}/profile`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
       .then(async r => {
         const data = await r.json();
         if (!r.ok) {
@@ -297,7 +300,16 @@ export default function TraderProfilePage() {
                     </div>
                     <div className="flex justify-between">
                       <span>Limit</span>
-                      <span className="text-foreground font-mono">{Number(ad.minLimit).toLocaleString()} – {Number(ad.maxLimit).toLocaleString()} Br</span>
+                      <span className="text-foreground font-mono">
+                        {Number(ad.minLimit) === 0 && Number(ad.maxLimit) === 0
+                          ? "No limit"
+                          : Number(ad.minLimit) === 0
+                            ? `Up to ${Number(ad.maxLimit).toLocaleString()} Br`
+                            : Number(ad.maxLimit) === 0
+                              ? `From ${Number(ad.minLimit).toLocaleString()} Br`
+                              : `${Number(ad.minLimit).toLocaleString()} – ${Number(ad.maxLimit).toLocaleString()} Br`
+                        }
+                      </span>
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-1">
