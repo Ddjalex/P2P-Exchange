@@ -8,29 +8,43 @@ const router = Router();
 router.get("/:id/profile", async (req, res) => {
   try {
     const targetId = parseInt(req.params.id);
+    if (isNaN(targetId)) {
+      return res.status(400).json({ message: "Invalid user ID" });
+    }
     const viewerId = (req as any).userId;
 
+    console.log("Fetching profile for userId:", targetId);
+
+    // Step 1: Get user
     const user = await db.select().from(usersTable).where(eq(usersTable.id, targetId)).then(r => r[0]);
     if (!user) return res.status(404).json({ message: "User not found" });
 
+    console.log("User found:", !!user);
+
+    // Step 2: Get orders for stats
+    let allOrders: any[] = [];
+    try {
+      allOrders = await db.select().from(ordersTable).where(
+        or(eq(ordersTable.buyerId, targetId), eq(ordersTable.sellerId, targetId))!
+      );
+    } catch (e) {
+      console.error("Failed to fetch orders:", e);
+      allOrders = [];
+    }
+
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-
-    const allOrders = await db.select().from(ordersTable).where(
-      or(eq(ordersTable.buyerId, targetId), eq(ordersTable.sellerId, targetId))!
-    );
-
     const completedOrders = allOrders.filter(o => o.status === "completed");
     const orders30d = allOrders.filter(o => new Date(o.createdAt) >= thirtyDaysAgo);
     const completed30d = orders30d.filter(o => o.status === "completed");
 
     const sellerCompleted = completedOrders.filter(o => o.sellerId === targetId && o.releasedAt && o.paidAt);
     const avgReleaseMs = sellerCompleted.length > 0
-      ? sellerCompleted.reduce((sum, o) => sum + (new Date(o.releasedAt!).getTime() - new Date(o.paidAt!).getTime()), 0) / sellerCompleted.length
+      ? sellerCompleted.reduce((sum: number, o: any) => sum + (new Date(o.releasedAt!).getTime() - new Date(o.paidAt!).getTime()), 0) / sellerCompleted.length
       : 0;
 
     const buyerCompleted = completedOrders.filter(o => o.buyerId === targetId && o.paidAt);
     const avgPayMs = buyerCompleted.length > 0
-      ? buyerCompleted.reduce((sum, o) => sum + (new Date(o.paidAt!).getTime() - new Date(o.createdAt).getTime()), 0) / buyerCompleted.length
+      ? buyerCompleted.reduce((sum: number, o: any) => sum + (new Date(o.paidAt!).getTime() - new Date(o.createdAt).getTime()), 0) / buyerCompleted.length
       : 0;
 
     const counterparties = new Set(allOrders.map(o => o.buyerId === targetId ? o.sellerId : o.buyerId));
@@ -42,60 +56,84 @@ router.get("/:id/profile", async (req, res) => {
 
     const registeredDays = Math.floor((Date.now() - new Date(user.createdAt).getTime()) / (1000 * 60 * 60 * 24));
 
-    const feedback = await db.select().from(feedbackTable)
-      .where(eq(feedbackTable.toUserId, targetId))
-      .orderBy(desc(feedbackTable.createdAt))
-      .limit(30);
+    // Step 3: Get feedback — wrapped in try/catch
+    let feedbackWithUsers: any[] = [];
+    let positiveFeedback = 0;
+    let negativeFeedback = 0;
+    try {
+      const feedback = await db.select().from(feedbackTable)
+        .where(eq(feedbackTable.toUserId, targetId))
+        .orderBy(desc(feedbackTable.createdAt))
+        .limit(30);
 
-    const positiveFeedback = feedback.filter(f => f.type === "positive").length;
-    const negativeFeedback = feedback.filter(f => f.type === "negative").length;
+      positiveFeedback = feedback.filter(f => f.type === "positive").length;
+      negativeFeedback = feedback.filter(f => f.type === "negative").length;
 
-    const feedbackWithUsers = await Promise.all(feedback.map(async (fb) => {
-      const fromUser = await db.select().from(usersTable).where(eq(usersTable.id, fb.fromUserId)).then(r => r[0]);
-      return {
-        id: fb.id,
-        fromUserId: fb.fromUserId,
-        fromUsername: fromUser?.username ?? "Unknown",
-        type: fb.type,
-        comment: fb.comment ?? null,
-        createdAt: fb.createdAt,
-      };
-    }));
+      feedbackWithUsers = await Promise.all(feedback.map(async (fb) => {
+        const fromUser = await db.select().from(usersTable).where(eq(usersTable.id, fb.fromUserId)).then(r => r[0]);
+        return {
+          id: fb.id,
+          fromUserId: fb.fromUserId,
+          fromUsername: fromUser?.username ?? "Unknown",
+          type: fb.type,
+          comment: fb.comment ?? null,
+          createdAt: fb.createdAt,
+        };
+      }));
+    } catch (e) {
+      console.error("Failed to fetch feedback:", e);
+    }
 
-    const ads = await db.select().from(adsTable)
-      .where(and(eq(adsTable.userId, targetId), eq(adsTable.status, "online")))
-      .orderBy(desc(adsTable.createdAt));
+    console.log("Feedback count:", feedbackWithUsers.length);
 
-    const formattedAds = ads.map(ad => ({
-      id: ad.id,
-      type: ad.type,
-      price: ad.price,
-      availableAmount: ad.availableAmount,
-      minLimit: ad.minLimit,
-      maxLimit: ad.maxLimit,
-      paymentMethods: JSON.parse(ad.paymentMethods),
-      paymentTimeLimit: ad.paymentTimeLimit,
-    }));
+    // Step 4: Get ads — wrapped in try/catch
+    let formattedAds: any[] = [];
+    try {
+      const ads = await db.select().from(adsTable)
+        .where(and(eq(adsTable.userId, targetId), eq(adsTable.status, "online")))
+        .orderBy(desc(adsTable.createdAt));
 
-    const isFollowing = viewerId && viewerId !== targetId
-      ? await db.select().from(followsTable)
-          .where(and(eq(followsTable.followerId, viewerId), eq(followsTable.followingId, targetId)))
-          .then(r => r.length > 0)
-      : false;
+      formattedAds = ads.map(ad => ({
+        id: ad.id,
+        type: ad.type,
+        price: ad.price,
+        availableAmount: ad.availableAmount,
+        minLimit: ad.minLimit,
+        maxLimit: ad.maxLimit,
+        paymentMethods: (() => { try { return JSON.parse(ad.paymentMethods); } catch { return []; } })(),
+        paymentTimeLimit: ad.paymentTimeLimit,
+      }));
+    } catch (e) {
+      console.error("Failed to fetch user ads:", e);
+    }
 
-    res.json({
+    console.log("Ads count:", formattedAds.length);
+
+    // Step 5: Check follow status
+    let isFollowing = false;
+    try {
+      isFollowing = viewerId && viewerId !== targetId
+        ? await db.select().from(followsTable)
+            .where(and(eq(followsTable.followerId, viewerId), eq(followsTable.followingId, targetId)))
+            .then(r => r.length > 0)
+        : false;
+    } catch (e) {
+      console.error("Failed to fetch follow status:", e);
+    }
+
+    return res.json({
       id: user.id,
       username: user.username,
-      kycStatus: user.kycStatus,
-      isMerchant: user.isMerchant,
+      kycStatus: user.kycStatus ?? "none",
+      isMerchant: user.isMerchant ?? false,
       createdAt: user.createdAt,
       lastActiveAt: user.lastActiveAt ?? null,
       registeredDays,
       verifications: {
-        email: user.emailVerified,
-        sms: user.smsVerified,
+        email: !!user.emailVerified,
+        sms: !!user.smsVerified,
         kyc: user.kycStatus === "verified",
-        address: user.addressVerified,
+        address: !!user.addressVerified,
       },
       isFollowing,
       stats: {
@@ -116,9 +154,14 @@ router.get("/:id/profile", async (req, res) => {
       ads: formattedAds,
       feedback: feedbackWithUsers,
     });
-  } catch (err) {
-    req.log.error({ err }, "Failed to get user profile");
-    res.status(500).json({ message: "Internal server error" });
+
+  } catch (err: any) {
+    console.error("Trader profile error:", err);
+    req.log?.error({ err }, "Failed to get user profile");
+    return res.status(500).json({
+      message: "Internal server error",
+      detail: err?.message ?? "Unknown error",
+    });
   }
 });
 
