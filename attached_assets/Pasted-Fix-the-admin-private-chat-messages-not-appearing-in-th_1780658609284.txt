@@ -1,0 +1,162 @@
+Fix the admin private chat messages not appearing in the admin dispute page. One root cause to fix.
+
+THE PROBLEM
+Admin sends a message but it does not appear in the chat panel because:
+
+The messages are not being fetched after sending
+The filter for admin messages is wrong
+The senderId = null causes the query to miss admin messages
+
+
+FIX 1 — Fetch admin messages separately
+In /admin/disputes/:id page add a separate query for admin messages:
+typescript// Fetch admin private messages for this dispute
+const { data: adminChatData, refetch: refetchAdminChat } = useQuery({
+  queryKey: ['admin-private-chat', disputeId],
+  queryFn: () => fetch(`/api/admin/disputes/${disputeId}/messages`, {
+    headers: { Authorization: `Bearer ${adminToken}` }
+  }).then(r => r.json()),
+  refetchInterval: 5000  // poll every 5 seconds
+});
+
+const adminChatMessages = adminChatData?.messages ?? [];
+
+FIX 2 — Backend: store admin messages with adminId not null
+The problem: Storing senderId = null makes it impossible to distinguish admin messages from system messages.
+Fix POST /api/admin/disputes/:id/message:
+typescript// Add ADMIN_USER_ID to .env:
+// ADMIN_USER_ID=1
+
+// In the route — use admin user id instead of null:
+await db.insert(messages).values({
+  orderId: dispute.orderId,
+  senderId: -1,          // use -1 to identify admin messages
+  receiverId,
+  content,
+  type: 'admin',
+  isRead: false,
+  createdAt: new Date()
+});
+
+FIX 3 — Backend: GET admin private messages route
+Add this new route that returns ONLY admin messages for a dispute:
+typescript// GET /api/admin/disputes/:id/messages
+app.get('/api/admin/disputes/:id/messages',
+  authenticateAdmin, async (req, res) => {
+  try {
+    const disputeId = parseInt(req.params.id);
+
+    // Get dispute to find orderId
+    const dispute = await db.query.appeals.findFirst({
+      where: eq(appeals.id, disputeId)
+    });
+    if (!dispute) {
+      return res.status(404).json({ message: 'Dispute not found' });
+    }
+
+    // Get ALL admin type messages for this order
+    const adminMessages = await db.query.messages.findMany({
+      where: and(
+        eq(messages.orderId, dispute.orderId),
+        eq(messages.type, 'admin')
+      ),
+      orderBy: asc(messages.createdAt)
+    });
+
+    return res.json({ messages: adminMessages });
+  } catch (error) {
+    console.error('Admin messages fetch error:', error);
+    return res.status(500).json({ message: 'Failed to fetch messages' });
+  }
+});
+
+FIX 4 — Refetch after sending
+In the handleSendAdminMessage function — refetch after send:
+typescriptconst handleSendAdminMessage = async () => {
+  if (!adminMessage.trim() || sending) return;
+  setSending(true);
+
+  try {
+    const receiverId = activeAdminChat === 'buyer'
+      ? dispute.order.buyerId
+      : dispute.order.sellerId;
+
+    const res = await fetch(
+      `/api/admin/disputes/${disputeId}/message`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${adminToken}`
+        },
+        body: JSON.stringify({ receiverId, content: adminMessage })
+      }
+    );
+
+    if (res.ok) {
+      setAdminMessage('');
+      // Immediately refetch to show new message
+      await refetchAdminChat();
+    } else {
+      const data = await res.json();
+      alert(data.message || 'Failed to send');
+    }
+  } catch (e) {
+    alert('Network error');
+  } finally {
+    setSending(false);
+  }
+};
+
+FIX 5 — Filter messages by receiver in the UI
+When showing messages in the chat panel, filter by who the chat is open with:
+typescript// Show only messages sent to the active chat party:
+const filteredAdminMessages = adminChatMessages.filter((m: any) =>
+  m.receiverId === (
+    activeAdminChat === 'buyer'
+      ? dispute.order.buyerId
+      : dispute.order.sellerId
+  )
+);
+
+// Use filteredAdminMessages in the chat panel render
+// instead of adminChatMessages directly
+
+FIX 6 — Show message count on chat buttons
+Update the buyer/seller chat buttons to show message count:
+typescriptconst buyerMessageCount = adminChatMessages.filter(
+  (m: any) => m.receiverId === dispute.order.buyerId
+).length;
+
+const sellerMessageCount = adminChatMessages.filter(
+  (m: any) => m.receiverId === dispute.order.sellerId
+).length;
+
+// On buttons:
+<button onClick={() => setActiveAdminChat('buyer')}>
+  💬 Chat with Buyer
+  {buyerMessageCount > 0 && (
+    <span style={{
+      background: '#00d4ff', color: '#1a1a2e',
+      borderRadius: '10px', padding: '1px 6px',
+      fontSize: '10px', fontWeight: 700,
+      marginLeft: '6px'
+    }}>
+      {buyerMessageCount}
+    </span>
+  )}
+</button>
+
+<button onClick={() => setActiveAdminChat('seller')}>
+  💬 Chat with Seller
+  {sellerMessageCount > 0 && (
+    <span style={{
+      background: '#ff8800', color: '#1a1a2e',
+      borderRadius: '10px', padding: '1px 6px',
+      fontSize: '10px', fontWeight: 700,
+      marginLeft: '6px'
+    }}>
+      {sellerMessageCount}
+    </span>
+  )}
+</button>
