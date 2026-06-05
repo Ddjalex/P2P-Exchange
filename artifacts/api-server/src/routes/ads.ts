@@ -67,7 +67,8 @@ router.get("/", async (req, res) => {
         conditions.push(eq(adsTable.status, status as any));
       }
     } else {
-      conditions.push(ne(adsTable.userId, userId));
+      // Show all online ads — including the user's own so they can see their ad is live.
+      // Self-trading is blocked at order-creation time by the backend.
       conditions.push(eq(adsTable.status, "online"));
     }
 
