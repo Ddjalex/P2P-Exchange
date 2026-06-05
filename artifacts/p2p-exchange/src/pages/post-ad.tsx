@@ -43,6 +43,7 @@ export default function PostAdPage() {
   const [userPaymentMethods, setUserPaymentMethods] = useState<UserPaymentMethod[]>([]);
   const [loadingPaymentMethods, setLoadingPaymentMethods] = useState(true);
   const [step2Error, setStep2Error] = useState("");
+  const [availableBalance, setAvailableBalance] = useState<number | null>(null);
 
   const { data: existingAd, isLoading: loadingAd } = useGetAd(editId!, {
     query: { enabled: isEdit },
@@ -80,6 +81,20 @@ export default function PostAdPage() {
       .finally(() => setLoadingPaymentMethods(false));
   }, []);
 
+  useEffect(() => {
+    const token = localStorage.getItem("p2p_token");
+    fetch("/api/wallet", {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data?.availableBalance !== undefined) {
+          setAvailableBalance(parseFloat(data.availableBalance));
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   const createAd = useCreateAd();
   const updateAd = useUpdateAd();
   const queryClient = useQueryClient();
@@ -89,6 +104,16 @@ export default function PostAdPage() {
   const handleNext = () => {
     if (step === 2) {
       setStep2Error("");
+      if (!ad.totalAmount || Number(ad.totalAmount) <= 0) {
+        setStep2Error("Please enter a valid total amount");
+        return;
+      }
+      if (ad.type === "sell" && availableBalance !== null) {
+        if (Number(ad.totalAmount) > availableBalance) {
+          setStep2Error(`Insufficient balance. You only have ${availableBalance.toFixed(4)} USDT available.`);
+          return;
+        }
+      }
       if ((ad.paymentMethods ?? []).length === 0) {
         setStep2Error("Please select at least one payment method");
         return;
@@ -207,11 +232,50 @@ export default function PostAdPage() {
         {step === 2 && (
           <div className="space-y-6">
             <div className="space-y-2">
-              <label className="text-sm font-medium">Total Amount</label>
-              <div className="relative">
-                <input type="number" placeholder="Enter total amount" value={ad.totalAmount} onChange={e => setAd({ ...ad, totalAmount: e.target.value })} className="w-full p-3 bg-card border border-border rounded outline-none font-mono" />
-                <span className="absolute right-3 top-3 text-muted-foreground font-medium text-sm">USDT</span>
+              <div className="flex justify-between items-center">
+                <label className="text-sm font-medium">Total Amount</label>
+                {ad.type === "sell" && availableBalance !== null && (
+                  <span className="text-xs text-muted-foreground">
+                    Available: <span className="text-primary font-mono font-semibold">{availableBalance.toFixed(4)} USDT</span>
+                  </span>
+                )}
               </div>
+              <div className="relative flex items-center">
+                <input
+                  type="number"
+                  placeholder="Enter total amount"
+                  value={ad.totalAmount}
+                  onChange={e => {
+                    setStep2Error("");
+                    setAd({ ...ad, totalAmount: e.target.value });
+                  }}
+                  className={`w-full p-3 pr-24 bg-card border rounded outline-none font-mono transition-colors ${
+                    ad.type === "sell" && availableBalance !== null && Number(ad.totalAmount) > availableBalance
+                      ? "border-destructive"
+                      : "border-border"
+                  }`}
+                />
+                <div className="absolute right-2 flex items-center gap-1.5">
+                  {ad.type === "sell" && availableBalance !== null && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setStep2Error("");
+                        setAd({ ...ad, totalAmount: availableBalance.toFixed(4) });
+                      }}
+                      className="px-2 py-0.5 bg-primary/15 text-primary text-xs font-bold rounded"
+                    >
+                      Max
+                    </button>
+                  )}
+                  <span className="text-muted-foreground font-medium text-sm">USDT</span>
+                </div>
+              </div>
+              {ad.type === "sell" && availableBalance !== null && Number(ad.totalAmount) > availableBalance && (
+                <p className="text-xs text-destructive flex items-center gap-1">
+                  ⚠ Exceeds your available balance of {availableBalance.toFixed(4)} USDT
+                </p>
+              )}
             </div>
 
             <div className="space-y-2">
