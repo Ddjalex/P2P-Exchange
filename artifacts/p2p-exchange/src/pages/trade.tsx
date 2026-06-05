@@ -545,14 +545,11 @@ export default function TradePage() {
         <div className="p-4 pb-28 space-y-4">
           <div>
             <h2 className="text-2xl font-bold">Order Created</h2>
-            <div className="flex items-center space-x-1 mt-1">
-              <Clock className="w-3.5 h-3.5 text-primary" />
-              <p className="text-sm font-mono text-primary font-bold">Pay within {formatTime(paymentTimeLeft)}</p>
-            </div>
+            <p className="text-sm text-muted-foreground mt-1">Review the order details below</p>
           </div>
 
           <div className="bg-card border border-border rounded-xl p-4 flex items-center justify-between">
-            <div className="flex items-center space-x-3">
+            <button className="flex items-center space-x-3 text-left" onClick={() => navigate(`/trader/${order.sellerId}`)}>
               <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center text-primary font-bold text-lg">
                 {counterpartyName.charAt(0).toUpperCase()}
               </div>
@@ -560,7 +557,7 @@ export default function TradePage() {
                 <div className="font-bold">{counterpartyName}</div>
                 <div className="text-xs text-muted-foreground">Seller</div>
               </div>
-            </div>
+            </button>
             <Link href={`/chat/${order.id}`} className="flex items-center space-x-1 px-3 py-1.5 bg-primary/10 text-primary rounded-full text-xs font-semibold">
               <MessageSquare className="w-3.5 h-3.5" /><span>Chat</span>
             </Link>
@@ -586,7 +583,7 @@ export default function TradePage() {
 
         <div className="fixed bottom-0 left-0 right-0 p-4 bg-background border-t border-border sm:max-w-[480px] sm:mx-auto">
           <button onClick={() => setViewStep("payInstructions")} className="w-full py-3.5 rounded-xl font-bold bg-primary text-primary-foreground">
-            Pay
+            Confirm
           </button>
         </div>
       </AppLayout>

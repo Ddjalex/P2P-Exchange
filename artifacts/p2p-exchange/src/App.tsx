@@ -25,6 +25,7 @@ import KycPage from "@/pages/kyc";
 import ReceivedFeedbackPage from "@/pages/received-feedback";
 import FollowsPage from "@/pages/follows";
 import BlockedUsersPage from "@/pages/blocked-users";
+import TraderProfilePage from "@/pages/trader-profile";
 import HelpCenterPage from "@/pages/help-center";
 import AboutPage from "@/pages/about";
 
@@ -98,6 +99,7 @@ function Router() {
       <Route path="/chat/:orderId"><KycProtectedRoute component={ChatThreadPage} /></Route>
 
       {/* Always accessible after login — no KYC required */}
+      <Route path="/trader/:userId"><ProtectedRoute component={TraderProfilePage} /></Route>
       <Route path="/profile"><ProtectedRoute component={ProfilePage} /></Route>
       <Route path="/profile/payment-methods"><ProtectedRoute component={PaymentMethodsPage} /></Route>
       <Route path="/profile/feedback"><ProtectedRoute component={ReceivedFeedbackPage} /></Route>

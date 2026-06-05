@@ -1,0 +1,133 @@
+Problem 1b — Button flow is wrong:
+Currently shows only one "Pay" button. The correct MEXC flow has TWO steps:
+Step A — "Order Created" screen (status: unpaid, before tapping anything):
+Button text: "Confirm"  ← rename from "Pay" to "Confirm"
+Button color: cyan/blue
+Action: navigates to payment instructions screen (does NOT call API yet)
+Step B — "Payment Instructions" screen (after tapping Confirm):
+Shows:
+① Transfer Now — [Payment Method Name]
+   KYC Name: [seller name]    [📋 copy]
+   Amount: X,XXX ETB          [📋 copy]
+   Account No: XXXXXXXXXX     [📋 copy]
+
+② After paying, click button below to notify seller
+
+   P2P Tips:
+   1. Always communicate via platform only
+   2. If you paid, do not cancel — file appeal instead
+
+Button text: "I have paid"  ← blue/cyan pill button
+Action: opens Payment Confirmation dialog
+Step C — Payment Confirmation dialog (bottom sheet):
+Title: "Payment Confirmation"  [×]
+Warning: "Clicking Confirm without making payment
+          may put your account at risk."
+
+Summary card:
+  ● [payment method]
+  Amount: X,XXX ETB  (CYAN, large)
+  KYC Name: [name]   [📋]
+  Account: [number]  [📋]
+
+[  No  ]  [  Confirm  ]
+
+On Confirm → PATCH /api/orders/:id/mark-paid
+So the full button flow is:
+"Confirm" → Payment Instructions → "I have paid" → Dialog → "Confirm" → API call
+
+FIX 2 — Clicking seller/buyer avatar shows trader profile (like MEXC)
+Problem: Clicking the avatar circle on the Order Created screen does nothing.
+Fix: When user taps the avatar or seller/buyer name card → navigate to /trader/:userId
+Build new page: src/pages/trader-profile.tsx
+Route: /trader/:userId
+Layout exactly like MEXC (Image 2):
+[←]                                    [↗ share]
+
+[G]  ← avatar circle (initials, large, grey bg)
+
+GoroXchange  ✦  ← username + merchant badge
+● Last seen 1 min(s) ago
+
+🥈 Silver Merchant  |  Deposit: 650.00 USDT
+
+✅ Email  ✅ SMS  ✅ KYC  ✅ Address
+
+┌─────────────────────────────────┐
+│ [Follow]  button (yellow/gold)  │
+└─────────────────────────────────┘
+
+[Info]  [Ads (3)]  [Feedback(1299)]
+  ───
+
+INFO TAB:
+30d Trades               14
+30d Completion Rate    100%
+Avg. Release Time    4.81 Minute(s)
+Avg. Pay Time        8.35 Minute(s)
+
+Trade Type        Multi-Product Trader
+Registered        1712 Day(s) ago
+First Trade       1711 Day(s) ago
+Trading Counterparties    5,944
+All Trades              10,271
+                  Buy 4,723 | Sell 5,548
+
+─────────────────────────────────────────
+[        Block        ]
+
+Binance Risk Management
+To reduce your trading risk, the verified
+advertiser has already paid a deposit
+as collateral.
+
+ADS TAB:
+Shows all active ads posted by this trader
+(same ad card format as marketplace)
+
+FEEDBACK TAB:
+List of feedback received
+Each row: avatar + username + 👍/👎 + comment + date
+Data to fetch from API:
+Add GET /api/users/:id/profile endpoint:
+typescript// Return:
+{
+  id, username, kycStatus, isMerchant, merchantLevel,
+  createdAt,
+  lastActiveAt,
+  verifications: { email, sms, kyc, address },
+  stats: {
+    trades30d,
+    completionRate30d,
+    avgReleaseTimeMinutes,
+    avgPayTimeMinutes,
+    allTrades,
+    buyTrades,
+    sellTrades,
+    tradingCounterparties,
+    firstTradeAt,
+    positiveFeedback,
+    negativeFeedback,
+    depositCollateral  // if merchant
+  },
+  ads: [...active ads],
+  feedback: [...received feedback]
+}
+Navigate to trader profile:
+typescript// In trade.tsx — seller/buyer card:
+<div onClick={() => navigate(`/trader/${order.sellerId}`)}>
+  <Avatar>{seller.username[0]}</Avatar>
+  <div>{seller.username}</div>
+</div>
+
+// In p2p.tsx — ad card avatar:
+<div onClick={() => navigate(`/trader/${ad.userId}`)}>
+  <Avatar>{ad.username[0]}</Avatar>
+</div>
+"Registered X Day(s) ago" calculation:
+typescriptconst days = Math.floor(
+  (Date.now() - new Date(user.createdAt).getTime()) / (1000 * 60 * 60 * 24)
+);
+"Last seen X min(s) ago" — use lastActiveAt field, update it on every API call.
+Follow button: POST /api/users/:id/follow → adds to follows list
+Block button: POST /api/users/:id/block → adds to blocked list (blocked users' ads hidden from marketplace)

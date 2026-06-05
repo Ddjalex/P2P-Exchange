@@ -13,6 +13,7 @@ import notificationsRouter from "./notifications";
 import statsRouter from "./stats";
 import adminRouter from "./admin";
 import sseRouter from "./sse";
+import usersRouter from "./users";
 
 const router: IRouter = Router();
 
@@ -30,6 +31,7 @@ router.use("/kyc", userAuth, kycRouter);
 router.use("/notifications", userAuth, notificationsRouter);
 router.use("/stats", userAuth, statsRouter);
 router.use("/sse", sseRouter);
+router.use("/users", userAuth, usersRouter);
 
 router.use("/admin", adminRouter);
 

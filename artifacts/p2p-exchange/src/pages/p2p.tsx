@@ -240,6 +240,7 @@ export default function P2PPage() {
             <div key={ad.id} className="p-4 rounded-xl bg-card border border-card-border">
               <div className="flex justify-between items-start mb-3">
                 <div className="flex items-center space-x-2">
+                  <button className="flex items-center space-x-2 text-left" onClick={(e) => { e.stopPropagation(); setLocation(`/trader/${ad.userId}`); }}>
                   <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center text-xs font-bold">
                     {ad.username.slice(0, 2).toUpperCase()}
                   </div>
@@ -252,6 +253,7 @@ export default function P2PPage() {
                       {ad.orderCount} orders · {ad.completionRate}
                     </div>
                   </div>
+                  </button>
                 </div>
                 <div className="text-right">
                   <div className="text-sm text-muted-foreground">Price</div>
