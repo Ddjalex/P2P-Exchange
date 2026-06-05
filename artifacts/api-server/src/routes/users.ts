@@ -114,7 +114,7 @@ router.get("/:id/profile", async (req, res) => {
     try {
       isFollowing = viewerId && viewerId !== targetId
         ? await db.select().from(followsTable)
-            .where(and(eq(followsTable.followerId, viewerId), eq(followsTable.followingId, targetId)))
+            .where(and(eq(followsTable.followerId, viewerId), eq(followsTable.followedId, targetId)))
             .then(r => r.length > 0)
         : false;
     } catch (e) {

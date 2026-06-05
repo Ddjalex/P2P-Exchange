@@ -140,7 +140,7 @@ export default function TraderProfilePage() {
       <AppLayout showNav={false}>
         <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-6">
           <p className="text-muted-foreground text-sm">Trader not found.</p>
-          <button onClick={() => navigate(-1 as any)} className="mt-4 text-primary text-sm underline">Go back</button>
+          <button onClick={() => window.history.back()} className="mt-4 text-primary text-sm underline">Go back</button>
         </div>
       </AppLayout>
     );
@@ -153,7 +153,7 @@ export default function TraderProfilePage() {
   return (
     <AppLayout showNav={false}>
       <header className="flex items-center justify-between p-4 border-b border-border sticky top-0 bg-background z-10">
-        <button onClick={() => navigate(-1 as any)}>
+        <button onClick={() => window.history.back()}>
           <ArrowLeft className="w-5 h-5" />
         </button>
         <span className="font-bold text-sm">Trader Profile</span>
