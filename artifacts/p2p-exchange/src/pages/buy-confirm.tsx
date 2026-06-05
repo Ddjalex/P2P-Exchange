@@ -27,7 +27,10 @@ export default function BuyConfirmPage() {
   const { user } = useAuth();
   const { data: ad, isLoading } = useGetAd(Number(adId), { query: { enabled: !!adId } });
 
-  const [etbAmount, setEtbAmount] = useState("");
+  // ETB mode: user enters ETB to pay → calculates USDT to receive
+  // USDT mode: user enters USDT to receive → calculates ETB to pay
+  const [inputMode, setInputMode] = useState<"ETB" | "USDT">("ETB");
+  const [inputValue, setInputValue] = useState("");
   const [selectedPayment, setSelectedPayment] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -35,25 +38,43 @@ export default function BuyConfirmPage() {
   const safeNum = (val: any) => { const n = Number(val); return isNaN(n) ? 0 : n; };
 
   const price = ad ? safeNum(ad.price) : 0;
-  const usdtAmount = etbAmount && price > 0 ? (parseFloat(etbAmount) / price).toFixed(4) : "0.0000";
-
   const minLimit = safeNum(ad?.minLimit);
   const maxLimit = safeNum(ad?.maxLimit);
+  const available = safeNum(ad?.availableAmount);
+
+  // Derived amounts
+  const inputNum = parseFloat(inputValue) || 0;
+  const usdtNum = inputMode === "ETB" ? (price > 0 ? inputNum / price : 0) : inputNum;
+  const etbNum  = inputMode === "USDT" ? inputNum * price : inputNum;
+  const usdtDisplay = usdtNum > 0 ? usdtNum.toFixed(4) : "0.0000";
+  const etbDisplay  = etbNum > 0  ? etbNum.toFixed(2)  : "0.00";
+
+  const handleToggle = () => {
+    setInputMode(m => m === "ETB" ? "USDT" : "ETB");
+    setInputValue("");
+    setError(null);
+  };
 
   const handleMax = () => {
     if (!ad) return;
-    setEtbAmount(maxLimit > 0 ? String(maxLimit) : "");
+    if (inputMode === "USDT") {
+      const maxUsdt = maxLimit > 0 ? Math.min(maxLimit, available) : available;
+      setInputValue(maxUsdt > 0 ? String(maxUsdt) : "");
+    } else {
+      const maxUsdt = maxLimit > 0 ? Math.min(maxLimit, available) : available;
+      const maxEtb = maxUsdt * price;
+      setInputValue(maxEtb > 0 ? maxEtb.toFixed(2) : "");
+    }
   };
 
-  const handleClearEtb = () => { setEtbAmount(""); setError(null); };
-  const etbNum = parseFloat(etbAmount);
+  const handleClear = () => { setInputValue(""); setError(null); };
 
-  const canBuy =
-    etbAmount &&
-    etbNum > 0 &&
-    (minLimit === 0 || etbNum >= minLimit) &&
-    (maxLimit === 0 || etbNum <= maxLimit) &&
-    selectedPayment;
+  // Validate against USDT limits (limits are stored in USDT)
+  const withinLimits =
+    (minLimit === 0 || usdtNum >= minLimit) &&
+    (maxLimit === 0 || usdtNum <= maxLimit);
+
+  const canBuy = inputValue && usdtNum > 0 && withinLimits && selectedPayment;
 
   const handleBuy = async () => {
     if (!ad || !canBuy || !selectedPayment) return;
@@ -69,8 +90,8 @@ export default function BuyConfirmPage() {
         },
         body: JSON.stringify({
           adId: ad.id,
-          amountUsdt: usdtAmount,
-          amountEtb: etbAmount,
+          amountUsdt: usdtDisplay,
+          amountEtb: etbDisplay,
           paymentMethod: selectedPayment,
         }),
       });
@@ -118,10 +139,7 @@ export default function BuyConfirmPage() {
           <span className="text-5xl">🪞</span>
           <h2 className="font-bold text-lg">This is your own ad</h2>
           <p className="text-sm text-muted-foreground">You cannot trade with yourself.</p>
-          <button
-            onClick={() => navigate("/p2p")}
-            className="text-primary font-medium text-sm"
-          >
+          <button onClick={() => navigate("/p2p")} className="text-primary font-medium text-sm">
             Browse other ads →
           </button>
         </div>
@@ -142,6 +160,13 @@ export default function BuyConfirmPage() {
   }
 
   const paymentMethods: string[] = ad.paymentMethods ?? [];
+
+  const limitText = (() => {
+    if (minLimit === 0 && maxLimit === 0) return null;
+    if (minLimit === 0) return `Up to ${maxLimit.toLocaleString()} USDT`;
+    if (maxLimit === 0) return `From ${minLimit.toLocaleString()} USDT`;
+    return `Limit ${minLimit.toLocaleString()} – ${maxLimit.toLocaleString()} USDT`;
+  })();
 
   return (
     <AppLayout showNav={false}>
@@ -169,19 +194,21 @@ export default function BuyConfirmPage() {
           </div>
         )}
 
-        {/* ETB Amount Input */}
+        {/* Amount Input — ETB or USDT mode */}
         <div className="bg-card border border-border rounded-xl p-4">
-          <label className="text-xs text-muted-foreground block mb-2">I want to pay</label>
+          <label className="text-xs text-muted-foreground block mb-2">
+            {inputMode === "ETB" ? "I want to pay" : "I want to receive"}
+          </label>
           <div className="flex items-center space-x-2">
             <input
               type="number"
-              value={etbAmount}
-              onChange={e => { setEtbAmount(e.target.value); setError(null); }}
+              value={inputValue}
+              onChange={e => { setInputValue(e.target.value); setError(null); }}
               placeholder="Enter amount"
               className="flex-1 bg-transparent text-xl font-bold outline-none min-w-0"
             />
-            {etbAmount && (
-              <button onClick={handleClearEtb}>
+            {inputValue && (
+              <button onClick={handleClear}>
                 <X className="w-4 h-4 text-muted-foreground" />
               </button>
             )}
@@ -191,29 +218,31 @@ export default function BuyConfirmPage() {
             >
               Max
             </button>
-            <span className="px-2.5 py-1 rounded-md bg-secondary text-xs font-bold text-muted-foreground flex-shrink-0">
-              ETB
-            </span>
+            {/* Clickable toggle between ETB and USDT */}
+            <button
+              onClick={handleToggle}
+              title="Tap to switch input currency"
+              className="px-2.5 py-1 rounded-md bg-primary/20 text-primary text-xs font-bold flex-shrink-0 border border-primary/30 hover:bg-primary/30 transition-colors"
+            >
+              {inputMode}
+            </button>
           </div>
           <p className="text-[11px] text-muted-foreground mt-2">
-            {minLimit === 0 && maxLimit === 0
-              ? "No limit set"
-              : minLimit === 0
-                ? `Up to Br ${maxLimit.toLocaleString()}`
-                : maxLimit === 0
-                  ? `From Br ${minLimit.toLocaleString()}`
-                  : `Limit Br ${minLimit.toLocaleString()} – Br ${maxLimit.toLocaleString()}`
-            } &nbsp;|&nbsp; Time Limit {ad.paymentTimeLimit} min
+            {limitText ? `${limitText}  |  ` : ""}Time Limit {ad.paymentTimeLimit} min
           </p>
         </div>
 
-        {/* USDT Received */}
+        {/* Calculated other side */}
         <div className="bg-card border border-border rounded-xl p-4">
-          <label className="text-xs text-muted-foreground block mb-2">I will receive</label>
+          <label className="text-xs text-muted-foreground block mb-2">
+            {inputMode === "ETB" ? "I will receive" : "I will pay"}
+          </label>
           <div className="flex items-center space-x-2">
-            <span className="flex-1 text-xl font-bold font-mono">{usdtAmount}</span>
+            <span className="flex-1 text-xl font-bold font-mono">
+              {inputMode === "ETB" ? usdtDisplay : etbDisplay}
+            </span>
             <span className="px-2.5 py-1 rounded-md bg-secondary text-xs font-bold text-muted-foreground flex-shrink-0">
-              USDT
+              {inputMode === "ETB" ? "USDT" : "ETB"}
             </span>
           </div>
           <p className="text-[11px] text-muted-foreground mt-1">
@@ -281,16 +310,13 @@ export default function BuyConfirmPage() {
         )}
 
         {/* Validation warning */}
-        {etbAmount && etbNum > 0 && (
-          (minLimit > 0 && etbNum < minLimit) ||
-          (maxLimit > 0 && etbNum > maxLimit)
-        ) && (
+        {inputValue && usdtNum > 0 && !withinLimits && (
           <p className="text-xs text-destructive px-1">
             {minLimit > 0 && maxLimit > 0
-              ? `Amount must be between Br ${minLimit.toLocaleString()} and Br ${maxLimit.toLocaleString()}`
+              ? `Amount must be between ${minLimit.toLocaleString()} and ${maxLimit.toLocaleString()} USDT`
               : minLimit > 0
-                ? `Minimum amount is Br ${minLimit.toLocaleString()}`
-                : `Maximum amount is Br ${maxLimit.toLocaleString()}`
+                ? `Minimum amount is ${minLimit.toLocaleString()} USDT`
+                : `Maximum amount is ${maxLimit.toLocaleString()} USDT`
             }
           </p>
         )}

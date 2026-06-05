@@ -284,7 +284,7 @@ export default function PostAdPage() {
                 <input type="number" placeholder="Min" value={ad.minLimit} onChange={e => setAd({ ...ad, minLimit: e.target.value })} className="w-full p-3 bg-card border border-border rounded outline-none font-mono text-sm" />
                 <span className="text-muted-foreground">~</span>
                 <input type="number" placeholder="Max" value={ad.maxLimit} onChange={e => setAd({ ...ad, maxLimit: e.target.value })} className="w-full p-3 bg-card border border-border rounded outline-none font-mono text-sm" />
-                <span className="text-sm text-muted-foreground font-medium w-10">ETB</span>
+                <span className="text-sm text-muted-foreground font-medium w-14">USDT</span>
               </div>
             </div>
 

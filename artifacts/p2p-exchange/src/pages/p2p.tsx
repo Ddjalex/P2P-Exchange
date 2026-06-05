@@ -267,19 +267,19 @@ export default function P2PPage() {
                   <span className="text-muted-foreground">Available</span>
                   <span className="font-mono">{Number(ad.availableAmount).toLocaleString()} USDT</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Limit</span>
-                  <span className="font-mono">
-                    {Number(ad.minLimit) === 0 && Number(ad.maxLimit) === 0
-                      ? "No limit"
-                      : Number(ad.minLimit) === 0
-                        ? `Up to ${Number(ad.maxLimit).toLocaleString()} Br`
+                {(Number(ad.minLimit) !== 0 || Number(ad.maxLimit) !== 0) && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Limit</span>
+                    <span className="font-mono">
+                      {Number(ad.minLimit) === 0
+                        ? `Up to ${Number(ad.maxLimit).toLocaleString()} USDT`
                         : Number(ad.maxLimit) === 0
-                          ? `From ${Number(ad.minLimit).toLocaleString()} Br`
-                          : `${Number(ad.minLimit).toLocaleString()} – ${Number(ad.maxLimit).toLocaleString()} Br`
-                    }
-                  </span>
-                </div>
+                          ? `From ${Number(ad.minLimit).toLocaleString()} USDT`
+                          : `${Number(ad.minLimit).toLocaleString()} – ${Number(ad.maxLimit).toLocaleString()} USDT`
+                      }
+                    </span>
+                  </div>
+                )}
               </div>
 
               <div className="flex justify-between items-end">
