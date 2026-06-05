@@ -27,6 +27,17 @@ router.get("/", async (req, res) => {
   }
 });
 
+router.get("/unread-count", async (req, res) => {
+  try {
+    const rows = await db.select().from(notificationsTable)
+      .where(eq(notificationsTable.userId, (req as any).userId));
+    const count = rows.filter(n => !n.isRead).length;
+    res.json({ count });
+  } catch {
+    res.json({ count: 0 });
+  }
+});
+
 router.post("/read-all", async (req, res) => {
   try {
     await db.update(notificationsTable)

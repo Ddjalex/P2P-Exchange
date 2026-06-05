@@ -6,7 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/use-auth";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 
 const APPEAL_DELAY_MS = 30 * 60 * 1000; // 30 min after paid
 
@@ -137,10 +137,11 @@ export default function TradePage() {
   const { id } = useParams();
   const orderId = Number(id);
   const [, navigate] = useLocation();
-  const { data: order, isLoading } = useGetOrder(orderId, { query: { enabled: !!orderId, queryKey: getGetOrderQueryKey(orderId) } });
+  const { data: order, isLoading } = useGetOrder(orderId, { query: { enabled: !!orderId, queryKey: getGetOrderQueryKey(orderId), refetchInterval: 5000, refetchIntervalInBackground: true } });
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const token = localStorage.getItem("p2p_token");
 
   const markPaid = useMarkOrderPaid();
   const releaseCrypto = useReleaseCrypto();
@@ -152,6 +153,14 @@ export default function TradePage() {
   const [paymentTimeLeft, setPaymentTimeLeft] = useState(0);
   const [appealTimeLeft, setAppealTimeLeft] = useState(-1);
   const [acting, setActing] = useState(false);
+
+  // Appeal sheet state
+  const [showAppealSheet, setShowAppealSheet] = useState(false);
+  const [appealReason, setAppealReason] = useState('');
+  const [appealDescription, setAppealDescription] = useState('');
+  const [appealImages, setAppealImages] = useState<File[]>([]);
+  const [appealLoading, setAppealLoading] = useState(false);
+  const [appealError, setAppealError] = useState('');
 
   const isBuyer = user?.id === order?.buyerId;
   const isSeller = !isBuyer;
@@ -189,6 +198,21 @@ export default function TradePage() {
       }
     }
   }, [order?.status, isBuyer, orderId]);
+
+  // Watch for status changes and show live toast notifications
+  const prevStatusRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (!order) return;
+    const prev = prevStatusRef.current;
+    const curr = order.status;
+    if (prev && prev !== curr) {
+      if (curr === 'paid') toast({ title: '✅ Buyer has marked payment as sent!' });
+      if (curr === 'completed') toast({ title: '🎉 Order completed! USDT released to wallet.' });
+      if (curr === 'cancelled') toast({ title: '❌ Order has been cancelled.', variant: 'destructive' });
+      if (curr === 'appeal') toast({ title: '⚠️ Appeal has been raised on this order.', variant: 'destructive' });
+    }
+    prevStatusRef.current = curr;
+  }, [order?.status]);
 
   const refreshOrder = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: getGetOrderQueryKey(orderId) });
@@ -228,18 +252,40 @@ export default function TradePage() {
     });
   };
 
-  const handleAppeal = async () => {
-    const reason = prompt("Reason for appeal:");
-    if (!reason) return;
+  const handleSubmitAppeal = async () => {
+    if (!appealReason) { setAppealError('Please select a reason'); return; }
+    setAppealLoading(true);
+    setAppealError('');
     try {
+      const evidenceUrls: string[] = [];
+      for (const img of appealImages) {
+        const formData = new FormData();
+        formData.append('image', img);
+        const uploadRes = await fetch('/api/upload', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+          body: formData,
+        });
+        if (uploadRes.ok) {
+          const { url } = await uploadRes.json();
+          evidenceUrls.push(url);
+        }
+      }
       const res = await fetch(`/api/orders/${orderId}/appeal`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reason, description: reason }),
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ reason: appealReason, description: appealDescription, evidenceUrls }),
       });
-      if (res.ok) { toast({ title: "Appeal raised successfully" }); refreshOrder(); }
-      else toast({ title: "Failed to raise appeal", variant: "destructive" });
-    } catch { toast({ title: "Network error", variant: "destructive" }); }
+      const data = await res.json();
+      if (!res.ok) { setAppealError(data.message || 'Failed to raise appeal'); return; }
+      setShowAppealSheet(false);
+      queryClient.invalidateQueries({ queryKey: getGetOrderQueryKey(orderId) });
+      toast({ title: 'Appeal submitted successfully' });
+    } catch {
+      setAppealError('Network error. Please try again.');
+    } finally {
+      setAppealLoading(false);
+    }
   };
 
   if (isLoading || !order) {
@@ -368,15 +414,82 @@ export default function TradePage() {
 
         <div className="fixed bottom-0 left-0 right-0 p-4 bg-background border-t border-border sm:max-w-[480px] sm:mx-auto">
           {appealTimeLeft > 0 ? (
-            <button disabled className="w-full py-3.5 rounded-xl font-bold border border-border text-muted-foreground opacity-50">
+            <button disabled style={{ width: '100%', height: '48px', background: 'transparent', border: '1.5px solid #334455', borderRadius: '24px', color: '#556677', fontSize: '14px', fontWeight: 600 }}>
               Appeal ({formatTime(appealTimeLeft)})
             </button>
           ) : (
-            <button onClick={handleAppeal} className="w-full py-3.5 rounded-xl font-bold border border-orange-500/60 text-orange-400 hover:bg-orange-500/10 transition-colors">
+            <button onClick={() => { setAppealReason(''); setAppealDescription(''); setAppealImages([]); setAppealError(''); setShowAppealSheet(true); }} style={{ width: '100%', height: '48px', background: 'transparent', border: '1.5px solid #ff8800', borderRadius: '24px', color: '#ff8800', fontSize: '14px', fontWeight: 600 }}>
               Appeal — File Dispute
             </button>
           )}
         </div>
+
+        {/* Appeal bottom sheet */}
+        {showAppealSheet && (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 1000, display: 'flex', alignItems: 'flex-end' }}>
+            <div style={{ background: '#16213e', width: '100%', borderRadius: '16px 16px 0 0', padding: '24px 20px', maxHeight: '85vh', overflowY: 'auto' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
+                <h3 style={{ color: '#fff', fontSize: '18px', fontWeight: 700 }}>Raise Appeal</h3>
+                <button onClick={() => setShowAppealSheet(false)} style={{ background: 'none', border: 'none', color: '#8899aa', fontSize: '24px', cursor: 'pointer', lineHeight: 1 }}>×</button>
+              </div>
+
+              {appealError && (
+                <div style={{ background: '#ff4444', padding: '10px', borderRadius: '8px', marginBottom: '16px', color: '#fff', fontSize: '13px' }}>
+                  {appealError}
+                </div>
+              )}
+
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ color: '#8899aa', fontSize: '12px', marginBottom: '8px', display: 'block' }}>SELECT REASON *</label>
+                {['I have paid but seller has not released', 'Seller is asking for extra fees', 'Seller is unresponsive', 'I made a wrong payment', 'Other'].map(reason => (
+                  <div key={reason} onClick={() => setAppealReason(reason)} style={{ padding: '12px 16px', marginBottom: '8px', borderRadius: '8px', border: appealReason === reason ? '1.5px solid #00d4ff' : '1px solid #334455', background: appealReason === reason ? 'rgba(0,212,255,0.08)' : 'transparent', color: appealReason === reason ? '#00d4ff' : '#fff', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ width: '16px', height: '16px', borderRadius: '50%', border: appealReason === reason ? '5px solid #00d4ff' : '2px solid #556677', flexShrink: 0 }} />
+                    {reason}
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ color: '#8899aa', fontSize: '12px', marginBottom: '8px', display: 'block' }}>DESCRIPTION (OPTIONAL)</label>
+                <textarea value={appealDescription} onChange={e => setAppealDescription(e.target.value.slice(0, 500))} placeholder="Describe your issue..." maxLength={500} style={{ width: '100%', height: '100px', background: 'rgba(255,255,255,0.05)', border: '1px solid #334455', borderRadius: '8px', color: '#fff', fontSize: '13px', padding: '10px', resize: 'none', outline: 'none', boxSizing: 'border-box' }} />
+                <div style={{ textAlign: 'right', fontSize: '11px', color: '#8899aa' }}>{appealDescription.length}/500</div>
+              </div>
+
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ color: '#8899aa', fontSize: '12px', marginBottom: '8px', display: 'block' }}>EVIDENCE (UP TO 3 SCREENSHOTS)</label>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  {appealImages.map((img, i) => (
+                    <div key={i} style={{ position: 'relative' }}>
+                      <img src={URL.createObjectURL(img)} style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '8px' }} />
+                      <button onClick={() => setAppealImages(prev => prev.filter((_, j) => j !== i))} style={{ position: 'absolute', top: '-6px', right: '-6px', background: '#ff4444', border: 'none', borderRadius: '50%', width: '18px', height: '18px', color: '#fff', fontSize: '11px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
+                    </div>
+                  ))}
+                  {appealImages.length < 3 && (
+                    <label style={{ width: '80px', height: '80px', border: '1.5px dashed #00d4ff', borderRadius: '8px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#00d4ff', fontSize: '11px', gap: '4px' }}>
+                      <span style={{ fontSize: '24px' }}>+</span>
+                      <span>Upload</span>
+                      <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        if (file.size > 5 * 1024 * 1024) { setAppealError('Image must be under 5MB'); return; }
+                        setAppealImages(prev => [...prev, file]);
+                        e.target.value = '';
+                      }} />
+                    </label>
+                  )}
+                </div>
+              </div>
+
+              <div style={{ background: 'rgba(255,165,0,0.1)', border: '1px solid rgba(255,165,0,0.3)', borderRadius: '8px', padding: '10px 12px', fontSize: '12px', color: '#ffaa00', marginBottom: '20px' }}>
+                ⚠️ Only raise appeal if you have genuinely paid. False appeals may result in account suspension.
+              </div>
+
+              <button disabled={!appealReason || appealLoading} onClick={handleSubmitAppeal} style={{ width: '100%', height: '48px', background: appealReason && !appealLoading ? '#00d4ff' : '#334455', border: 'none', borderRadius: '24px', color: appealReason ? '#1a1a2e' : '#8899aa', fontSize: '15px', fontWeight: 700, cursor: appealReason ? 'pointer' : 'not-allowed' }}>
+                {appealLoading ? 'Submitting...' : 'Submit Appeal'}
+              </button>
+            </div>
+          </div>
+        )}
       </AppLayout>
     );
   }
