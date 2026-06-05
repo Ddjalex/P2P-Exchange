@@ -139,9 +139,9 @@ router.get("/", async (req, res) => {
     let filtered = orders;
     if (!status) {
       if (tab === "ongoing") {
-        filtered = orders.filter(o => ["unpaid", "paid"].includes(o.status));
+        filtered = orders.filter(o => ["unpaid", "paid", "appeal"].includes(o.status));
       } else if (tab === "fulfilled") {
-        filtered = orders.filter(o => ["completed", "cancelled", "appeal"].includes(o.status));
+        filtered = orders.filter(o => ["completed", "cancelled"].includes(o.status));
       }
     }
 

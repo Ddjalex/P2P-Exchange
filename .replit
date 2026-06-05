@@ -1,4 +1,4 @@
-modules = ["nodejs-24"]
+modules = ["nodejs-24", "postgresql-16"]
 
 [deployment]
 router = "application"
@@ -83,3 +83,6 @@ ADMIN_JWT_SECRET = "03ba394ac70d9f81b505cc6e44c6d21b09a0150a6bfa454e3c2d1981132e
 ADMIN_EMAIL = "admin@ethiop2p.com"
 ADMIN_PASSWORD = "Admin@EthioP2P2024"
 JWT_SECRET = "ethiop2p-dev-secret-change-in-production"
+
+[nix]
+channel = "stable-25_05"
