@@ -425,6 +425,7 @@ export default function WalletPage() {
         <div className="flex space-x-4 text-lg">
           <button className="text-white font-bold">Wallet</button>
           <button onClick={() => setLocation("/p2p")} className="text-muted-foreground font-medium">P2P</button>
+          <button onClick={() => setLocation("/card")} className="text-muted-foreground font-medium">Card</button>
         </div>
         <div className="flex items-center space-x-4 text-muted-foreground">
           <NotificationBell />

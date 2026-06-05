@@ -83,6 +83,7 @@ export default function P2PPage() {
         <div className="flex space-x-4 text-lg">
           <button onClick={() => setLocation("/wallet")} className="text-muted-foreground font-medium">Wallet</button>
           <button className="text-white font-bold">P2P</button>
+          <button onClick={() => setLocation("/card")} className="text-muted-foreground font-medium">Card</button>
         </div>
         <div className="flex items-center space-x-3">
           <div className="flex items-center space-x-1 px-2 py-1 rounded bg-secondary text-xs font-semibold">

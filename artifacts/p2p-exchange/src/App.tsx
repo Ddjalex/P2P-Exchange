@@ -29,6 +29,7 @@ import TraderProfilePage from "@/pages/trader-profile";
 import HelpCenterPage from "@/pages/help-center";
 import AboutPage from "@/pages/about";
 import SharedAdPage from "@/pages/shared-ad";
+import CardPage from "@/pages/card";
 
 // Admin pages
 import AdminLoginPage from "@/pages/admin-login";
@@ -112,6 +113,7 @@ function Router() {
       <Route path="/help-center"><ProtectedRoute component={HelpCenterPage} /></Route>
       <Route path="/about"><ProtectedRoute component={AboutPage} /></Route>
       <Route path="/kyc"><ProtectedRoute component={KycPage} /></Route>
+      <Route path="/card"><ProtectedRoute component={CardPage} /></Route>
 
       {/* Admin auth — login now lives inside /auth */}
       <Route path="/admin/login"><Redirect to="/auth" /></Route>
