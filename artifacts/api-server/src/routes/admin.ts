@@ -543,13 +543,52 @@ router.put("/disputes/:id/resolve", adminAuth, async (req: any, res) => {
   try {
     const id = parseInt(req.params.id);
     const { decision, adminNote } = req.body ?? {};
-    await db.update(appealsTable).set({ status: "resolved", adminDecision: decision, resolvedAt: new Date() }).where(eq(appealsTable.id, id));
-    // Update order status if ruling
+
     const appeal = await db.select().from(appealsTable).where(eq(appealsTable.id, id)).then(r => r[0]);
-    if (appeal) {
-      const newStatus = decision === "buyer_wins" ? "completed" : "cancelled";
-      await db.update(ordersTable).set({ status: newStatus as any }).where(eq(ordersTable.id, appeal.orderId));
+    if (!appeal) return res.status(404).json({ error: "Dispute not found" });
+
+    const order = await db.select().from(ordersTable).where(eq(ordersTable.id, appeal.orderId)).then(r => r[0]);
+
+    await db.update(appealsTable)
+      .set({ status: "resolved", adminDecision: decision, resolvedAt: new Date() })
+      .where(eq(appealsTable.id, id));
+
+    const newStatus = decision === "buyer_wins" ? "completed" : "cancelled";
+    await db.update(ordersTable)
+      .set({ status: newStatus as any, completedAt: new Date() })
+      .where(eq(ordersTable.id, appeal.orderId));
+
+    // Release frozen USDT based on decision
+    if (order) {
+      const amount = parseFloat(order.amountUsdt);
+
+      const sellerWallet = await db.select().from(walletsTable).where(eq(walletsTable.userId, order.sellerId)).then(r => r[0]);
+      if (sellerWallet) {
+        const sellerFrozen = parseFloat(sellerWallet.frozenBalance);
+        const sellerAvailable = parseFloat(sellerWallet.availableBalance);
+
+        if (decision === "buyer_wins") {
+          // Deduct from seller frozen, add to buyer available
+          await db.update(walletsTable).set({
+            frozenBalance: Math.max(0, sellerFrozen - amount).toFixed(4),
+          }).where(eq(walletsTable.userId, order.sellerId));
+
+          const buyerWallet = await db.select().from(walletsTable).where(eq(walletsTable.userId, order.buyerId)).then(r => r[0]);
+          if (buyerWallet) {
+            await db.update(walletsTable).set({
+              availableBalance: (parseFloat(buyerWallet.availableBalance) + amount).toFixed(4),
+            }).where(eq(walletsTable.userId, order.buyerId));
+          }
+        } else {
+          // seller_wins — return USDT from frozen back to seller available
+          await db.update(walletsTable).set({
+            availableBalance: (sellerAvailable + amount).toFixed(4),
+            frozenBalance: Math.max(0, sellerFrozen - amount).toFixed(4),
+          }).where(eq(walletsTable.userId, order.sellerId));
+        }
+      }
     }
+
     await log(req.adminEmail, "resolve_dispute", "appeal", id, `${decision}: ${adminNote}`);
     res.json({ success: true });
   } catch (err) {
