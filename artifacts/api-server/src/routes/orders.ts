@@ -193,7 +193,7 @@ router.post("/", async (req, res) => {
     // Do NOT re-check the wallet here; that balance is already frozen and will always appear low.
 
     const now = new Date();
-    const appealAvailableAt = new Date(now.getTime() + ad.paymentTimeLimit * 60 * 1000 + 30 * 60 * 1000);
+    const appealAvailableAt = new Date(now.getTime() + ad.paymentTimeLimit * 60 * 1000);
 
     const [order] = await db.insert(ordersTable).values({
       adId,
