@@ -156,7 +156,7 @@ export default function TraderProfilePage() {
       <div className="p-4 pb-6 space-y-4">
         <div className="flex flex-col items-center text-center space-y-2">
           <div className="w-20 h-20 rounded-full bg-secondary flex items-center justify-center text-3xl font-bold text-foreground">
-            {profile.username.charAt(0).toUpperCase()}
+            {profile.username?.charAt(0)?.toUpperCase() ?? "?"}
           </div>
           <div>
             <div className="flex items-center justify-center space-x-1.5">
