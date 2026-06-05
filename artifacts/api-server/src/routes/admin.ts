@@ -597,6 +597,54 @@ router.put("/disputes/:id/resolve", adminAuth, async (req: any, res) => {
   }
 });
 
+// Recalculate frozen balances for all users based on actual active orders
+router.post("/wallet/recalculate-frozen", adminAuth, async (req: any, res) => {
+  try {
+    const allWallets = await db.select().from(walletsTable);
+    const results: Array<{ userId: number; username: string; oldFrozen: string; newFrozen: string; released: string }> = [];
+
+    for (const wallet of allWallets) {
+      // Sum USDT from orders where this user is the seller AND order is still active (frozen)
+      const activeSellerOrders = await db.select().from(ordersTable)
+        .where(and(
+          eq(ordersTable.sellerId, wallet.userId),
+          or(
+            eq(ordersTable.status, "unpaid" as any),
+            eq(ordersTable.status, "paid" as any),
+            eq(ordersTable.status, "appeal" as any)
+          )
+        ));
+
+      const correctFrozen = activeSellerOrders.reduce((sum, o) => sum + parseFloat(o.amountUsdt), 0);
+      const oldFrozen = parseFloat(wallet.frozenBalance);
+      const diff = oldFrozen - correctFrozen;
+
+      if (Math.abs(diff) > 0.0001) {
+        const oldAvailable = parseFloat(wallet.availableBalance);
+        await db.update(walletsTable).set({
+          frozenBalance: correctFrozen.toFixed(4),
+          availableBalance: (oldAvailable + diff).toFixed(4),
+        }).where(eq(walletsTable.userId, wallet.userId));
+
+        const user = await db.select({ username: usersTable.username }).from(usersTable).where(eq(usersTable.id, wallet.userId)).then(r => r[0]);
+        results.push({
+          userId: wallet.userId,
+          username: user?.username ?? "unknown",
+          oldFrozen: oldFrozen.toFixed(4),
+          newFrozen: correctFrozen.toFixed(4),
+          released: diff.toFixed(4),
+        });
+      }
+    }
+
+    await log(req.adminEmail, "recalculate_frozen", "system", 0, `Fixed ${results.length} wallets`);
+    res.json({ fixed: results.length, results });
+  } catch (err) {
+    req.log.error({ err }, "Recalculate frozen failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // ─── WALLET & TRANSACTIONS ───────────────────────────────────────────────────
 
 router.get("/wallet/overview", adminAuth, async (req, res) => {

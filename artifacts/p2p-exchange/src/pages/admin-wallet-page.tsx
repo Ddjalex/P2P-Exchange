@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { AdminLayout, AdminGuard } from "@/components/admin-layout";
-import { adminGet, adminPut } from "@/lib/admin-api";
+import { adminGet, adminPut, adminPost } from "@/lib/admin-api";
 
 export default function AdminWalletPage() {
   const [overview, setOverview] = useState<any>(null);
@@ -28,8 +28,21 @@ export default function AdminWalletPage() {
   useEffect(() => { loadOverview(); }, []);
   useEffect(() => { loadTxs(); }, [page, typeFilter, statusFilter]);
 
+  const [fixing, setFixing] = useState(false);
+  const [fixResult, setFixResult] = useState<any>(null);
+
   const approve = async (id: number) => { await adminPut(`/wallet/transactions/${id}/approve`); loadTxs(); loadOverview(); };
   const reject = async (id: number) => { await adminPut(`/wallet/transactions/${id}/reject`); loadTxs(); loadOverview(); };
+
+  const fixFrozen = async () => {
+    setFixing(true); setFixResult(null);
+    try {
+      const res = await adminPost<any>("/wallet/recalculate-frozen");
+      setFixResult(res);
+      loadOverview();
+    } catch { setFixResult({ error: "Failed" }); }
+    setFixing(false);
+  };
 
   const totalPages = Math.ceil(total / 20);
 
@@ -49,6 +62,26 @@ export default function AdminWalletPage() {
               <div className="text-xl font-bold font-mono">{c.value}</div>
             </div>
           ))}
+        </div>
+
+        {/* Fix Frozen Balances */}
+        <div className="flex items-center gap-4 mb-6">
+          <button
+            onClick={fixFrozen}
+            disabled={fixing}
+            className="px-4 py-2 bg-yellow-500/15 border border-yellow-500/30 text-yellow-400 text-sm font-medium rounded-lg hover:bg-yellow-500/25 transition-colors disabled:opacity-50"
+          >
+            {fixing ? "Fixing…" : "🔧 Recalculate Frozen Balances"}
+          </button>
+          {fixResult && !fixResult.error && (
+            <span className="text-xs text-success">
+              {fixResult.fixed === 0 ? "All balances already correct." : `Fixed ${fixResult.fixed} wallet(s).`}
+              {fixResult.results?.map((r: any) => (
+                <span key={r.userId} className="ml-2">{r.username}: {r.oldFrozen} → {r.newFrozen} (+{r.released} released)</span>
+              ))}
+            </span>
+          )}
+          {fixResult?.error && <span className="text-xs text-destructive">Error: {fixResult.error}</span>}
         </div>
 
         {/* Filters */}
