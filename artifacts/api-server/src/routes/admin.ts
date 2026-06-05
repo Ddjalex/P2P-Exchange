@@ -679,6 +679,23 @@ router.get("/orders/:orderId/messages", adminAuth, async (req, res) => {
   }
 });
 
+router.get("/disputes/:id/messages", adminAuth, async (req, res) => {
+  try {
+    const disputeId = parseInt(req.params.id);
+    const appeal = await db.select().from(appealsTable).where(eq(appealsTable.id, disputeId)).then(r => r[0]);
+    if (!appeal) return res.status(404).json({ error: "Dispute not found" });
+
+    const adminMessages = await db.select().from(messagesTable)
+      .where(and(eq(messagesTable.orderId, appeal.orderId), eq(messagesTable.type, "admin")))
+      .orderBy(messagesTable.createdAt);
+
+    return res.json({ messages: adminMessages });
+  } catch (err) {
+    req.log.error({ err }, "Admin dispute messages fetch failed");
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 router.post("/disputes/:id/message", adminAuth, async (req, res) => {
   try {
     const disputeId = parseInt(req.params.id);
@@ -697,7 +714,7 @@ router.post("/disputes/:id/message", adminAuth, async (req, res) => {
 
     await db.insert(messagesTable).values({
       orderId: order.id,
-      senderId: null,
+      senderId: -1,
       receiverId,
       content: content.trim(),
       type: "admin",

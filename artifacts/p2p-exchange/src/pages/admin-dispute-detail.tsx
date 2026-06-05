@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { AdminLayout, AdminGuard } from "@/components/admin-layout";
 import { adminGet, adminPost, adminPut } from "@/lib/admin-api";
 import { Link } from "wouter";
@@ -12,9 +12,11 @@ export default function AdminDisputeDetailPage({ params }: { params: { id: strin
   const [resolving, setResolving] = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [chatData, setChatData] = useState<{ messages: any[] } | null>(null);
+  const [adminChatMessages, setAdminChatMessages] = useState<any[]>([]);
   const [activeAdminChat, setActiveAdminChat] = useState<"buyer" | "seller" | null>(null);
   const [adminMessage, setAdminMessage] = useState("");
   const [sending, setSending] = useState(false);
+  const adminPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const load = () => {
     setLoading(true);
@@ -27,19 +29,34 @@ export default function AdminDisputeDetailPage({ params }: { params: { id: strin
     adminGet<{ messages: any[] }>(`/orders/${data.order.id}/messages`).then(setChatData).catch(() => {});
   }, [data?.order?.id]);
 
+  const fetchAdminMessages = () => {
+    adminGet<{ messages: any[] }>(`/disputes/${params.id}/messages`)
+      .then(r => setAdminChatMessages(r.messages ?? []))
+      .catch(() => {});
+  };
+
+  useEffect(() => {
+    fetchAdminMessages();
+    adminPollRef.current = setInterval(fetchAdminMessages, 5000);
+    return () => {
+      if (adminPollRef.current) clearInterval(adminPollRef.current);
+    };
+  }, [params.id]);
+
   const reloadChat = () => {
     if (!data?.order?.id) return;
     adminGet<{ messages: any[] }>(`/orders/${data.order.id}/messages`).then(setChatData).catch(() => {});
   };
 
   const handleSendAdminMessage = async () => {
-    if (!adminMessage.trim() || !activeAdminChat || !data) return;
+    if (!adminMessage.trim() || !activeAdminChat || !data || sending) return;
     const { appeal, order } = data;
     const receiverId = activeAdminChat === "buyer" ? order.buyerId : order.sellerId;
     setSending(true);
     try {
       await adminPost(`/disputes/${appeal.id}/message`, { receiverId, content: adminMessage.trim() });
       setAdminMessage("");
+      await fetchAdminMessages();
       reloadChat();
     } catch {
       alert("Failed to send message. Please try again.");
@@ -61,6 +78,13 @@ export default function AdminDisputeDetailPage({ params }: { params: { id: strin
   if (!data) return <AdminGuard><AdminLayout title="Dispute Detail"><div className="text-muted-foreground">Dispute not found</div></AdminLayout></AdminGuard>;
 
   const { appeal, order, raiser, buyer, seller, messages } = data;
+
+  const buyerMessageCount = adminChatMessages.filter((m: any) => m.receiverId === order?.buyerId).length;
+  const sellerMessageCount = adminChatMessages.filter((m: any) => m.receiverId === order?.sellerId).length;
+
+  const filteredAdminMessages = adminChatMessages.filter((m: any) =>
+    m.receiverId === (activeAdminChat === "buyer" ? order?.buyerId : order?.sellerId)
+  );
 
   return (
     <AdminGuard>
@@ -193,7 +217,7 @@ export default function AdminDisputeDetailPage({ params }: { params: { id: strin
                 ) : (chatData?.messages ?? messages).map((msg: any) => {
                   const isBuyerMsg = msg.senderId === buyer?.id;
                   const isSellerMsg = msg.senderId === seller?.id;
-                  const isAdmin = !msg.senderId || msg.type === "admin";
+                  const isAdmin = msg.senderId === -1 || msg.type === "admin";
 
                   if (msg.type === "system" || (!msg.senderId && msg.type !== "admin")) {
                     return (
@@ -247,16 +271,26 @@ export default function AdminDisputeDetailPage({ params }: { params: { id: strin
                   <div style={{ display: "flex", gap: "12px", marginTop: "16px" }}>
                     <button
                       onClick={() => setActiveAdminChat(activeAdminChat === "buyer" ? null : "buyer")}
-                      style={{ flex: 1, padding: "12px", background: activeAdminChat === "buyer" ? "rgba(0,212,255,0.15)" : "transparent", border: `1.5px solid ${activeAdminChat === "buyer" ? "#00d4ff" : "#334455"}`, borderRadius: "10px", color: activeAdminChat === "buyer" ? "#00d4ff" : "#8899aa", fontSize: "13px", fontWeight: 600, cursor: "pointer" }}
+                      style={{ flex: 1, padding: "12px", background: activeAdminChat === "buyer" ? "rgba(0,212,255,0.15)" : "transparent", border: `1.5px solid ${activeAdminChat === "buyer" ? "#00d4ff" : "#334455"}`, borderRadius: "10px", color: activeAdminChat === "buyer" ? "#00d4ff" : "#8899aa", fontSize: "13px", fontWeight: 600, cursor: "pointer", position: "relative" }}
                     >
                       💬 Chat with Buyer
+                      {buyerMessageCount > 0 && (
+                        <span style={{ background: "#00d4ff", color: "#1a1a2e", borderRadius: "10px", padding: "1px 6px", fontSize: "10px", fontWeight: 700, marginLeft: "6px" }}>
+                          {buyerMessageCount}
+                        </span>
+                      )}
                       <div style={{ fontSize: "10px", fontWeight: 400, marginTop: "2px", opacity: 0.7 }}>{buyer?.username ?? "—"}</div>
                     </button>
                     <button
                       onClick={() => setActiveAdminChat(activeAdminChat === "seller" ? null : "seller")}
-                      style={{ flex: 1, padding: "12px", background: activeAdminChat === "seller" ? "rgba(255,136,0,0.15)" : "transparent", border: `1.5px solid ${activeAdminChat === "seller" ? "#ff8800" : "#334455"}`, borderRadius: "10px", color: activeAdminChat === "seller" ? "#ff8800" : "#8899aa", fontSize: "13px", fontWeight: 600, cursor: "pointer" }}
+                      style={{ flex: 1, padding: "12px", background: activeAdminChat === "seller" ? "rgba(255,136,0,0.15)" : "transparent", border: `1.5px solid ${activeAdminChat === "seller" ? "#ff8800" : "#334455"}`, borderRadius: "10px", color: activeAdminChat === "seller" ? "#ff8800" : "#8899aa", fontSize: "13px", fontWeight: 600, cursor: "pointer", position: "relative" }}
                     >
                       💬 Chat with Seller
+                      {sellerMessageCount > 0 && (
+                        <span style={{ background: "#ff8800", color: "#1a1a2e", borderRadius: "10px", padding: "1px 6px", fontSize: "10px", fontWeight: 700, marginLeft: "6px" }}>
+                          {sellerMessageCount}
+                        </span>
+                      )}
                       <div style={{ fontSize: "10px", fontWeight: 400, marginTop: "2px", opacity: 0.7 }}>{seller?.username ?? "—"}</div>
                     </button>
                   </div>
@@ -271,20 +305,16 @@ export default function AdminDisputeDetailPage({ params }: { params: { id: strin
                       </div>
 
                       <div style={{ padding: "12px 16px", maxHeight: "200px", overflowY: "auto" }}>
-                        {(() => {
-                          const targetId = activeAdminChat === "buyer" ? order.buyerId : order.sellerId;
-                          const adminMsgs = chatData?.messages?.filter((m: any) => m.type === "admin" && m.receiverId === targetId) ?? [];
-                          return adminMsgs.length === 0 ? (
-                            <p style={{ color: "#556677", fontSize: "12px", textAlign: "center" }}>No messages yet. Send a private message below.</p>
-                          ) : adminMsgs.map((m: any) => (
-                            <div key={m.id} style={{ marginBottom: "8px" }}>
-                              <div style={{ background: "rgba(0,230,118,0.08)", border: "1px solid rgba(0,230,118,0.2)", borderRadius: "8px", padding: "8px 12px", display: "inline-block", maxWidth: "80%" }}>
-                                <p style={{ color: "#fff", fontSize: "12px", margin: 0 }}>{m.content}</p>
-                              </div>
-                              <div style={{ color: "#445566", fontSize: "10px", marginTop: "2px" }}>Admin · {new Date(m.createdAt).toLocaleString()}</div>
+                        {filteredAdminMessages.length === 0 ? (
+                          <p style={{ color: "#556677", fontSize: "12px", textAlign: "center" }}>No messages yet. Send a private message below.</p>
+                        ) : filteredAdminMessages.map((m: any) => (
+                          <div key={m.id} style={{ marginBottom: "8px" }}>
+                            <div style={{ background: "rgba(0,230,118,0.08)", border: "1px solid rgba(0,230,118,0.2)", borderRadius: "8px", padding: "8px 12px", display: "inline-block", maxWidth: "80%" }}>
+                              <p style={{ color: "#fff", fontSize: "12px", margin: 0 }}>{m.content}</p>
                             </div>
-                          ));
-                        })()}
+                            <div style={{ color: "#445566", fontSize: "10px", marginTop: "2px" }}>Admin · {new Date(m.createdAt).toLocaleString()}</div>
+                          </div>
+                        ))}
                       </div>
 
                       <div style={{ padding: "12px 16px", borderTop: "1px solid #1e2d3d", display: "flex", gap: "8px" }}>
