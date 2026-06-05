@@ -30,18 +30,20 @@ export default function BuyConfirmPage() {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const price = ad ? parseFloat(ad.price) : 0;
+  const safeNum = (val: any) => { const n = Number(val); return isNaN(n) ? 0 : n; };
+
+  const price = ad ? safeNum(ad.price) : 0;
   const usdtAmount = etbAmount && price > 0 ? (parseFloat(etbAmount) / price).toFixed(4) : "0.0000";
+
+  const minLimit = safeNum(ad?.minLimit);
+  const maxLimit = safeNum(ad?.maxLimit);
 
   const handleMax = () => {
     if (!ad) return;
-    setEtbAmount(ad.maxLimit.toString());
+    setEtbAmount(maxLimit > 0 ? String(maxLimit) : "");
   };
 
   const handleClearEtb = () => { setEtbAmount(""); setError(null); };
-
-  const minLimit = parseFloat(ad?.minLimit ?? "0");
-  const maxLimit = parseFloat(ad?.maxLimit ?? "0");
   const etbNum = parseFloat(etbAmount);
 
   const canBuy =

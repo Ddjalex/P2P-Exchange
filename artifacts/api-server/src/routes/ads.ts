@@ -26,6 +26,7 @@ async function formatAd(ad: any) {
   const completed = orders.filter(o => o.status === "completed").length;
   const completionRate = orders.length > 0 ? ((completed / orders.length) * 100).toFixed(1) : "100.0";
 
+  const safeNum = (val: any) => { const n = Number(val); return isNaN(n) ? 0 : n; };
   return {
     id: ad.id,
     userId: ad.userId,
@@ -35,16 +36,16 @@ async function formatAd(ad: any) {
     asset: ad.asset,
     fiat: ad.fiat,
     priceType: ad.priceType,
-    price: ad.price,
+    price: safeNum(ad.price),
     floatingMargin: ad.floatingMargin ?? null,
-    totalAmount: ad.totalAmount,
-    availableAmount: ad.availableAmount,
-    minLimit: ad.minLimit,
-    maxLimit: ad.maxLimit,
-    paymentMethods: JSON.parse(ad.paymentMethods),
+    totalAmount: safeNum(ad.totalAmount),
+    availableAmount: safeNum(ad.availableAmount),
+    minLimit: safeNum(ad.minLimit),
+    maxLimit: safeNum(ad.maxLimit),
+    paymentMethods: (() => { try { return JSON.parse(ad.paymentMethods); } catch { return []; } })(),
     paymentTimeLimit: ad.paymentTimeLimit,
     autoReply: ad.autoReply ?? null,
-    conditions: JSON.parse(ad.conditions),
+    conditions: (() => { try { return JSON.parse(ad.conditions); } catch { return []; } })(),
     region: ad.region,
     status: ad.status,
     orderCount: orders.length,
