@@ -257,10 +257,8 @@ router.post("/:id/mark-paid", async (req, res) => {
     if (order.buyerId !== userId) return res.status(403).json({ message: "Only the buyer can mark as paid" });
     if (order.status !== "unpaid") return res.status(400).json({ message: "Order is not in unpaid status" });
 
-    const appealAvailableAt = new Date(Date.now() + 30 * 60 * 1000);
-
     const [updated] = await db.update(ordersTable)
-      .set({ status: "paid", paidAt: new Date(), appealAvailableAt })
+      .set({ status: "paid", paidAt: new Date() })
       .where(eq(ordersTable.id, id))
       .returning();
 
