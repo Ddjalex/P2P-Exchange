@@ -481,9 +481,9 @@ export default function WalletPage() {
             )}
             {!isLoading && Number(wallet?.frozenBalance || 0) > 0 && (
               <div className="flex items-center space-x-1.5 pt-1">
-                <span className="text-xs text-warning/80">
-                  🔒 {showBalance ? `${Number(wallet?.frozenBalance || 0).toLocaleString()} USDT frozen in active orders` : "*****"}
-                </span>
+                <Link href="/orders" className="text-xs text-warning/80 hover:text-warning underline-offset-2 hover:underline transition-colors cursor-pointer">
+                  🔒 {showBalance ? `${Number(wallet?.frozenBalance || 0).toLocaleString()} USDT frozen in active orders →` : "*****"}
+                </Link>
               </div>
             )}
           </div>
@@ -526,7 +526,7 @@ export default function WalletPage() {
                 <div className="text-xs text-muted-foreground">
                   {showBalance
                     ? Number(wallet?.frozenBalance || 0) > 0
-                      ? `🔒 ${Number(wallet?.frozenBalance || 0).toLocaleString()} frozen`
+                      ? <Link href="/orders" className="text-warning/80 hover:text-warning hover:underline underline-offset-2 transition-colors" onClick={e => e.stopPropagation()}>🔒 {Number(wallet?.frozenBalance || 0).toLocaleString()} frozen</Link>
                       : `≈ ${(Number(wallet?.availableBalance || 0) * Number(wallet?.etbRate || 0)).toLocaleString()} Br`
                     : "***"}
                 </div>
