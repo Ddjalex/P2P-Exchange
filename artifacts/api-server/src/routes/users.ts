@@ -5,7 +5,7 @@ import { eq, or, and, desc } from "drizzle-orm";
 
 const router = Router();
 
-const ONLINE_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes = "online"
+const ONLINE_THRESHOLD_MS = 2 * 60 * 1000; // 2 minutes = "online"
 
 // ── GET /api/users/:id/status — lightweight online status check ───────────────
 router.get("/:id/status", async (req, res) => {

@@ -49,7 +49,7 @@ interface TraderProfile {
   }[];
 }
 
-const ONLINE_THRESHOLD_MS = 5 * 60 * 1000;
+const ONLINE_THRESHOLD_MS = 2 * 60 * 1000; // 2 minutes
 
 function isOnline(lastActiveAt: string | null): boolean {
   if (!lastActiveAt) return false;

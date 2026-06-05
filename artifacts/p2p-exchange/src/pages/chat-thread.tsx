@@ -288,7 +288,7 @@ export default function ChatThreadPage() {
             value={content}
             onChange={(e) => setContent(e.target.value)}
             placeholder="Enter your chat here."
-            className="flex-1 bg-card border border-border rounded-full px-4 py-2.5 text-sm outline-none focus:border-primary transition-colors"
+            className="flex-1 min-w-0 bg-card border border-border rounded-full px-4 py-2.5 text-sm outline-none focus:border-primary transition-colors"
           />
           <button type="submit" disabled={!content.trim() || sendMessage.isPending}
             className="p-2.5 bg-primary text-primary-foreground rounded-full disabled:opacity-50 transition-opacity flex-shrink-0">

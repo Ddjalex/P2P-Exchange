@@ -8,7 +8,7 @@ const JWT_SECRET = process.env.JWT_SECRET || "ethiop2p-dev-secret-change-in-prod
 
 // Throttle lastActiveAt updates: track last write per userId (in-memory, resets on restart)
 const lastActiveCache = new Map<number, number>();
-const ACTIVE_UPDATE_THROTTLE_MS = 60_000; // write at most once per minute per user
+const ACTIVE_UPDATE_THROTTLE_MS = 30_000; // write at most once per 30 seconds per user
 
 export function userAuth(req: Request, res: Response, next: NextFunction) {
   const auth = req.headers.authorization;
