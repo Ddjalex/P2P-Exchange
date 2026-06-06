@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { rateLimit } from "express-rate-limit";
 import { db } from "@workspace/db";
 import { usersTable, walletsTable, verificationCodesTable, systemSettingsTable, kycSubmissionsTable } from "@workspace/db";
 import { eq, and, gt } from "drizzle-orm";
@@ -6,6 +7,22 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 
 const router = Router();
+
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many login attempts. Please wait 15 minutes and try again." },
+});
+
+const sendCodeLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many code requests. Please wait 15 minutes and try again." },
+});
 
 const JWT_SECRET = process.env.JWT_SECRET || "xendrx-dev-secret-change-in-production";
 const JWT_EXPIRES = "30d";
@@ -115,7 +132,7 @@ async function sendBrevoEmail(to: string, code: string, senderEmail: string, sen
 }
 
 // POST /api/auth/send-code
-router.post("/send-code", async (req, res) => {
+router.post("/send-code", sendCodeLimiter, async (req, res) => {
   try {
     const { target, type, turnstileToken } = req.body ?? {};
     if (!target || !type || !["phone", "email"].includes(type)) {
@@ -302,7 +319,7 @@ router.post("/register", async (req, res) => {
 });
 
 // POST /api/auth/login
-router.post("/login", async (req, res) => {
+router.post("/login", loginLimiter, async (req, res) => {
   try {
     const { identifier, password, type, dialCode, turnstileToken } = req.body ?? {};
     if (!identifier || !password) return res.status(400).json({ error: "identifier and password are required" });
