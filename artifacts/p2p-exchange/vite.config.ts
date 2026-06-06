@@ -61,7 +61,7 @@ export default defineConfig({
   server: {
     port,
     strictPort: true,
-    host: "::",
+    host: "0.0.0.0",
     allowedHosts: true,
     headers: {
       "X-Frame-Options": "ALLOWALL",
@@ -83,7 +83,7 @@ export default defineConfig({
   },
   preview: {
     port,
-    host: "::",
+    host: "0.0.0.0",
     allowedHosts: true,
   },
 });
