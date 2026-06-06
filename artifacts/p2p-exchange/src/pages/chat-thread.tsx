@@ -195,8 +195,8 @@ export default function ChatThreadPage() {
           )}
         </div>
 
-        {/* Status bar */}
-        {order && order.status === "unpaid" && (
+        {/* Status bar — buyer: show Pay button; seller: show "waiting" */}
+        {order && order.status === "unpaid" && isBuyer && (
           <div className="px-4 py-2.5 bg-secondary/60 flex items-center justify-between text-xs border-t border-border">
             <div>
               <span className="text-muted-foreground mr-1">Transfer</span>
@@ -207,14 +207,20 @@ export default function ChatThreadPage() {
             <Link href={`/trade/${order.id}`} className="px-3 py-1 bg-primary text-primary-foreground rounded-full font-semibold">Pay</Link>
           </div>
         )}
+        {order && order.status === "unpaid" && !isBuyer && (
+          <div className="px-4 py-2.5 bg-secondary/60 flex items-center justify-between text-xs border-t border-border">
+            <span className="text-muted-foreground">⏳ Waiting for buyer to complete payment...</span>
+            <span className="font-mono text-primary font-bold ml-2">{formatCountdown(paymentCountdown)}</span>
+          </div>
+        )}
         {order && order.status === "paid" && isBuyer && (
           <div className="px-4 py-2.5 bg-secondary/60 flex items-center justify-between text-xs border-t border-border">
-            <span className="text-muted-foreground">Waiting for seller to release crypto...</span>
+            <span className="text-muted-foreground">✅ Payment confirmed — waiting for seller to release...</span>
           </div>
         )}
         {order && order.status === "paid" && !isBuyer && (
-          <div className="px-4 py-2.5 bg-secondary/60 flex items-center justify-between text-xs border-t border-border">
-            <span className="text-muted-foreground">Buyer marked payment as sent</span>
+          <div className="px-4 py-2.5 bg-success/15 flex items-center justify-between text-xs border-t border-success/30">
+            <span className="text-success font-medium">Buyer marked payment as sent — verify &amp; release</span>
             <Link href={`/trade/${order.id}`} className="px-3 py-1 bg-success text-white rounded-full font-semibold">Release</Link>
           </div>
         )}
