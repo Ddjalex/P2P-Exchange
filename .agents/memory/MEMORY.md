@@ -1,3 +1,4 @@
+- [Replit artifact routing](replit-artifact-routing.md) — 502 on dev URL? Start the auto-created `artifacts/<app>: web` workflow, not just "Start application"
 - [Admin JWT auth](admin-jwt.md) — uses Node.js crypto HMAC (no jsonwebtoken pkg); base64url payload.signature pattern
 - [Admin dashboard architecture](admin-dashboard.md) — all admin routes under /api/admin/ in admin.ts; frontend at /admin/* with AdminAuthProvider + AdminGuard
 - [Amount fields are text](db-amount-text.md) — all monetary amounts (transactions.amount, etc.) are stored as `text`; must cast to numeric for SQL aggregates: `sql\`sum(${field}::numeric)\`
