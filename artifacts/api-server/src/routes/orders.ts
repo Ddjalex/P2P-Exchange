@@ -490,8 +490,6 @@ router.post("/:id/cancel", async (req, res) => {
       .where(eq(ordersTable.id, id))
       .returning();
 
-    await returnUsdtToSeller(order.sellerId, order.amountUsdt);
-
     const ad = await db.select().from(adsTable).where(eq(adsTable.id, order.adId)).then(r => r[0]);
     if (ad) {
       const restored = parseFloat(ad.availableAmount) + parseFloat(order.amountUsdt);
