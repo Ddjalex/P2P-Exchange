@@ -4,7 +4,9 @@ import { useAuth } from "@/hooks/use-auth";
 import { useAdminAuth } from "@/hooks/use-admin-auth";
 import "./auth.css";
 
-const TURNSTILE_SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY as string | undefined;
+const TURNSTILE_SITE_KEY = (!import.meta.env.DEV && import.meta.env.VITE_TURNSTILE_SITE_KEY)
+  ? (import.meta.env.VITE_TURNSTILE_SITE_KEY as string)
+  : undefined;
 
 interface Country {
   code: string;

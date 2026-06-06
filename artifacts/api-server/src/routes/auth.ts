@@ -69,7 +69,7 @@ async function getSetting(key: string): Promise<string | null> {
 
 async function verifyTurnstile(token: string, ip?: string): Promise<boolean> {
   const secret = process.env.TURNSTILE_SECRET_KEY;
-  if (!secret) return true;
+  if (!secret || process.env.NODE_ENV !== "production") return true;
   const form = new URLSearchParams();
   form.append("secret", secret);
   form.append("response", token);
