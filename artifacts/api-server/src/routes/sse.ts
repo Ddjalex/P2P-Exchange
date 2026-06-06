@@ -4,7 +4,7 @@ import { addSseClient, removeSseClient } from "../lib/sse";
 
 const router = Router();
 
-const JWT_SECRET = process.env.JWT_SECRET || "ethiop2p-dev-secret-change-in-production";
+const JWT_SECRET = process.env.JWT_SECRET || "swapbirr-dev-secret-change-in-production";
 
 router.get("/events", (req, res) => {
   const token =

@@ -30,7 +30,10 @@ export default function AdminLoginPage() {
     <div className="min-h-screen bg-background flex items-center justify-center p-4" style={{ fontFamily: 'Poppins, sans-serif' }}>
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <div className="text-3xl font-bold text-primary mb-1">EthioP2P</div>
+          <img src="/src/assets/logo-icon.svg" alt="SwapBirr" width={56} height={56} style={{ margin: '0 auto 12px' }} />
+          <div className="text-3xl font-bold mb-1">
+            Swap<span style={{ color: '#00d4ff' }}>Birr</span>
+          </div>
           <div className="text-muted-foreground text-sm">Admin Dashboard</div>
         </div>
 
@@ -50,7 +53,7 @@ export default function AdminLoginPage() {
                 type="email"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
-                placeholder="admin@ethiop2p.com"
+                placeholder="admin@swapbirr.com"
                 className="w-full px-3 py-2.5 bg-background border border-border rounded-lg text-sm outline-none focus:border-primary transition-colors"
                 required
               />
@@ -77,7 +80,7 @@ export default function AdminLoginPage() {
         </div>
 
         <div className="text-center mt-4 text-xs text-muted-foreground">
-          EthioP2P Admin — Authorized personnel only
+          SwapBirr Admin — Authorized personnel only
         </div>
       </div>
     </div>

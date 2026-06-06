@@ -20,18 +20,18 @@ export default function AboutPage() {
             <ArrowLeft className="w-5 h-5" />
           </button>
         </Link>
-        <h1 className="font-bold text-lg">About EthioP2P</h1>
+        <h1 className="font-bold text-lg">About SwapBirr</h1>
       </header>
 
       <div className="p-4 space-y-6">
         <div className="text-center py-6">
           <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-primary/10 border border-primary/20 mb-4">
-            <span className="text-2xl font-black text-primary">E</span>
+            <img src="/src/assets/logo-icon.svg" alt="SwapBirr" width={48} height={48} />
           </div>
           <h2 className="text-2xl font-black mb-1">
-            <span className="text-primary">Ethio</span>P2P
+            <span className="text-primary">Swap</span>Birr
           </h2>
-          <p className="text-sm text-muted-foreground">Ethiopia's Premier Crypto Exchange</p>
+          <p className="text-sm text-muted-foreground">Fast & Secure P2P Crypto Exchange</p>
           <div className="inline-block mt-2 px-3 py-1 bg-primary/10 rounded-full text-xs text-primary font-medium">
             Version 1.0.0
           </div>
@@ -40,12 +40,12 @@ export default function AboutPage() {
         <div className="bg-card border border-card-border rounded-xl p-4">
           <h3 className="font-semibold mb-2">Our Mission</h3>
           <p className="text-sm text-muted-foreground leading-relaxed">
-            EthioP2P was built to give Ethiopians direct, secure access to the global crypto economy. We connect buyers and sellers of USDT through a trusted escrow platform — no middlemen, no hidden fees, just peer-to-peer trading powered by local payment methods.
+            SwapBirr was built to give everyone direct, secure access to the global crypto economy. We connect buyers and sellers of USDT through a trusted escrow platform — no middlemen, no hidden fees, just peer-to-peer trading powered by local payment methods.
           </p>
         </div>
 
         <div>
-          <h3 className="font-semibold mb-3">Why EthioP2P?</h3>
+          <h3 className="font-semibold mb-3">Why SwapBirr?</h3>
           <div className="grid grid-cols-1 gap-3">
             {features.map(f => (
               <div key={f.title} className="bg-card border border-card-border rounded-xl p-4 flex items-start space-x-3">
@@ -63,11 +63,11 @@ export default function AboutPage() {
 
         <div className="bg-card border border-card-border rounded-xl divide-y divide-border">
           {[
-            ["Website", "www.ethiop2p.com"],
-            ["Support", "support@ethiop2p.com"],
-            ["Telegram", "@EthioP2P"],
-            ["Terms of Service", "ethiop2p.com/terms"],
-            ["Privacy Policy", "ethiop2p.com/privacy"],
+            ["Website", "www.swapbirr.com"],
+            ["Support", "support@swapbirr.com"],
+            ["Telegram", "@SwapBirr"],
+            ["Terms of Service", "swapbirr.com/terms"],
+            ["Privacy Policy", "swapbirr.com/privacy"],
           ].map(([label, value]) => (
             <div key={label} className="flex items-center justify-between p-4">
               <span className="text-sm text-muted-foreground">{label}</span>
@@ -77,7 +77,7 @@ export default function AboutPage() {
         </div>
 
         <p className="text-center text-xs text-muted-foreground pb-2">
-          © 2024 EthioP2P. All rights reserved.{"\n"}Made with ❤️ for Ethiopia.
+          © 2026 SwapBirr. All rights reserved.
         </p>
       </div>
     </AppLayout>

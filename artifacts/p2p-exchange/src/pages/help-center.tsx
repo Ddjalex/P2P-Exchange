@@ -9,8 +9,8 @@ const faqs = [
     icon: Book,
     items: [
       {
-        q: "What is EthioP2P?",
-        a: "EthioP2P is a peer-to-peer cryptocurrency exchange platform designed for Ethiopia. It lets you buy and sell USDT (Tether) directly with other users using Ethiopian Birr (ETB) through local payment methods like CBE Birr, TeleBirr, and bank transfers.",
+        q: "What is SwapBirr?",
+        a: "SwapBirr is a peer-to-peer cryptocurrency exchange platform. It lets you buy and sell USDT (Tether) directly with other users using local currency (ETB) through local payment methods like CBE Birr, TeleBirr, and bank transfers.",
       },
       {
         q: "How do I complete my profile?",
@@ -139,7 +139,7 @@ export default function HelpCenterPage() {
           <MessageCircle className="w-5 h-5 text-primary shrink-0 mt-0.5" />
           <div>
             <div className="text-sm font-medium text-primary">Need more help?</div>
-            <div className="text-xs text-muted-foreground mt-0.5">Contact us via the chat feature on any active order, or email us at support@ethiop2p.com</div>
+            <div className="text-xs text-muted-foreground mt-0.5">Contact us via the chat feature on any active order, or email us at support@swapbirr.com</div>
           </div>
         </div>
 

@@ -281,7 +281,7 @@ export default function ProfilePage() {
     }
   }, [profile]);
 
-  const isPhoneUser = user?.email?.endsWith("@phone.ethiop2p.com") ?? false;
+  const isPhoneUser = user?.email?.endsWith("@phone.swapbirr.com") ?? false;
   const hasPhone = !!user?.phone;
 
   const handleToggleNotif = async (key: NotifKey) => {
@@ -484,7 +484,7 @@ export default function ProfilePage() {
               <ChevronRight className="w-4 h-4 text-muted-foreground" />
             </Link>
             <Link href="/about" className="flex items-center justify-between p-4 border-b border-border hover:bg-secondary/50 transition-colors">
-              <span className="text-sm font-medium flex items-center"><Info className="w-4 h-4 mr-2 text-muted-foreground" />About EthioP2P</span>
+              <span className="text-sm font-medium flex items-center"><Info className="w-4 h-4 mr-2 text-muted-foreground" />About SwapBirr</span>
               <ChevronRight className="w-4 h-4 text-muted-foreground" />
             </Link>
             <button onClick={handleLogout} className="w-full flex items-center p-4 hover:bg-secondary/50 transition-colors text-destructive">

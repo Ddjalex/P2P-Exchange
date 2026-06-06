@@ -15,7 +15,7 @@ async function seed() {
     .insert(usersTable)
     .values({
       username: "alem_tesfaye",
-      email: "alem@ethiop2p.com",
+      email: "alem@swapbirr.com",
       phone: "+251911234567",
       country: "Ethiopia",
       kycStatus: "verified",
@@ -31,7 +31,7 @@ async function seed() {
     .insert(usersTable)
     .values({
       username: "biruk_haile",
-      email: "biruk@ethiop2p.com",
+      email: "biruk@swapbirr.com",
       phone: "+251922345678",
       country: "Ethiopia",
       kycStatus: "verified",
@@ -46,7 +46,7 @@ async function seed() {
     .insert(usersTable)
     .values({
       username: "sara_girma",
-      email: "sara@ethiop2p.com",
+      email: "sara@swapbirr.com",
       phone: "+251933456789",
       country: "Ethiopia",
       kycStatus: "verified",
@@ -60,7 +60,7 @@ async function seed() {
     .insert(usersTable)
     .values({
       username: "yonas_bekele",
-      email: "yonas@ethiop2p.com",
+      email: "yonas@swapbirr.com",
       phone: "+251944567890",
       country: "Ethiopia",
       kycStatus: "verified",
@@ -75,7 +75,7 @@ async function seed() {
     .insert(usersTable)
     .values({
       username: "meron_tadesse",
-      email: "meron@ethiop2p.com",
+      email: "meron@swapbirr.com",
       phone: "+251955678901",
       country: "Ethiopia",
       kycStatus: "verified",
@@ -279,7 +279,7 @@ async function seed() {
         {
           userId: devUser.id,
           type: "system",
-          title: "Welcome to EthioP2P!",
+          title: "Welcome to SwapBirr!",
           message: "Your account is ready. Complete KYC to unlock full trading features.",
           isRead: false,
         },

@@ -1,6 +1,6 @@
-# EthioP2P
+# SwapBirr
 
-A Binance-style peer-to-peer cryptocurrency exchange for Ethiopia — mobile-first dark-themed React web app where users can buy and sell USDT using Ethiopian birr (ETB) via local payment methods.
+A Binance-style peer-to-peer cryptocurrency exchange — mobile-first dark-themed React web app where users can buy and sell USDT using Ethiopian birr (ETB) via local payment methods.
 
 ## Run & Operate
 

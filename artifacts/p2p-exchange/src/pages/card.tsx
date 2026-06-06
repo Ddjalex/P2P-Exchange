@@ -43,7 +43,7 @@ function CardSvg({ holderName, nameColor }: { holderName: string; nameColor: str
       <path d="M90,78 Q104,94 90,110" fill="none" stroke="rgb(0,212,255)" strokeWidth="1.5" strokeOpacity="0.3" />
 
       <text x="24" y="58" fontFamily="Poppins, sans-serif" fontSize="14" fontWeight="800" fill="white">
-        Ethio<tspan fill="rgb(0,212,255)">P2P</tspan>
+        Swap<tspan fill="rgb(0,212,255)">Birr</tspan>
       </text>
 
       <text x="334" y="42" textAnchor="end" fontFamily="Poppins, sans-serif" fontSize="11" fontWeight="700" fill="white" fillOpacity="0.6">CRYPTO</text>
@@ -137,7 +137,7 @@ export default function CardPage() {
           Coming Soon
         </h2>
         <p style={{ color: "#8899aa", fontSize: "14px", textAlign: "center", marginBottom: "32px", lineHeight: "1.6", maxWidth: "280px" }}>
-          The EthioP2P Card is on its way. Pay anywhere, buy crypto instantly, and earn cashback on every transaction.
+          The SwapBirr Card is on its way. Pay anywhere, buy crypto instantly, and earn cashback on every transaction.
         </p>
 
         <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", justifyContent: "center", marginBottom: "32px" }}>
@@ -198,7 +198,7 @@ export default function CardPage() {
         )}
 
         <p style={{ color: "#556677", fontSize: "11px", textAlign: "center", marginTop: "24px" }}>
-          EthioP2P Card — Powered by blockchain technology
+          SwapBirr Card — Powered by blockchain technology
         </p>
       </div>
     </AppLayout>

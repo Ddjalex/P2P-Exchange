@@ -403,7 +403,7 @@ export default function AuthPage() {
       </div>
 
       {/* Logo */}
-      <div className="auth-logo"><img src="/src/assets/logo-banner.svg" alt="EthioP2P" height={44} style={{ display: 'block' }} /></div>
+      <div className="auth-logo"><img src="/src/assets/logo-banner.svg" alt="SwapBirr" height={44} style={{ display: 'block' }} /></div>
 
       {/* Auth Wrapper */}
       <div className={`auth-wrapper${toggled ? " toggled" : ""}`}>
@@ -513,7 +513,7 @@ export default function AuthPage() {
         {/* Welcome right */}
         <div className="welcome-section signin">
           <h2 className="slide-element">WELCOME<br />BACK!</h2>
-          <p className="slide-element">Trade crypto safely with EthioP2P</p>
+          <p className="slide-element">Trade crypto safely with SwapBirr</p>
         </div>
 
         {/* ══ REGISTER PANEL ══ */}

@@ -1,6 +1,12 @@
 import { db } from "@workspace/db";
 
 const SEEDED_EMAILS = [
+  "alem@swapbirr.com",
+  "biruk@swapbirr.com",
+  "sara@swapbirr.com",
+  "yonas@swapbirr.com",
+  "tigist@swapbirr.com",
+  // legacy emails (pre-rebrand)
   "alem@ethiop2p.com",
   "biruk@ethiop2p.com",
   "sara@ethiop2p.com",

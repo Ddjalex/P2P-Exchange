@@ -7,7 +7,7 @@ import jwt from "jsonwebtoken";
 
 const router = Router();
 
-const JWT_SECRET = process.env.JWT_SECRET || "ethiop2p-dev-secret-change-in-production";
+const JWT_SECRET = process.env.JWT_SECRET || "swapbirr-dev-secret-change-in-production";
 const JWT_EXPIRES = "30d";
 
 function signToken(userId: number) {
@@ -71,13 +71,13 @@ async function sendBrevoEmail(to: string, code: string, senderEmail: string, sen
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      sender: { name: senderName || "EthioP2P", email: senderEmail || "noreply@ethiop2p.com" },
+      sender: { name: senderName || "SwapBirr", email: senderEmail || "noreply@swapbirr.com" },
       to: [{ email: to }],
       subject: "Your Verification Code",
       htmlContent: `
         <div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;background:#1a1a2e;color:#fff;border-radius:12px;padding:32px;">
           <div style="text-align:center;margin-bottom:24px;">
-            <span style="font-size:24px;font-weight:700;color:#00d4ff;">Ethio</span><span style="font-size:24px;font-weight:700;">P2P</span>
+            <span style="font-size:24px;font-weight:700;">Swap</span><span style="font-size:24px;font-weight:700;color:#00d4ff;">Birr</span>
           </div>
           <h2 style="margin:0 0 8px;font-size:20px;">Verification Code</h2>
           <p style="color:rgba(255,255,255,.6);font-size:14px;margin:0 0 24px;">Use the code below to verify your account. It expires in 10 minutes.</p>
@@ -192,7 +192,7 @@ router.post("/register", async (req, res) => {
 
     const isPhone = type === "phone";
     const phone = isPhone ? `${dialCode ?? ""}${identifier}` : null;
-    const email = isPhone ? `${identifier}@phone.ethiop2p.com` : String(identifier).toLowerCase();
+    const email = isPhone ? `${identifier}@phone.swapbirr.com` : String(identifier).toLowerCase();
     const codeTarget = isPhone ? phone! : email;
 
     // Verify OTP

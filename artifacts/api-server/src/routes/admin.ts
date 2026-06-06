@@ -996,7 +996,7 @@ router.post("/notifications/send", adminAuth, async (req: any, res) => {
 // ─── SETTINGS ────────────────────────────────────────────────────────────────
 
 const DEFAULT_SETTINGS: Record<string, string> = {
-  platformName: "EthioP2P",
+  platformName: "SwapBirr",
   supportEmail: "",
   maintenanceMode: "false",
   etbRate: "",
@@ -1014,7 +1014,7 @@ const DEFAULT_SETTINGS: Record<string, string> = {
   fastsmsApiKey: "",
   brevoApiKey: "",
   brevoSenderEmail: "",
-  brevoSenderName: "EthioP2P",
+  brevoSenderName: "SwapBirr",
   trongridApiKey: "",
   bscscanApiKey: "",
 };
@@ -1063,7 +1063,7 @@ router.post("/test-sms", adminAuth, async (req: any, res) => {
     const r = await fetch("https://fastsms.dev/api/p/sms/send", {
       method: "POST",
       headers: { "API-Key": apiKey, "Content-Type": "application/json" },
-      body: JSON.stringify({ to: phone, message: "EthioP2P test message — your API key is working!" }),
+      body: JSON.stringify({ to: phone, message: "SwapBirr test message — your API key is working!" }),
     });
     const body = await r.text().catch(() => "");
     if (!r.ok) {
@@ -1082,8 +1082,8 @@ router.post("/test-email", adminAuth, async (req: any, res) => {
     const settings: Record<string, string> = {};
     for (const row of rows) settings[row.key] = row.value;
     const apiKey = settings["brevoApiKey"];
-    const senderEmail = settings["brevoSenderEmail"] || "noreply@ethiop2p.com";
-    const senderName = settings["brevoSenderName"] || "EthioP2P";
+    const senderEmail = settings["brevoSenderEmail"] || "noreply@swapbirr.com";
+    const senderName = settings["brevoSenderName"] || "SwapBirr";
     if (!apiKey) return res.status(400).json({ ok: false, error: "Brevo API key not configured." });
     const { email } = req.body ?? {};
     if (!email) return res.status(400).json({ ok: false, error: "email is required" });
@@ -1093,8 +1093,8 @@ router.post("/test-email", adminAuth, async (req: any, res) => {
       body: JSON.stringify({
         sender: { name: senderName, email: senderEmail },
         to: [{ email }],
-        subject: "EthioP2P — Email Integration Test",
-        htmlContent: `<div style="font-family:Arial;background:#1a1a2e;color:#fff;padding:32px;border-radius:12px;"><h2 style="color:#00d4ff;">✅ Brevo is working!</h2><p>Your email integration is configured correctly for EthioP2P.</p></div>`,
+        subject: "SwapBirr — Email Integration Test",
+        htmlContent: `<div style="font-family:Arial;background:#1a1a2e;color:#fff;padding:32px;border-radius:12px;"><h2 style="color:#00d4ff;">✅ Brevo is working!</h2><p>Your email integration is configured correctly for SwapBirr.</p></div>`,
       }),
     });
     const body = await r.text().catch(() => "");
