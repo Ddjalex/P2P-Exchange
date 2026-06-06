@@ -29,7 +29,7 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "pnpm --filter @workspace/p2p-exchange run dev"
+args = "bash scripts/dev.sh"
 waitForPort = 5000
 
 [agent]
