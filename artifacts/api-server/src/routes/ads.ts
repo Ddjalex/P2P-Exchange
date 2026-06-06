@@ -282,6 +282,18 @@ router.delete("/:id", async (req, res) => {
     // Only the owner can delete their ad
     if (ad.userId !== userId) return res.status(403).json({ message: "Forbidden" });
 
+    // Block deletion if there are active orders on this ad
+    const activeOrders = await db.select({ id: ordersTable.id }).from(ordersTable)
+      .where(and(
+        eq(ordersTable.adId, id),
+        sql`${ordersTable.status} IN ('unpaid', 'paid', 'appeal')`
+      ));
+    if (activeOrders.length > 0) {
+      return res.status(400).json({
+        message: `Cannot delete this ad — there ${activeOrders.length === 1 ? "is 1 active order" : `are ${activeOrders.length} active orders`} in progress. Wait for all orders to complete or be cancelled first.`,
+      });
+    }
+
     // For sell ads: return the remaining available amount from frozen back to available
     if (ad.type === "sell") {
       const remainingAmount = parseFloat(ad.availableAmount ?? "0");
