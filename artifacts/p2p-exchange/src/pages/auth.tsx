@@ -49,6 +49,13 @@ const COUNTRIES: Country[] = [
 
 const ET = COUNTRIES[0];
 
+function filterCountries(q: string) {
+  const lq = q.toLowerCase();
+  return COUNTRIES.filter(c =>
+    c.name.toLowerCase().includes(lq) || c.code.toLowerCase().includes(lq) || c.dial.includes(lq)
+  );
+}
+
 export default function AuthPage() {
   const { user, isLoading, login } = useAuth();
   const { login: adminLogin } = useAdminAuth();
@@ -88,13 +95,23 @@ export default function AuthPage() {
   const [otpCooldown, setOtpCooldown] = useState(0);
   const cooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Country modal
+  // Country modal (top pill)
   const [modalOpen, setModalOpen] = useState(false);
   const [modalCtx, setModalCtx] = useState<"login" | "reg">("login");
   const [modalSearch, setModalSearch] = useState("");
   const [loginPillOpen, setLoginPillOpen] = useState(false);
   const [regPillOpen, setRegPillOpen] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
+
+  // Phone prefix inline dropdown
+  const [loginPrefixOpen, setLoginPrefixOpen] = useState(false);
+  const [regPrefixOpen, setRegPrefixOpen] = useState(false);
+  const [loginPrefixSearch, setLoginPrefixSearch] = useState("");
+  const [regPrefixSearch, setRegPrefixSearch] = useState("");
+  const loginPrefixRef = useRef<HTMLDivElement>(null);
+  const regPrefixRef = useRef<HTMLDivElement>(null);
+  const loginPrefixSearchRef = useRef<HTMLInputElement>(null);
+  const regPrefixSearchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!isLoading && user) {
@@ -106,9 +123,25 @@ export default function AuthPage() {
   }, [user, isLoading, setLocation]);
 
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") closeModal(); };
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") { closeModal(); setLoginPrefixOpen(false); setRegPrefixOpen(false); } };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
+  }, []);
+
+  // Click-outside for prefix dropdowns
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (loginPrefixRef.current && !loginPrefixRef.current.contains(e.target as Node)) {
+        setLoginPrefixOpen(false);
+        setLoginPrefixSearch("");
+      }
+      if (regPrefixRef.current && !regPrefixRef.current.contains(e.target as Node)) {
+        setRegPrefixOpen(false);
+        setRegPrefixSearch("");
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
   function startCooldown() {
@@ -142,6 +175,66 @@ export default function AuthPage() {
     closeModal();
   }
 
+  function pickPrefixCountry(code: string, ctx: "login" | "reg") {
+    const c = COUNTRIES.find(x => x.code === code)!;
+    const isET = c.code === "ET";
+    if (ctx === "login") {
+      setLoginC(c);
+      setLoginType(!isET ? "email" : "phone");
+      setLoginPrefixOpen(false);
+      setLoginPrefixSearch("");
+    } else {
+      setRegC(c);
+      setRegType(!isET ? "email" : "phone");
+      setRegPrefixOpen(false);
+      setRegPrefixSearch("");
+    }
+  }
+
+  function openPrefixDropdown(ctx: "login" | "reg") {
+    if (ctx === "login") {
+      setLoginPrefixOpen(v => !v);
+      setLoginPrefixSearch("");
+      if (!loginPrefixOpen) setTimeout(() => loginPrefixSearchRef.current?.focus(), 80);
+    } else {
+      setRegPrefixOpen(v => !v);
+      setRegPrefixSearch("");
+      if (!regPrefixOpen) setTimeout(() => regPrefixSearchRef.current?.focus(), 80);
+    }
+  }
+
+  // Auto-detect country from phone number
+  // Ethiopian format: 09XXXXXXXX or 07XXXXXXXX (leading 0 for local dialing)
+  function handleLoginPhoneChange(raw: string) {
+    let digits = raw.replace(/\D/g, "");
+    if (digits.startsWith("0") && digits.length > 1) {
+      const second = digits[1];
+      if (second === "9" || second === "7") {
+        setLoginC(ET);
+        setLoginType("phone");
+        digits = digits.slice(1); // strip leading 0
+      } else {
+        digits = digits.slice(1);
+      }
+    }
+    setLoginPhone(digits.slice(0, 9));
+  }
+
+  function handleRegPhoneChange(raw: string) {
+    let digits = raw.replace(/\D/g, "");
+    if (digits.startsWith("0") && digits.length > 1) {
+      const second = digits[1];
+      if (second === "9" || second === "7") {
+        setRegC(ET);
+        setRegType("phone");
+        digits = digits.slice(1);
+      } else {
+        digits = digits.slice(1);
+      }
+    }
+    setRegPhone(digits.slice(0, 9));
+  }
+
   const filteredCountries = COUNTRIES.filter(c => {
     const q = modalSearch.toLowerCase();
     return c.name.toLowerCase().includes(q) || c.code.toLowerCase().includes(q) || c.dial.includes(q);
@@ -163,18 +256,14 @@ export default function AuthPage() {
 
     setLoginLoading(true);
     try {
-      // If email login — silently try admin credentials first
       if (loginType === "email") {
         try {
           await adminLogin(identifier, loginPwd);
           setLocation("/admin/dashboard");
           return;
-        } catch {
-          // not admin — continue to user login below
-        }
+        } catch { }
       }
 
-      // Normal user login
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -282,7 +371,7 @@ export default function AuthPage() {
 
   return (
     <div className="auth-root">
-      {/* Country Modal */}
+      {/* Country Modal (top pill) */}
       <div className={`country-modal-overlay${modalOpen ? " open" : ""}`} onClick={(e) => { if (e.target === e.currentTarget) closeModal(); }}>
         <div className="country-modal">
           <div className="modal-header">
@@ -352,10 +441,53 @@ export default function AuthPage() {
             <div className="phone-row-wrap slide-element">
               <div className="phone-row-label">Phone Number</div>
               <div className={`phone-row${loginPhoneFocused ? " focused" : ""}`}>
-                <div className="phone-prefix"><span className="pf-flag">{loginC.flag}</span><span className="pf-code">{loginC.dial}</span></div>
-                <input type="tel" placeholder="9XX XXX XXXX" value={loginPhone}
-                  onChange={e => setLoginPhone(e.target.value.replace(/\D/g, "").slice(0, 9))}
-                  onFocus={() => setLoginPhoneFocused(true)} onBlur={() => setLoginPhoneFocused(false)} />
+                {/* Clickable prefix → opens inline dropdown */}
+                <div ref={loginPrefixRef} className="phone-prefix-wrap">
+                  <div
+                    className={`phone-prefix clickable${loginPrefixOpen ? " prefix-active" : ""}`}
+                    onClick={() => openPrefixDropdown("login")}
+                    title="Change country"
+                  >
+                    <span className="pf-flag">{loginC.flag}</span>
+                    <span className="pf-code">{loginC.dial}</span>
+                    <i className="fa-solid fa-chevron-down pf-caret"></i>
+                  </div>
+                  {loginPrefixOpen && (
+                    <div className="prefix-dropdown">
+                      <div className="prefix-search">
+                        <i className="fa-solid fa-magnifying-glass"></i>
+                        <input
+                          ref={loginPrefixSearchRef}
+                          type="text"
+                          placeholder="Search…"
+                          value={loginPrefixSearch}
+                          onChange={e => setLoginPrefixSearch(e.target.value)}
+                        />
+                      </div>
+                      <div className="prefix-list">
+                        {filterCountries(loginPrefixSearch).map(c => (
+                          <div
+                            key={c.code}
+                            className={`prefix-item${loginC.code === c.code ? " active" : ""}`}
+                            onClick={() => pickPrefixCountry(c.code, "login")}
+                          >
+                            <span className="pi-flag">{c.flag}</span>
+                            <span className="pi-name">{c.name}</span>
+                            <span className="pi-dial">{c.dial}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <input
+                  type="tel"
+                  placeholder="9XX XXX XXXX"
+                  value={loginPhone}
+                  onChange={e => handleLoginPhoneChange(e.target.value)}
+                  onFocus={() => setLoginPhoneFocused(true)}
+                  onBlur={() => setLoginPhoneFocused(false)}
+                />
                 <i className="fa-solid fa-phone"></i>
               </div>
               <div className={`auth-err${loginPhoneErr ? " show" : ""}`}>Invalid phone number (must start with 9 or 7)</div>
@@ -429,10 +561,53 @@ export default function AuthPage() {
                 <div className="phone-row-wrap slide-element">
                   <div className="phone-row-label">Phone Number</div>
                   <div className={`phone-row${regPhoneFocused ? " focused" : ""}`}>
-                    <div className="phone-prefix"><span className="pf-flag">{regC.flag}</span><span className="pf-code">{regC.dial}</span></div>
-                    <input type="tel" placeholder="9XX XXX XXXX" value={regPhone}
-                      onChange={e => setRegPhone(e.target.value.replace(/\D/g, "").slice(0, 9))}
-                      onFocus={() => setRegPhoneFocused(true)} onBlur={() => setRegPhoneFocused(false)} />
+                    {/* Clickable prefix → opens inline dropdown */}
+                    <div ref={regPrefixRef} className="phone-prefix-wrap">
+                      <div
+                        className={`phone-prefix clickable${regPrefixOpen ? " prefix-active" : ""}`}
+                        onClick={() => openPrefixDropdown("reg")}
+                        title="Change country"
+                      >
+                        <span className="pf-flag">{regC.flag}</span>
+                        <span className="pf-code">{regC.dial}</span>
+                        <i className="fa-solid fa-chevron-down pf-caret"></i>
+                      </div>
+                      {regPrefixOpen && (
+                        <div className="prefix-dropdown">
+                          <div className="prefix-search">
+                            <i className="fa-solid fa-magnifying-glass"></i>
+                            <input
+                              ref={regPrefixSearchRef}
+                              type="text"
+                              placeholder="Search…"
+                              value={regPrefixSearch}
+                              onChange={e => setRegPrefixSearch(e.target.value)}
+                            />
+                          </div>
+                          <div className="prefix-list">
+                            {filterCountries(regPrefixSearch).map(c => (
+                              <div
+                                key={c.code}
+                                className={`prefix-item${regC.code === c.code ? " active" : ""}`}
+                                onClick={() => pickPrefixCountry(c.code, "reg")}
+                              >
+                                <span className="pi-flag">{c.flag}</span>
+                                <span className="pi-name">{c.name}</span>
+                                <span className="pi-dial">{c.dial}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    <input
+                      type="tel"
+                      placeholder="9XX XXX XXXX"
+                      value={regPhone}
+                      onChange={e => handleRegPhoneChange(e.target.value)}
+                      onFocus={() => setRegPhoneFocused(true)}
+                      onBlur={() => setRegPhoneFocused(false)}
+                    />
                     <i className="fa-solid fa-phone"></i>
                   </div>
                   <div className={`auth-err${regPhoneErr ? " show" : ""}`}>Ethiopian number must start with 9 or 7</div>
