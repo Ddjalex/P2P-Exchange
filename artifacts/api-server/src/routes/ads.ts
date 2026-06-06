@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { adsTable, usersTable, ordersTable, walletsTable } from "@workspace/db";
-import { eq, and, ne, desc, asc } from "drizzle-orm";
+import { eq, and, ne, desc, asc, sql, gt } from "drizzle-orm";
 import { notify } from "../lib/notify.js";
 
 const router = Router();
@@ -72,6 +72,8 @@ router.get("/", async (req, res) => {
       // Show all online ads — including the user's own so they can see their ad is live.
       // Self-trading is blocked at order-creation time by the backend.
       conditions.push(eq(adsTable.status, "online"));
+      // Never show ads with zero, negative, or empty available balance in the marketplace
+      conditions.push(sql`CAST(NULLIF(${adsTable.availableAmount}, '') AS NUMERIC) > 0`);
     }
 
     if (type && ["buy", "sell"].includes(type)) {
