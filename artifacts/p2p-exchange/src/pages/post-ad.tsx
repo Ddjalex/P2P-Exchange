@@ -101,7 +101,17 @@ export default function PostAdPage() {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
 
+  const [step1Error, setStep1Error] = useState("");
+
   const handleNext = () => {
+    if (step === 1) {
+      setStep1Error("");
+      // Sell ads require at least one saved payment method
+      if (!loadingPaymentMethods && ad.type === "sell" && userPaymentMethods.length === 0) {
+        setStep1Error("You must add a payment method to your profile before posting a sell ad.");
+        return;
+      }
+    }
     if (step === 2) {
       setStep2Error("");
       if (!ad.totalAmount || Number(ad.totalAmount) <= 0) {
@@ -227,6 +237,15 @@ export default function PostAdPage() {
                 <button className="w-10 h-10 bg-secondary rounded flex items-center justify-center font-bold" onClick={() => setAd(a => ({ ...a, price: String((Number(a.price) + 0.1).toFixed(2)) }))}>+</button>
               </div>
             </div>
+
+            {step1Error && (
+              <div className="bg-destructive/10 border border-destructive/30 rounded-xl p-4 space-y-2">
+                <p className="text-sm text-destructive font-medium">⚠ {step1Error}</p>
+                <Link href="/payment-methods" className="inline-block px-4 py-2 bg-primary text-primary-foreground rounded-lg text-xs font-semibold">
+                  Add Payment Method →
+                </Link>
+              </div>
+            )}
           </div>
         )}
 

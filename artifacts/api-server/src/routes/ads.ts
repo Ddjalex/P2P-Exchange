@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { adsTable, usersTable, ordersTable, walletsTable } from "@workspace/db";
+import { adsTable, usersTable, ordersTable, walletsTable, paymentMethodsTable } from "@workspace/db";
 import { eq, and, ne, desc, asc, sql, gt } from "drizzle-orm";
 import { notify } from "../lib/notify.js";
 
@@ -144,6 +144,20 @@ router.post("/", async (req, res) => {
       return res.status(400).json({
         message: `You already have a ${type} ad. You can only have 1 buy ad and 1 sell ad at a time.`,
       });
+    }
+
+    // Validate payment methods are selected
+    const pmArray: string[] = Array.isArray(paymentMethods) ? paymentMethods : [];
+    if (pmArray.length === 0) {
+      return res.status(400).json({ message: "Please select at least one payment method" });
+    }
+
+    // For sell ads: require the seller to have payment methods saved on their profile
+    if (type === "sell") {
+      const savedMethods = await db.select().from(paymentMethodsTable).where(eq(paymentMethodsTable.userId, userId));
+      if (savedMethods.length === 0) {
+        return res.status(400).json({ message: "You must add a payment method to your profile before posting a sell ad" });
+      }
     }
 
     // For sell ads: check and freeze USDT immediately
