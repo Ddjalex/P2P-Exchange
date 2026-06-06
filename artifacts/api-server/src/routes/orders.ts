@@ -526,21 +526,13 @@ router.post("/:id/cancel", async (req, res) => {
       await db.update(adsTable).set({
         availableAmount: Math.min(restored, cap).toFixed(4),
       }).where(eq(adsTable.id, order.adId));
-
-      // Buy ad: seller froze USDT at order creation → return it on cancel
-      if (ad.type === "buy") {
-        await returnUsdtToSeller(order.sellerId, order.amountUsdt);
-      }
-    } else {
-      // Ad was deleted (fully depleted when order was created).
-      // If it was a buy ad the seller's USDT was frozen — unfreeze it.
-      // We detect this by checking whether the seller's frozenBalance covers the order.
-      const sellerWallet = await getOrCreateWallet(order.sellerId);
-      const sellerFrozen = parseFloat(sellerWallet.frozenBalance);
-      if (sellerFrozen >= parseFloat(order.amountUsdt)) {
-        await returnUsdtToSeller(order.sellerId, order.amountUsdt);
-      }
     }
+
+    // Always return the order's USDT to the seller's available balance.
+    // • Sell-ad orders: entire ad amount was frozen at ad creation; per-order
+    //   amount is moved back to available so the seller isn't locked out.
+    // • Buy-ad orders: seller froze USDT at order creation; unfreeze on cancel.
+    await returnUsdtToSeller(order.sellerId, order.amountUsdt);
 
     const cancelledByRole = userId === order.buyerId ? "buyer" : "seller";
     const counterpartyId = userId === order.buyerId ? order.sellerId : order.buyerId;
