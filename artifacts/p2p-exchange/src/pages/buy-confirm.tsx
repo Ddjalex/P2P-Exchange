@@ -38,7 +38,12 @@ export default function BuyConfirmPage() {
   const takerFeePercent: number = feeData?.takerFeePercent ?? 0.10;
   const totalFeePercent: number = makerFeePercent + takerFeePercent;
 
+  // For sell orders the input is always USDT (you sell USDT, receive ETB)
+  // For buy  orders keep the ETB/USDT toggle
   const [inputMode, setInputMode] = useState<"ETB" | "USDT">("ETB");
+
+  // Once the ad loads and we know isSelling, lock sell mode to USDT input
+  const resolvedInputMode = ad && ad.type === "buy" ? "USDT" : inputMode;
   const [inputValue, setInputValue] = useState("");
   const [selectedPayment, setSelectedPayment] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
@@ -52,13 +57,15 @@ export default function BuyConfirmPage() {
   const available = safeNum(ad?.availableAmount);
 
   const inputNum = parseFloat(inputValue) || 0;
-  const usdtNum = inputMode === "ETB" ? (price > 0 ? inputNum / price : 0) : inputNum;
-  const etbNum  = inputMode === "USDT" ? inputNum * price : inputNum;
+  const usdtNum = resolvedInputMode === "ETB" ? (price > 0 ? inputNum / price : 0) : inputNum;
+  const etbNum  = resolvedInputMode === "USDT" ? inputNum * price : inputNum;
   const usdtDisplay = usdtNum > 0 ? usdtNum.toFixed(4) : "0.0000";
   const etbDisplay  = etbNum > 0  ? etbNum.toFixed(2)  : "0.00";
 
   const feeUsdt = usdtNum * totalFeePercent / 100;
   const netUsdt = usdtNum - feeUsdt;
+  const feeEtb  = etbNum  * totalFeePercent / 100;
+  const netEtb  = etbNum  - feeEtb;
 
   const handleToggle = () => {
     setInputMode(m => m === "ETB" ? "USDT" : "ETB");
@@ -68,7 +75,7 @@ export default function BuyConfirmPage() {
 
   const handleMax = () => {
     if (!ad) return;
-    if (inputMode === "USDT") {
+    if (resolvedInputMode === "USDT") {
       const maxUsdt = maxLimit > 0 ? Math.min(maxLimit, available) : available;
       setInputValue(maxUsdt > 0 ? String(maxUsdt) : "");
     } else {
@@ -213,8 +220,8 @@ export default function BuyConfirmPage() {
         <div className="bg-card border border-border rounded-xl p-4">
           <label className="text-xs text-muted-foreground block mb-2">
             {isSelling
-              ? (inputMode === "USDT" ? "I want to send" : "I want to receive")
-              : (inputMode === "ETB" ? "I want to pay" : "I want to receive")}
+              ? "I will sell (USDT)"
+              : (resolvedInputMode === "ETB" ? "I want to pay" : "I want to receive")}
           </label>
           <div className="flex items-center space-x-2">
             <input
@@ -235,13 +242,20 @@ export default function BuyConfirmPage() {
             >
               Max
             </button>
-            <button
-              onClick={handleToggle}
-              title="Tap to switch input currency"
-              className="px-2.5 py-1 rounded-md bg-primary/20 text-primary text-xs font-bold flex-shrink-0 border border-primary/30 hover:bg-primary/30 transition-colors"
-            >
-              {inputMode}
-            </button>
+            {/* Fixed USDT badge on sell side — no toggle */}
+            {isSelling ? (
+              <span className="px-2.5 py-1 rounded-md bg-secondary text-xs font-bold text-muted-foreground flex-shrink-0">
+                USDT
+              </span>
+            ) : (
+              <button
+                onClick={handleToggle}
+                title="Tap to switch input currency"
+                className="px-2.5 py-1 rounded-md bg-primary/20 text-primary text-xs font-bold flex-shrink-0 border border-primary/30 hover:bg-primary/30 transition-colors"
+              >
+                {resolvedInputMode}
+              </button>
+            )}
           </div>
           <p className="text-[11px] text-muted-foreground mt-2">
             {limitText ? `${limitText}  |  ` : ""}Time Limit {ad.paymentTimeLimit} min
@@ -252,10 +266,47 @@ export default function BuyConfirmPage() {
         <div className="bg-card border border-border rounded-xl p-4">
           <label className="text-xs text-muted-foreground block mb-2">
             {isSelling
-              ? (inputMode === "USDT" ? "I will receive" : "I will send")
-              : (inputMode === "ETB" ? "I will receive" : "I will pay")}
+              ? "I will receive (ETB)"
+              : (resolvedInputMode === "ETB" ? "I will receive" : "I will pay")}
           </label>
-          {inputMode === "ETB" ? (
+
+          {/* SELL side: user inputs USDT → receives ETB (with fee breakdown) */}
+          {isSelling ? (
+            <>
+              <div className="flex items-center space-x-2 mb-1">
+                <span className="flex-1 text-2xl font-bold font-mono text-foreground">
+                  {netEtb > 0 ? netEtb.toFixed(2) : "0.00"}
+                </span>
+                <span className="px-2.5 py-1 rounded-md bg-secondary text-xs font-bold text-muted-foreground flex-shrink-0">
+                  ETB
+                </span>
+              </div>
+              <p className="text-[11px] text-muted-foreground mb-3">
+                Price: {Number(ad.price).toLocaleString()} ETB/USDT
+              </p>
+              {etbNum > 0 && (
+                <div className="border-t border-border pt-3 space-y-1.5">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground text-[11px]">Gross ETB</span>
+                    <span className="text-foreground text-[11px]">{etbNum.toFixed(2)} ETB</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground text-[11px]">Maker fee ({makerFeePercent}%)</span>
+                    <span className="text-orange-400 text-[11px]">-{(etbNum * makerFeePercent / 100).toFixed(2)} ETB</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground text-[11px]">Taker fee ({takerFeePercent}%)</span>
+                    <span className="text-orange-400 text-[11px]">-{(etbNum * takerFeePercent / 100).toFixed(2)} ETB</span>
+                  </div>
+                  <div className="flex justify-between border-t border-border pt-1.5 mt-1">
+                    <span className="text-primary text-[12px] font-semibold">You receive</span>
+                    <span className="text-primary text-[12px] font-bold">{netEtb.toFixed(2)} ETB</span>
+                  </div>
+                </div>
+              )}
+            </>
+          ) : resolvedInputMode === "ETB" ? (
+            /* BUY side, ETB input → receive USDT with fee breakdown */
             <>
               <div className="flex items-center space-x-2 mb-1">
                 <span className="flex-1 text-2xl font-bold font-mono text-foreground">
@@ -290,6 +341,7 @@ export default function BuyConfirmPage() {
               )}
             </>
           ) : (
+            /* BUY side, USDT input → pay ETB */
             <>
               <div className="flex items-center space-x-2">
                 <span className="flex-1 text-xl font-bold font-mono">{etbDisplay}</span>
