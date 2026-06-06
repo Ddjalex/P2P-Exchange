@@ -316,15 +316,24 @@ export default function ChatThreadPage() {
       </div>
 
       {/* Input area */}
-      <div className="fixed bottom-0 left-0 right-0 bg-background border-t border-border sm:max-w-[480px] sm:mx-auto">
+      <div style={{
+        position: "fixed", bottom: 0, left: 0, right: 0,
+        background: "var(--background)",
+        borderTop: "1px solid var(--border)",
+        boxSizing: "border-box",
+        maxWidth: "480px",
+        marginLeft: "auto",
+        marginRight: "auto",
+        paddingBottom: "env(safe-area-inset-bottom, 0px)",
+      }}>
         {/* Image preview strip */}
         {imagePreview && (
           <div style={{
             padding: "8px 12px",
-            borderTop: "1px solid rgba(255,255,255,0.08)",
+            borderBottom: "1px solid rgba(255,255,255,0.08)",
             display: "flex", alignItems: "center", gap: "8px",
           }}>
-            <img src={imagePreview} style={{ width: "52px", height: "52px", objectFit: "cover", borderRadius: "8px", flexShrink: 0 }} />
+            <img src={imagePreview} style={{ width: "48px", height: "48px", objectFit: "cover", borderRadius: "8px", flexShrink: 0 }} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: "12px", color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {selectedImage?.name}
@@ -335,13 +344,18 @@ export default function ChatThreadPage() {
             </div>
             <button
               onClick={() => { setSelectedImage(null); setImagePreview(null); }}
-              style={{ background: "none", border: "none", color: "#ff4444", fontSize: "20px", cursor: "pointer", flexShrink: 0, lineHeight: 1 }}
+              style={{ background: "none", border: "none", color: "#ff4444", fontSize: "22px", cursor: "pointer", flexShrink: 0, lineHeight: 1, padding: "0 4px" }}
             >×</button>
           </div>
         )}
 
         {/* Input row */}
-        <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "10px 12px" }}>
+        <div style={{
+          display: "flex", alignItems: "center", gap: "6px",
+          padding: "8px 10px",
+          boxSizing: "border-box",
+          width: "100%",
+        }}>
           {/* Hidden file input */}
           <input
             ref={fileInputRef}
@@ -351,7 +365,7 @@ export default function ChatThreadPage() {
             onChange={handleImageSelect}
           />
 
-          {/* Attachment button — only selects, does NOT send */}
+          {/* Attachment button */}
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
@@ -360,9 +374,10 @@ export default function ChatThreadPage() {
               background: "rgba(255,255,255,0.08)",
               border: "none",
               borderRadius: "50%",
-              width: "38px", height: "38px",
+              width: "36px", height: "36px",
+              minWidth: "36px",
               display: "flex", alignItems: "center", justifyContent: "center",
-              cursor: "pointer", flexShrink: 0, fontSize: "18px",
+              cursor: "pointer", flexShrink: 0, fontSize: "17px",
               opacity: sending ? 0.5 : 1,
             }}
           >
@@ -380,24 +395,28 @@ export default function ChatThreadPage() {
                 handleSendMessage();
               }
             }}
-            placeholder={selectedImage ? "Add a caption…" : "Enter your chat here."}
+            placeholder={selectedImage ? "Add a caption…" : "Type a message…"}
             disabled={sending}
             style={{
-              flex: 1, background: "rgba(255,255,255,0.06)",
-              border: "1px solid rgba(255,255,255,0.12)", borderRadius: "22px",
-              padding: "10px 16px", color: "#fff",
+              flex: 1,
+              minWidth: 0,
+              background: "rgba(255,255,255,0.06)",
+              border: "1px solid rgba(255,255,255,0.12)", borderRadius: "20px",
+              padding: "9px 14px", color: "#fff",
               fontSize: "13px", outline: "none",
               opacity: sending ? 0.7 : 1,
+              boxSizing: "border-box",
             }}
           />
 
-          {/* Send button — the ONLY thing that sends */}
+          {/* Send button */}
           <button
             type="button"
             onClick={handleSendMessage}
             disabled={!canSend}
             style={{
-              width: "42px", height: "42px",
+              width: "38px", height: "38px",
+              minWidth: "38px",
               borderRadius: "50%",
               background: canSend ? "#00d4ff" : "rgba(255,255,255,0.12)",
               border: "none",
@@ -409,14 +428,14 @@ export default function ChatThreadPage() {
           >
             {sending ? (
               <div style={{
-                width: "16px", height: "16px",
+                width: "15px", height: "15px",
                 border: "2px solid rgba(255,255,255,0.4)",
                 borderTop: "2px solid #fff",
                 borderRadius: "50%",
                 animation: "spin 1s linear infinite",
               }} />
             ) : (
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none">
                 <path d="M22 2L11 13" stroke={canSend ? "#1a1a2e" : "#888"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                 <path d="M22 2L15 22L11 13L2 9L22 2Z" stroke={canSend ? "#1a1a2e" : "#888"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
