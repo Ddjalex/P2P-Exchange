@@ -126,7 +126,12 @@ function AddEmailModal({ onClose, onSuccess }: { onClose: () => void; onSuccess:
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to send code");
       setStep("code");
-      toast({ title: "Verification code sent to your email" });
+      if (data.devCode) {
+        setCode(data.devCode);
+        toast({ title: "Dev mode: code auto-filled", description: `OTP: ${data.devCode}` });
+      } else {
+        toast({ title: "Verification code sent to your email" });
+      }
     } catch (e: any) {
       setError(e.message);
     } finally {

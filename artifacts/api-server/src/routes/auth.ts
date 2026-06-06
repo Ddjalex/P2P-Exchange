@@ -105,15 +105,31 @@ router.post("/send-code", async (req, res) => {
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
     await db.insert(verificationCodesTable).values({ target, type, code, expiresAt });
 
+    const isDev = process.env.NODE_ENV !== "production";
+
     if (type === "phone") {
       const apiKey = await getSetting("fastsmsApiKey");
-      if (!apiKey) return res.status(503).json({ error: "SMS service not configured. Contact admin." });
-      await sendSms(target, `Your verification code is: ${code}. Valid for 10 minutes.`, apiKey);
+      if (!apiKey) {
+        if (isDev) {
+          req.log.info({ target, code }, "DEV MODE — SMS not configured, OTP logged");
+          console.log(`\n📱 DEV OTP for ${target}: ${code}\n`);
+          return res.json({ sent: true, devCode: code });
+        }
+        return res.status(503).json({ error: "SMS service not configured. Contact admin." });
+      }
+      await sendSms(target, `Your SwapBirr verification code is: ${code}. Valid for 10 minutes.`, apiKey);
     } else {
       const apiKey = await getSetting("brevoApiKey");
       const senderEmail = await getSetting("brevoSenderEmail");
       const senderName = await getSetting("brevoSenderName");
-      if (!apiKey) return res.status(503).json({ error: "Email service not configured. Contact admin." });
+      if (!apiKey) {
+        if (isDev) {
+          req.log.info({ target, code }, "DEV MODE — Email not configured, OTP logged");
+          console.log(`\n📧 DEV OTP for ${target}: ${code}\n`);
+          return res.json({ sent: true, devCode: code });
+        }
+        return res.status(503).json({ error: "Email service not configured. Contact admin." });
+      }
       await sendBrevoEmail(target, code, senderEmail ?? "", senderName ?? "", apiKey);
     }
 

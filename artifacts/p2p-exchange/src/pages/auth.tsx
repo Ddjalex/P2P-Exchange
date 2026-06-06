@@ -93,6 +93,7 @@ export default function AuthPage() {
   const [otpLoading, setOtpLoading] = useState(false);
   const [otpErr, setOtpErr] = useState("");
   const [otpCooldown, setOtpCooldown] = useState(0);
+  const [devCodeActive, setDevCodeActive] = useState(false);
   const cooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Country modal (top pill)
@@ -306,7 +307,8 @@ export default function AuthPage() {
       const data = await res.json();
       if (!res.ok) { setRegErr(data.error || "Failed to send code"); return; }
       setOtpStep(true);
-      setOtpCode("");
+      if (data.devCode) { setOtpCode(data.devCode); setDevCodeActive(true); }
+      else { setOtpCode(""); setDevCodeActive(false); }
       startCooldown();
     } catch {
       setRegErr("Network error. Please try again.");
@@ -325,8 +327,11 @@ export default function AuthPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ target: getOtpTarget(), type: regType }),
       });
-      if (res.ok) startCooldown();
-      else { const d = await res.json(); setOtpErr(d.error || "Failed to resend"); }
+      if (res.ok) {
+        const d = await res.json();
+        if (d.devCode) { setOtpCode(d.devCode); setDevCodeActive(true); }
+        startCooldown();
+      } else { const d = await res.json(); setOtpErr(d.error || "Failed to resend"); }
     } catch { setOtpErr("Network error."); }
     finally { setOtpLoading(false); }
   }
@@ -633,6 +638,12 @@ export default function AuthPage() {
               <p className="slide-element" style={{ fontSize: 12, color: "rgba(255,255,255,.5)", marginBottom: 8 }}>
                 {regType === "phone" ? `Code sent to ${regC.dial} ${regPhone}` : `Code sent to ${regEmail}`}
               </p>
+
+              {devCodeActive && (
+                <div className="slide-element" style={{ background: "rgba(255,193,7,0.12)", border: "1px solid rgba(255,193,7,0.4)", borderRadius: 8, padding: "8px 12px", marginBottom: 4, fontSize: 12, color: "#ffc107" }}>
+                  ⚡ Dev mode — code auto-filled: <strong>{otpCode}</strong>
+                </div>
+              )}
 
               <div className="otp-input-wrap slide-element">
                 <input className="otp-input" type="text" inputMode="numeric" maxLength={6} placeholder="000000"
