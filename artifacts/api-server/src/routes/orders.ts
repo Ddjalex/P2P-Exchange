@@ -186,6 +186,15 @@ router.post("/", async (req, res) => {
     const buyerId = isBuying ? userId : ad.userId;
     const sellerId = isBuying ? ad.userId : userId;
 
+    // For sell-ad orders (buyer paying seller): verify the seller has complete
+    // account details saved for the chosen payment method before creating the order.
+    if (isBuying) {
+      const { accountName, accountNumber } = await getSellerPaymentDetails(sellerId, paymentMethod);
+      if (!accountName || !accountNumber) {
+        return res.status(400).json({ message: "Seller has not set up their payment account details for this method. Please choose a different ad or contact the seller." });
+      }
+    }
+
     const now = new Date();
     const appealAvailableAt = new Date(now.getTime() + ad.paymentTimeLimit * 60 * 1000);
 

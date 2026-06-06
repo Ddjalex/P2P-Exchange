@@ -152,11 +152,24 @@ router.post("/", async (req, res) => {
       return res.status(400).json({ message: "Please select at least one payment method" });
     }
 
-    // For sell ads: require the seller to have payment methods saved on their profile
+    // For sell ads: require the seller to have a saved payment method that MATCHES
+    // at least one of the ad's selected payment methods (with non-empty account details)
     if (type === "sell") {
       const savedMethods = await db.select().from(paymentMethodsTable).where(eq(paymentMethodsTable.userId, userId));
       if (savedMethods.length === 0) {
         return res.status(400).json({ message: "You must add a payment method to your profile before posting a sell ad" });
+      }
+      const hasMatch = pmArray.some(adPm => {
+        const adPmNorm = adPm.toLowerCase().replace(/\s+/g, "");
+        return savedMethods.some(saved => {
+          const savedNorm = saved.type.toLowerCase().replace(/\s+/g, "");
+          const matches = savedNorm === adPmNorm || savedNorm.startsWith(adPmNorm) || adPmNorm.startsWith(savedNorm);
+          return matches && saved.accountName?.trim() && saved.accountNumber?.trim();
+        });
+      });
+      if (!hasMatch) {
+        const missing = pmArray.join(", ");
+        return res.status(400).json({ message: `Please add a ${missing} payment method with your account details in Profile → Payment Methods before posting this ad` });
       }
     }
 
