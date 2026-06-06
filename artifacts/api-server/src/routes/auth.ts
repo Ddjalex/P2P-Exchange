@@ -50,6 +50,22 @@ async function getSetting(key: string): Promise<string | null> {
   return row?.value ?? null;
 }
 
+async function verifyTurnstile(token: string, ip?: string): Promise<boolean> {
+  const secret = process.env.TURNSTILE_SECRET_KEY;
+  if (!secret) return true;
+  const form = new URLSearchParams();
+  form.append("secret", secret);
+  form.append("response", token);
+  if (ip) form.append("remoteip", ip);
+  const res = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: form.toString(),
+  });
+  const data = (await res.json()) as any;
+  return data.success === true;
+}
+
 async function sendSms(phone: string, message: string, apiKey: string): Promise<void> {
   const res = await fetch("https://fastsms.dev/api/p/sms/send", {
     method: "POST",
@@ -101,9 +117,12 @@ async function sendBrevoEmail(to: string, code: string, senderEmail: string, sen
 // POST /api/auth/send-code
 router.post("/send-code", async (req, res) => {
   try {
-    const { target, type } = req.body ?? {};
+    const { target, type, turnstileToken } = req.body ?? {};
     if (!target || !type || !["phone", "email"].includes(type)) {
       return res.status(400).json({ error: "target and type (phone|email) are required" });
+    }
+    if (!turnstileToken || !(await verifyTurnstile(turnstileToken, req.ip))) {
+      return res.status(400).json({ error: "Security check failed. Please try again." });
     }
 
     const code = generateCode();
@@ -285,8 +304,11 @@ router.post("/register", async (req, res) => {
 // POST /api/auth/login
 router.post("/login", async (req, res) => {
   try {
-    const { identifier, password, type, dialCode } = req.body ?? {};
+    const { identifier, password, type, dialCode, turnstileToken } = req.body ?? {};
     if (!identifier || !password) return res.status(400).json({ error: "identifier and password are required" });
+    if (!turnstileToken || !(await verifyTurnstile(turnstileToken, req.ip))) {
+      return res.status(400).json({ error: "Security check failed. Please try again." });
+    }
 
     const isPhone = type === "phone";
     let user: any;

@@ -4,6 +4,8 @@ import { useAuth } from "@/hooks/use-auth";
 import { useAdminAuth } from "@/hooks/use-admin-auth";
 import "./auth.css";
 
+const TURNSTILE_SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY as string | undefined;
+
 interface Country {
   code: string;
   name: string;
@@ -96,6 +98,14 @@ export default function AuthPage() {
   const [devCodeActive, setDevCodeActive] = useState(false);
   const cooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Turnstile tokens
+  const [loginTurnToken, setLoginTurnToken] = useState("");
+  const [regTurnToken, setRegTurnToken] = useState("");
+  const loginTurnRef = useRef<HTMLDivElement>(null);
+  const regTurnRef = useRef<HTMLDivElement>(null);
+  const loginWidgetId = useRef<string | null>(null);
+  const regWidgetId = useRef<string | null>(null);
+
   // Country modal (top pill)
   const [modalOpen, setModalOpen] = useState(false);
   const [modalCtx, setModalCtx] = useState<"login" | "reg">("login");
@@ -113,6 +123,41 @@ export default function AuthPage() {
   const regPrefixRef = useRef<HTMLDivElement>(null);
   const loginPrefixSearchRef = useRef<HTMLInputElement>(null);
   const regPrefixSearchRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!TURNSTILE_SITE_KEY) return;
+    function tryRender() {
+      const ts = (window as any).turnstile;
+      if (!ts) { setTimeout(tryRender, 150); return; }
+      if (loginTurnRef.current && !loginWidgetId.current) {
+        loginWidgetId.current = ts.render(loginTurnRef.current, {
+          sitekey: TURNSTILE_SITE_KEY,
+          callback: (t: string) => setLoginTurnToken(t),
+          "expired-callback": () => setLoginTurnToken(""),
+          "error-callback": () => setLoginTurnToken(""),
+          theme: "dark",
+          size: "normal",
+        });
+      }
+      if (regTurnRef.current && !regWidgetId.current) {
+        regWidgetId.current = ts.render(regTurnRef.current, {
+          sitekey: TURNSTILE_SITE_KEY,
+          callback: (t: string) => setRegTurnToken(t),
+          "expired-callback": () => setRegTurnToken(""),
+          "error-callback": () => setRegTurnToken(""),
+          theme: "dark",
+          size: "normal",
+        });
+      }
+    }
+    tryRender();
+    return () => {
+      const ts = (window as any).turnstile;
+      if (!ts) return;
+      if (loginWidgetId.current) { ts.remove(loginWidgetId.current); loginWidgetId.current = null; }
+      if (regWidgetId.current) { ts.remove(regWidgetId.current); regWidgetId.current = null; }
+    };
+  }, []);
 
   useEffect(() => {
     if (!isLoading && user) {
@@ -254,6 +299,7 @@ export default function AuthPage() {
     setLoginPhoneErr(false);
     const identifier = loginType === "phone" ? loginPhone : loginEmail;
     if (!identifier || !loginPwd) { setLoginErr("Please fill in all fields"); return; }
+    if (TURNSTILE_SITE_KEY && !loginTurnToken) { setLoginErr("Please complete the security check"); return; }
 
     setLoginLoading(true);
     try {
@@ -268,10 +314,15 @@ export default function AuthPage() {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ identifier, password: loginPwd, country: loginC.code, dialCode: loginC.dial, type: loginType }),
+        body: JSON.stringify({ identifier, password: loginPwd, country: loginC.code, dialCode: loginC.dial, type: loginType, turnstileToken: loginTurnToken }),
       });
       const data = await res.json();
-      if (!res.ok) { setLoginErr(data.error || "Login failed"); return; }
+      if (!res.ok) {
+        setLoginErr(data.error || "Login failed");
+        (window as any).turnstile?.reset(loginWidgetId.current);
+        setLoginTurnToken("");
+        return;
+      }
       login(data.token, data.user);
       const params = new URLSearchParams(window.location.search);
       const dest = params.get("redirect") || localStorage.getItem("redirect_after_auth") || "/wallet";
@@ -296,16 +347,22 @@ export default function AuthPage() {
     if (!identifier || !regPwd || !regUser) { setRegErr("Please fill in all required fields"); return; }
     if (regPwd.length < 6) { setRegErr("Password must be at least 6 characters"); return; }
     if (regUser.length < 3) { setRegErr("Username must be at least 3 characters"); return; }
+    if (TURNSTILE_SITE_KEY && !regTurnToken) { setRegErr("Please complete the security check"); return; }
 
     setOtpLoading(true);
     try {
       const res = await fetch("/api/auth/send-code", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ target: getOtpTarget(), type: regType }),
+        body: JSON.stringify({ target: getOtpTarget(), type: regType, turnstileToken: regTurnToken }),
       });
       const data = await res.json();
-      if (!res.ok) { setRegErr(data.error || "Failed to send code"); return; }
+      if (!res.ok) {
+        setRegErr(data.error || "Failed to send code");
+        (window as any).turnstile?.reset(regWidgetId.current);
+        setRegTurnToken("");
+        return;
+      }
       setOtpStep(true);
       if (data.devCode) { setOtpCode(data.devCode); setDevCodeActive(true); }
       else { setOtpCode(""); setDevCodeActive(false); }
@@ -503,8 +560,14 @@ export default function AuthPage() {
 
           <div className="forgot slide-element"><a href="#">Forgot password?</a></div>
 
+          {TURNSTILE_SITE_KEY && (
+            <div className="slide-element" style={{ display: "flex", justifyContent: "center", margin: "8px 0" }}>
+              <div ref={loginTurnRef} />
+            </div>
+          )}
+
           <div className="slide-element">
-            <button className="submit-btn" onClick={doLogin} disabled={loginLoading}>
+            <button className="submit-btn" onClick={doLogin} disabled={loginLoading || (!!TURNSTILE_SITE_KEY && !loginTurnToken)}>
               {loginLoading ? "Logging in…" : "Login"}
             </button>
             {loginErr && <div className="server-err">{loginErr}</div>}
@@ -621,8 +684,14 @@ export default function AuthPage() {
                 <i className="fa-solid fa-gift"></i>
               </div>
 
+              {TURNSTILE_SITE_KEY && (
+                <div className="slide-element" style={{ display: "flex", justifyContent: "center", margin: "8px 0" }}>
+                  <div ref={regTurnRef} />
+                </div>
+              )}
+
               <div className="slide-element">
-                <button className="submit-btn" onClick={doSendCode} disabled={otpLoading}>
+                <button className="submit-btn" onClick={doSendCode} disabled={otpLoading || (!!TURNSTILE_SITE_KEY && !regTurnToken)}>
                   {otpLoading ? "Sending code…" : (regType === "phone" ? "📱 Send SMS Code" : "✉️ Send Email Code")}
                 </button>
                 {regErr && <div className="server-err">{regErr}</div>}
