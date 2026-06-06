@@ -1,5 +1,5 @@
 import { AppLayout } from "@/components/layout";
-import { ArrowLeft, X, AlertCircle } from "lucide-react";
+import { ArrowLeft, X, AlertCircle, Plus } from "lucide-react";
 import { useGetAd } from "@workspace/api-client-react";
 import { useParams, useLocation } from "wouter";
 import { useState } from "react";
@@ -298,21 +298,31 @@ export default function BuyConfirmPage() {
         {/* Payment Method */}
         <div className="bg-card border border-border rounded-xl p-4">
           <p className="text-xs text-muted-foreground font-semibold mb-3">Payment Method</p>
-          <div className="space-y-2">
-            {paymentMethods.map(method => (
-              <button
-                key={method}
-                onClick={() => { setSelectedPayment(method); setError(null); }}
-                className={`w-full flex items-center space-x-3 p-3 rounded-xl border transition-colors ${selectedPayment === method ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"}`}
-              >
-                <PaymentMethodDot method={method} />
-                <span className="text-sm font-medium flex-1 text-left">{method}</span>
-                {selectedPayment === method && (
-                  <span className="w-4 h-4 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-[10px] font-bold">✓</span>
-                )}
-              </button>
-            ))}
-          </div>
+          {paymentMethods.length === 0 ? (
+            <button
+              onClick={() => navigate("/payment-methods")}
+              className="w-full flex items-center justify-center space-x-2 p-3 rounded-xl border-2 border-dashed border-border hover:border-primary/40 hover:text-primary transition-colors text-muted-foreground"
+            >
+              <Plus className="w-4 h-4" />
+              <span className="text-sm font-medium">Add Payment Method</span>
+            </button>
+          ) : (
+            <div className="space-y-2">
+              {paymentMethods.map(method => (
+                <button
+                  key={method}
+                  onClick={() => { setSelectedPayment(method); setError(null); }}
+                  className={`w-full flex items-center space-x-3 p-3 rounded-xl border transition-colors ${selectedPayment === method ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"}`}
+                >
+                  <PaymentMethodDot method={method} />
+                  <span className="text-sm font-medium flex-1 text-left">{method}</span>
+                  {selectedPayment === method && (
+                    <span className="w-4 h-4 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-[10px] font-bold">✓</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Seller Information */}
