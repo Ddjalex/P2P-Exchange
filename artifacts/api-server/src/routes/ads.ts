@@ -132,6 +132,18 @@ router.post("/", async (req, res) => {
     } = req.body;
     const userId = (req as any).userId;
 
+    // Enforce 1 buy + 1 sell limit per user
+    const existingAd = await db
+      .select()
+      .from(adsTable)
+      .where(and(eq(adsTable.userId, userId), eq(adsTable.type, type)))
+      .then(r => r[0]);
+    if (existingAd) {
+      return res.status(400).json({
+        message: `You already have a ${type} ad. You can only have 1 buy ad and 1 sell ad at a time.`,
+      });
+    }
+
     // For sell ads: check and freeze USDT immediately
     if (type === "sell") {
       const wallet = await getOrCreateWallet(userId);

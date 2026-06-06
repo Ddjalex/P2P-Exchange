@@ -152,8 +152,9 @@ export default function PostAdPage() {
           queryClient.invalidateQueries({ queryKey: getListAdsQueryKey({} as any) });
           setLocation("/ads");
         },
-        onError: () => {
-          toast({ title: "Failed to post ad", variant: "destructive" });
+        onError: (err: any) => {
+          const msg = err?.response?.data?.message ?? err?.message ?? "Failed to post ad";
+          toast({ title: msg, variant: "destructive" });
         },
       });
     }
