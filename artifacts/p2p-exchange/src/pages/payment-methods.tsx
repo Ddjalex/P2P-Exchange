@@ -71,11 +71,12 @@ export default function PaymentMethodsPage() {
 
   const handleAdd = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMethod.accountName?.trim() || !newMethod.accountNumber?.trim()) {
+    const finalName = kycName || newMethod.accountName?.trim();
+    if (!finalName || !newMethod.accountNumber?.trim()) {
       toast({ title: "Please fill all fields", variant: "destructive" });
       return;
     }
-    addMethod.mutate({ data: newMethod as PaymentMethodInput }, {
+    addMethod.mutate({ data: { ...newMethod, accountName: finalName } as PaymentMethodInput }, {
       onSuccess: () => {
         toast({ title: "Payment method added" });
         setShowAdd(false);
@@ -150,7 +151,7 @@ export default function PaymentMethodsPage() {
               <input
                 type="text"
                 readOnly={!!kycName}
-                value={newMethod.accountName ?? ""}
+                value={kycName || newMethod.accountName || ""}
                 onChange={e => !kycName && setNewMethod({ ...newMethod, accountName: e.target.value })}
                 placeholder={kycName ? "" : selectedProvider.namePlaceholder}
                 className={`w-full p-3 rounded-lg outline-none text-sm border ${kycName ? "bg-secondary border-border text-foreground cursor-not-allowed select-none" : "bg-card border-border focus:border-primary"}`}
