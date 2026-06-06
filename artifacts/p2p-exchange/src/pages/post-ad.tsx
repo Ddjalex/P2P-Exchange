@@ -1,7 +1,7 @@
 import { AppLayout } from "@/components/layout";
 import { useState, useEffect } from "react";
 import { useLocation, useParams } from "wouter";
-import { useCreateAd, useUpdateAd, useGetAd, getListAdsQueryKey } from "@workspace/api-client-react";
+import { useCreateAd, useUpdateAd, useGetAd, useListAds, getListAdsQueryKey } from "@workspace/api-client-react";
 import type { AdInput } from "@workspace/api-client-react/src/generated/api.schemas";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -48,6 +48,22 @@ export default function PostAdPage() {
   const { data: existingAd, isLoading: loadingAd } = useGetAd(editId!, {
     query: { enabled: isEdit },
   });
+
+  // Fetch user's existing ads to enforce 1-per-type limit in the UI
+  const { data: myAdsRaw, isLoading: loadingMyAds } = useListAds(
+    { mine: true } as any,
+    { query: { enabled: !isEdit } }
+  );
+  const myAds = Array.isArray(myAdsRaw) ? myAdsRaw : [];
+  const hasBuyAd = myAds.some((a: any) => a.type === "buy");
+  const hasSellAd = myAds.some((a: any) => a.type === "sell");
+
+  // Auto-select the available type on first load (new ad only)
+  useEffect(() => {
+    if (isEdit || loadingMyAds) return;
+    if (hasBuyAd && !hasSellAd) setAd(prev => ({ ...prev, type: "sell" }));
+    else if (!hasBuyAd) setAd(prev => ({ ...prev, type: "buy" }));
+  }, [loadingMyAds]);
 
   useEffect(() => {
     if (existingAd && !loaded) {
@@ -188,6 +204,28 @@ export default function PostAdPage() {
     );
   }
 
+  // Block the form if user already has both a buy and sell ad
+  if (!isEdit && !loadingMyAds && hasBuyAd && hasSellAd) {
+    return (
+      <AppLayout showNav={false}>
+        <header className="p-4 border-b border-border flex items-center">
+          <button onClick={() => setLocation("/ads")} className="text-muted-foreground mr-4">←</button>
+          <h1 className="font-bold">Post Ad</h1>
+        </header>
+        <div className="flex flex-col items-center justify-center p-10 text-center space-y-4 mt-10">
+          <span className="text-5xl">📋</span>
+          <h2 className="font-bold text-lg">Ad Limit Reached</h2>
+          <p className="text-sm text-muted-foreground">
+            You already have 1 buy ad and 1 sell ad. Delete or edit an existing ad before posting a new one.
+          </p>
+          <button onClick={() => setLocation("/ads")} className="mt-2 px-6 py-2.5 rounded-full bg-primary text-primary-foreground text-sm font-semibold">
+            View My Ads
+          </button>
+        </div>
+      </AppLayout>
+    );
+  }
+
   return (
     <AppLayout showNav={false}>
       <header className="p-4 border-b border-border flex items-center">
@@ -209,14 +247,27 @@ export default function PostAdPage() {
           <div className="space-y-6">
             <div className="flex p-1 bg-secondary rounded-lg">
               <button
-                className={`flex-1 py-2 text-sm font-semibold rounded-md ${ad.type === "buy" ? "bg-background shadow text-primary" : "text-muted-foreground"}`}
-                onClick={() => setAd({ ...ad, type: "buy" })}
-              >Buy</button>
+                disabled={!isEdit && hasBuyAd}
+                className={`flex-1 py-2 text-sm font-semibold rounded-md transition-colors ${ad.type === "buy" ? "bg-background shadow text-primary" : "text-muted-foreground"} ${!isEdit && hasBuyAd ? "opacity-40 cursor-not-allowed" : ""}`}
+                onClick={() => !hasBuyAd && setAd({ ...ad, type: "buy" })}
+              >
+                Buy{!isEdit && hasBuyAd ? " ✓" : ""}
+              </button>
               <button
-                className={`flex-1 py-2 text-sm font-semibold rounded-md ${ad.type === "sell" ? "bg-background shadow text-destructive" : "text-muted-foreground"}`}
-                onClick={() => setAd({ ...ad, type: "sell" })}
-              >Sell</button>
+                disabled={!isEdit && hasSellAd}
+                className={`flex-1 py-2 text-sm font-semibold rounded-md transition-colors ${ad.type === "sell" ? "bg-background shadow text-destructive" : "text-muted-foreground"} ${!isEdit && hasSellAd ? "opacity-40 cursor-not-allowed" : ""}`}
+                onClick={() => !hasSellAd && setAd({ ...ad, type: "sell" })}
+              >
+                Sell{!isEdit && hasSellAd ? " ✓" : ""}
+              </button>
             </div>
+            {!isEdit && (hasBuyAd || hasSellAd) && (
+              <p className="text-xs text-muted-foreground -mt-2">
+                {hasBuyAd && hasSellAd
+                  ? "You already have both ad types."
+                  : `You already have a ${hasBuyAd ? "buy" : "sell"} ad — you can only post a ${hasBuyAd ? "sell" : "buy"} ad now.`}
+              </p>
+            )}
 
             <div className="flex space-x-4">
               <div className="flex-1 space-y-1">
