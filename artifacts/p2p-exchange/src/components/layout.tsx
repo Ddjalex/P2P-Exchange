@@ -1,16 +1,19 @@
 import React from "react";
 import { Link, useLocation } from "wouter";
 import { Users, Clock, Megaphone, MessageSquare, User } from "lucide-react";
+import { useBadges } from "@/hooks/use-badges";
+import { Badge } from "@/components/badge";
 
 export function BottomNav() {
   const [location] = useLocation();
+  const { chatCount, orderCount } = useBadges();
 
   const navItems = [
-    { href: "/p2p", icon: Users, label: "P2P" },
-    { href: "/orders", icon: Clock, label: "Orders" },
-    { href: "/ads", icon: Megaphone, label: "Ads" },
-    { href: "/chat", icon: MessageSquare, label: "Chat" },
-    { href: "/profile", icon: User, label: "Profile" },
+    { href: "/p2p",     icon: Users,          label: "P2P",    badge: 0 },
+    { href: "/orders",  icon: Clock,          label: "Orders", badge: orderCount },
+    { href: "/ads",     icon: Megaphone,      label: "Ads",    badge: 0 },
+    { href: "/chat",    icon: MessageSquare,  label: "Chat",   badge: chatCount },
+    { href: "/profile", icon: User,           label: "Profile",badge: 0 },
   ];
 
   return (
@@ -27,8 +30,9 @@ export function BottomNav() {
                 isActive ? "text-primary" : "text-muted-foreground"
               }`}
             >
-              <div className="relative">
+              <div style={{ position: "relative", display: "inline-flex" }}>
                 <Icon className="w-5 h-5" />
+                <Badge count={item.badge} />
               </div>
               <span className="text-[10px] font-medium">{item.label}</span>
             </Link>

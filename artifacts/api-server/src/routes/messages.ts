@@ -66,6 +66,22 @@ router.get("/conversations", async (req, res) => {
   }
 });
 
+// FIX 4 — unread message count across all orders (for badge)
+router.get("/unread-count", async (req, res) => {
+  try {
+    const rows = await db.select().from(messagesTable).where(
+      and(
+        eq(messagesTable.receiverId, (req as any).userId),
+        eq(messagesTable.isRead, false),
+        ne(messagesTable.type, "system"),
+      )
+    );
+    res.json({ count: rows.length });
+  } catch {
+    res.json({ count: 0 });
+  }
+});
+
 router.get("/:orderId", async (req, res) => {
   try {
     const orderId = parseInt(req.params.orderId);

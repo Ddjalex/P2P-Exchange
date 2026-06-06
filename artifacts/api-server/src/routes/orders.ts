@@ -230,6 +230,26 @@ router.post("/", async (req, res) => {
 
 // ── GET ORDER ─────────────────────────────────────────────────────────────────
 
+// FIX 4 — active order count (for badge)
+router.get("/active-count", async (req, res) => {
+  try {
+    const userId = (req as any).userId;
+    const rows = await db.select().from(ordersTable).where(
+      and(
+        or(eq(ordersTable.buyerId, userId), eq(ordersTable.sellerId, userId)),
+        or(
+          eq(ordersTable.status, "unpaid" as any),
+          eq(ordersTable.status, "paid" as any),
+          eq(ordersTable.status, "appeal" as any),
+        )
+      )
+    );
+    res.json({ count: rows.length });
+  } catch {
+    res.json({ count: 0 });
+  }
+});
+
 router.get("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
