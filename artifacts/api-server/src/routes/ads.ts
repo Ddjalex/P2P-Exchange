@@ -274,6 +274,35 @@ router.patch("/:id", async (req, res) => {
 router.delete("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
+    const userId = (req as any).userId;
+
+    const ad = await db.select().from(adsTable).where(eq(adsTable.id, id)).then(r => r[0]);
+    if (!ad) return res.status(404).json({ message: "Ad not found" });
+
+    // Only the owner can delete their ad
+    if (ad.userId !== userId) return res.status(403).json({ message: "Forbidden" });
+
+    // For sell ads: return the remaining available amount from frozen back to available
+    if (ad.type === "sell") {
+      const remainingAmount = parseFloat(ad.availableAmount ?? "0");
+      if (remainingAmount > 0) {
+        const wallet = await getOrCreateWallet(userId);
+        const newFrozen = Math.max(0, parseFloat(wallet.frozenBalance) - remainingAmount);
+        const newAvailable = parseFloat(wallet.availableBalance) + remainingAmount;
+        await db.update(walletsTable).set({
+          availableBalance: newAvailable.toFixed(4),
+          frozenBalance: newFrozen.toFixed(4),
+        }).where(eq(walletsTable.userId, userId));
+
+        await notify({
+          userId,
+          type: "usdt_unfrozen",
+          title: "🔓 USDT Returned",
+          message: `${remainingAmount.toFixed(4)} USDT has been returned to your available balance after deleting your sell ad.`,
+        });
+      }
+    }
+
     await db.delete(adsTable).where(eq(adsTable.id, id));
     res.status(204).send();
   } catch (err) {
