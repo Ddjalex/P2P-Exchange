@@ -416,16 +416,14 @@ export default function AuthPage() {
         <div className="credentials-panel signin">
           <h2 className="slide-element">Login</h2>
 
-          {loginC?.code === "ET" && (
-            <div className="input-tabs slide-element">
-              <button className={loginType === "phone" ? "active" : ""} onClick={() => setLoginType("phone")}>
-                <span className="tab-icon">📱</span><span className="tab-label">Phone</span>
-              </button>
-              <button className={loginType === "email" ? "active" : ""} onClick={() => setLoginType("email")}>
-                <span className="tab-icon">✉️</span><span className="tab-label">Email</span>
-              </button>
-            </div>
-          )}
+          <div className="input-tabs slide-element">
+            <button className={loginType === "phone" ? "active" : ""} onClick={() => setLoginType("phone")}>
+              <span className="tab-icon">📱</span><span className="tab-label">Phone</span>
+            </button>
+            <button className={loginType === "email" ? "active" : ""} onClick={() => setLoginType("email")}>
+              <span className="tab-icon">✉️</span><span className="tab-label">Email</span>
+            </button>
+          </div>
 
           {loginType === "phone" && (
             <div className="phone-row-wrap slide-element">
@@ -526,16 +524,14 @@ export default function AuthPage() {
             <>
               <h2 className="slide-element">Register</h2>
 
-              {regC?.code === "ET" && (
-                <div className="input-tabs slide-element">
-                  <button className={regType === "phone" ? "active" : ""} onClick={() => setRegType("phone")}>
-                    <span className="tab-icon">📱</span><span className="tab-label">Phone</span>
-                  </button>
-                  <button className={regType === "email" ? "active" : ""} onClick={() => setRegType("email")}>
-                    <span className="tab-icon">✉️</span><span className="tab-label">Email</span>
-                  </button>
-                </div>
-              )}
+              <div className="input-tabs slide-element">
+                <button className={regType === "phone" ? "active" : ""} onClick={() => setRegType("phone")}>
+                  <span className="tab-icon">📱</span><span className="tab-label">Phone</span>
+                </button>
+                <button className={regType === "email" ? "active" : ""} onClick={() => setRegType("email")}>
+                  <span className="tab-icon">✉️</span><span className="tab-label">Email</span>
+                </button>
+              </div>
 
               {regType === "phone" && (
                 <div className="phone-row-wrap slide-element">
