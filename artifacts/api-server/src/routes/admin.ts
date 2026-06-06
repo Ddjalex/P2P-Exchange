@@ -13,6 +13,8 @@ import { eq, desc, and, or, ilike, sql, ne, count } from "drizzle-orm";
 import { getFeePercents, calculateFees } from "../helpers/fees.js";
 import { PushNotify } from "./push.js";
 import { TelegramNotify } from "../telegram/notify.js";
+import { telegramUsersTable } from "@workspace/db";
+import { sendTelegramMessage } from "../telegram/bot.js";
 
 const router = Router();
 
@@ -989,10 +991,21 @@ router.get("/notifications/history", adminAuth, async (req, res) => {
   }
 });
 
+router.get("/telegram/stats", adminAuth, async (req, res) => {
+  try {
+    const rows = await db.select({ count: sql<number>`count(*)::int` }).from(telegramUsersTable);
+    res.json({ connected: rows[0]?.count ?? 0 });
+  } catch (err) {
+    req.log.error({ err }, "Admin telegram stats failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 router.post("/notifications/send", adminAuth, async (req: any, res) => {
   try {
     const { target, channel, title, message } = req.body ?? {};
     if (!title || !message) return res.status(400).json({ error: "Title and message required" });
+
     let users: any[] = [];
     if (target === "all") users = await db.select().from(usersTable);
     else if (target === "verified") users = await db.select().from(usersTable).where(eq(usersTable.kycStatus, "verified"));
@@ -1001,13 +1014,37 @@ router.post("/notifications/send", adminAuth, async (req: any, res) => {
       const uid = parseInt(target.split(":")[1]);
       users = await db.select().from(usersTable).where(eq(usersTable.id, uid));
     }
-    // Insert in-app notifications for all targets
-    if (users.length > 0 && (channel === "in-app" || channel === "both")) {
+
+    const userIds = users.map(u => u.id);
+
+    // Insert in-app notifications
+    if (users.length > 0 && (channel === "in-app" || channel === "in-app+telegram")) {
       await db.insert(notificationsTable).values(users.map(u => ({ userId: u.id, type: "system", title, message }))).catch(() => {});
     }
-    const [history] = await db.insert(notificationHistoryTable).values({ title, message, target, channel, recipientCount: users.length, status: "sent" }).returning();
+
+    // Send Telegram broadcast
+    let telegramCount = 0;
+    if (channel === "telegram" || channel === "in-app+telegram") {
+      const tgUsers = await db.select().from(telegramUsersTable);
+      const tgFiltered = userIds.length > 0
+        ? tgUsers.filter(t => userIds.includes(t.userId))
+        : tgUsers;
+
+      const APP_URL = process.env.APP_URL ?? "";
+      const broadcastText = `📢 *${title}*\n\n${message}`;
+
+      await Promise.allSettled(
+        tgFiltered.map(t => sendTelegramMessage(t.telegramId, broadcastText, APP_URL || undefined))
+      );
+      telegramCount = tgFiltered.length;
+    }
+
+    const recipientCount = channel === "telegram" ? telegramCount : users.length;
+    const [history] = await db.insert(notificationHistoryTable).values({
+      title, message, target, channel, recipientCount, status: "sent",
+    }).returning();
     await log(req.adminEmail, "send_notification", "notification", history.id, `${target} via ${channel}`);
-    res.json({ success: true, recipientCount: users.length });
+    res.json({ success: true, recipientCount, telegramCount });
   } catch (err) {
     req.log.error({ err }, "Admin send notification failed");
     res.status(500).json({ error: "Internal server error" });

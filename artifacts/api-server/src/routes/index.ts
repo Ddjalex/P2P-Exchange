@@ -17,12 +17,14 @@ import usersRouter from "./users";
 import cardRouter from "./card";
 import feesRouter from "./fees";
 import pushRouter from "./push";
+import configRouter from "./config";
 
 const router: IRouter = Router();
 
 router.use(healthRouter);
 router.use("/auth", authRouter);
 router.use("/fees", feesRouter);
+router.use("/config", configRouter);
 
 // All routes below require a valid user JWT
 router.use("/wallet", userAuth, walletRouter);

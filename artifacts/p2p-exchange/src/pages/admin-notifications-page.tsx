@@ -3,6 +3,12 @@ import { AdminLayout, AdminGuard } from "@/components/admin-layout";
 import { adminGet, adminPost } from "@/lib/admin-api";
 import { Send } from "lucide-react";
 
+const TELEGRAM_ICON = (
+  <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
+    <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/>
+  </svg>
+);
+
 export default function AdminNotificationsPage() {
   const [history, setHistory] = useState<any[]>([]);
   const [target, setTarget] = useState("all");
@@ -11,9 +17,15 @@ export default function AdminNotificationsPage() {
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<string | null>(null);
+  const [tgStats, setTgStats] = useState<{ connected: number } | null>(null);
 
   const loadHistory = () => adminGet<any[]>("/notifications/history").then(setHistory).catch(() => {});
-  useEffect(() => { loadHistory(); }, []);
+  const loadTgStats = () => adminGet<{ connected: number }>("/telegram/stats").then(setTgStats).catch(() => {});
+
+  useEffect(() => {
+    loadHistory();
+    loadTgStats();
+  }, []);
 
   const send = async () => {
     if (!title.trim() || !message.trim()) { alert("Title and message are required."); return; }
@@ -21,7 +33,13 @@ export default function AdminNotificationsPage() {
     setResult(null);
     try {
       const r = await adminPost<any>("/notifications/send", { target, channel, title, message });
-      setResult(`✓ Sent to ${r.recipientCount} recipients`);
+      if (channel === "telegram") {
+        setResult(`✓ Sent to ${r.telegramCount} Telegram users`);
+      } else if (channel === "in-app+telegram") {
+        setResult(`✓ Sent to ${r.recipientCount} users (${r.telegramCount} via Telegram)`);
+      } else {
+        setResult(`✓ Sent to ${r.recipientCount} recipients`);
+      }
       setTitle(""); setMessage("");
       loadHistory();
     } catch (e: any) {
@@ -30,6 +48,8 @@ export default function AdminNotificationsPage() {
       setSending(false);
     }
   };
+
+  const isTelegram = channel === "telegram" || channel === "in-app+telegram";
 
   return (
     <AdminGuard>
@@ -51,8 +71,15 @@ export default function AdminNotificationsPage() {
                 <label className="text-xs text-muted-foreground font-medium block mb-1.5">Channel</label>
                 <select value={channel} onChange={e => setChannel(e.target.value)} className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm outline-none focus:border-primary">
                   <option value="in-app">In-App Only</option>
-                  <option value="both">In-App + Email</option>
+                  <option value="in-app+telegram">In-App + Telegram</option>
+                  <option value="telegram">Telegram Only</option>
                 </select>
+                {isTelegram && tgStats !== null && (
+                  <div className="mt-1.5 flex items-center space-x-1.5 text-[11px] text-[#229ed9]">
+                    {TELEGRAM_ICON}
+                    <span>{tgStats.connected} users have Telegram connected</span>
+                  </div>
+                )}
               </div>
               <div>
                 <label className="text-xs text-muted-foreground font-medium block mb-1.5">Title</label>
@@ -68,7 +95,8 @@ export default function AdminNotificationsPage() {
               )}
 
               <button onClick={send} disabled={sending} className="w-full py-3 bg-primary text-primary-foreground font-semibold rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center justify-center space-x-2">
-                <Send className="w-4 h-4" /><span>{sending ? "Sending..." : "Send Notification"}</span>
+                {isTelegram ? <span className="text-[#229ed9]">{TELEGRAM_ICON}</span> : <Send className="w-4 h-4" />}
+                <span>{sending ? "Sending..." : isTelegram ? "Broadcast to Telegram" : "Send Notification"}</span>
               </button>
             </div>
           </div>
@@ -86,9 +114,14 @@ export default function AdminNotificationsPage() {
                     <span className="text-xs text-muted-foreground ml-2">{new Date(h.sentAt).toLocaleDateString()}</span>
                   </div>
                   <p className="text-xs text-muted-foreground mb-2 line-clamp-2">{h.message}</p>
-                  <div className="flex items-center space-x-3 text-[10px] text-muted-foreground">
+                  <div className="flex items-center flex-wrap gap-x-3 gap-y-1 text-[10px] text-muted-foreground">
                     <span>Target: {h.target}</span>
-                    <span>Channel: {h.channel}</span>
+                    <span className="flex items-center space-x-0.5">
+                      {(h.channel === "telegram" || h.channel === "in-app+telegram") && (
+                        <span className="text-[#229ed9] mr-0.5">{TELEGRAM_ICON}</span>
+                      )}
+                      <span>Channel: {h.channel}</span>
+                    </span>
                     <span>{h.recipientCount} recipients</span>
                     <span className={`px-1.5 py-0.5 rounded-full font-medium ${h.status === 'sent' ? 'bg-success/20 text-success' : 'bg-muted'}`}>{h.status}</span>
                   </div>
