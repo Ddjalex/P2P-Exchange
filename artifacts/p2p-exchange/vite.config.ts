@@ -64,9 +64,11 @@ export default defineConfig({
     host: "0.0.0.0",
     allowedHosts: true,
     headers: {
+      "Cache-Control": "no-store",
       "X-Frame-Options": "ALLOWALL",
       "Content-Security-Policy": "frame-ancestors *",
     },
+
     proxy: {
       "/api": {
         target: "http://localhost:8080",
@@ -78,7 +80,7 @@ export default defineConfig({
       },
     },
     fs: {
-      strict: true,
+      strict: false,
     },
   },
   preview: {
