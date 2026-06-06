@@ -7,7 +7,7 @@ import jwt from "jsonwebtoken";
 
 const router = Router();
 
-const JWT_SECRET = process.env.JWT_SECRET || "swapbirr-dev-secret-change-in-production";
+const JWT_SECRET = process.env.JWT_SECRET || "xendrx-dev-secret-change-in-production";
 const JWT_EXPIRES = "30d";
 
 function signToken(userId: number) {
@@ -71,17 +71,17 @@ async function sendBrevoEmail(to: string, code: string, senderEmail: string, sen
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      sender: { name: senderName || "SwapBirr", email: senderEmail || "noreply@swapbirr.com" },
+      sender: { name: senderName || "Xendrx", email: senderEmail || "noreply@xendrx.com" },
       to: [{ email: to }],
       subject: "Your Verification Code",
       htmlContent: `
-        <div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;background:#1a1a2e;color:#fff;border-radius:12px;padding:32px;">
+        <div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;background:#080d18;color:#fff;border-radius:12px;padding:32px;">
           <div style="text-align:center;margin-bottom:24px;">
-            <span style="font-size:24px;font-weight:700;">Swap</span><span style="font-size:24px;font-weight:700;color:#00d4ff;">Birr</span>
+            <span style="font-size:24px;font-weight:700;">Swap</span><span style="font-size:24px;font-weight:700;color:#00e5ff;">Birr</span>
           </div>
           <h2 style="margin:0 0 8px;font-size:20px;">Verification Code</h2>
           <p style="color:rgba(255,255,255,.6);font-size:14px;margin:0 0 24px;">Use the code below to verify your account. It expires in 10 minutes.</p>
-          <div style="background:#0d0d1a;border:2px solid #00d4ff33;border-radius:8px;padding:20px;text-align:center;letter-spacing:10px;font-size:36px;font-weight:700;color:#00d4ff;">${code}</div>
+          <div style="background:#0d0d1a;border:2px solid #00e5ff33;border-radius:8px;padding:20px;text-align:center;letter-spacing:10px;font-size:36px;font-weight:700;color:#00e5ff;">${code}</div>
           <p style="color:rgba(255,255,255,.4);font-size:12px;margin-top:24px;text-align:center;">If you did not request this code, please ignore this email.</p>
         </div>
       `,
@@ -117,7 +117,7 @@ router.post("/send-code", async (req, res) => {
         }
         return res.status(503).json({ error: "SMS service not configured. Contact admin." });
       }
-      await sendSms(target, `Your SwapBirr verification code is: ${code}. Valid for 10 minutes.`, apiKey);
+      await sendSms(target, `Your Xendrx verification code is: ${code}. Valid for 10 minutes.`, apiKey);
     } else {
       const apiKey = await getSetting("brevoApiKey");
       const senderEmail = await getSetting("brevoSenderEmail");
@@ -208,7 +208,7 @@ router.post("/register", async (req, res) => {
 
     const isPhone = type === "phone";
     const phone = isPhone ? `${dialCode ?? ""}${identifier}` : null;
-    const email = isPhone ? `${identifier}@phone.swapbirr.com` : String(identifier).toLowerCase();
+    const email = isPhone ? `${identifier}@phone.xendrx.com` : String(identifier).toLowerCase();
     const codeTarget = isPhone ? phone! : email;
 
     // Verify OTP

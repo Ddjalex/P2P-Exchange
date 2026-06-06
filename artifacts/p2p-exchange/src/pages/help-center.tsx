@@ -9,8 +9,8 @@ const faqs = [
     icon: Book,
     items: [
       {
-        q: "What is SwapBirr?",
-        a: "SwapBirr is a peer-to-peer cryptocurrency exchange platform. It lets you buy and sell USDT (Tether) directly with other users using local currency (ETB) through local payment methods like CBE Birr, TeleBirr, and bank transfers.",
+        q: "What is Xendrx?",
+        a: "Xendrx is a peer-to-peer cryptocurrency exchange platform. It lets you buy and sell USDT (Tether) directly with other users using local currency through bank transfers, mobile money, and other local payment methods.",
       },
       {
         q: "How do I complete my profile?",
@@ -28,11 +28,11 @@ const faqs = [
     items: [
       {
         q: "How do I buy USDT?",
-        a: "Go to P2P → select Buy → browse available sell ads → pick one that matches your amount and payment method → click Buy → transfer ETB to the seller's account → mark payment as sent → wait for the seller to release your USDT.",
+        a: "Go to P2P → select Buy → browse available sell ads → pick one that matches your amount and payment method → click Buy → transfer funds to the seller using their listed payment method → mark payment as sent → wait for the seller to release your USDT.",
       },
       {
         q: "How do I sell USDT?",
-        a: "Go to Ads → Post Ad → select Sell → set your price, min/max amount, and accepted payment methods → go online. When a buyer places an order, they'll send you ETB and you release USDT from escrow.",
+        a: "Go to Ads → Post Ad → select Sell → set your price, min/max amount, and accepted payment methods → go online. When a buyer places an order, they'll send you funds and you release USDT from escrow.",
       },
       {
         q: "What happens to my USDT during a trade?",
@@ -40,7 +40,7 @@ const faqs = [
       },
       {
         q: "What if a trade goes wrong?",
-        a: "If there's a dispute, either party can appeal the order. Our support team will review evidence and resolve it within 24 hours. Never release USDT before confirming ETB receipt.",
+        a: "If there's a dispute, either party can appeal the order. Our support team will review evidence and resolve it within 24 hours. Never release USDT before confirming payment receipt.",
       },
     ],
   },
@@ -58,7 +58,7 @@ const faqs = [
       },
       {
         q: "What payment methods are supported?",
-        a: "Currently supported: CBE Birr, TeleBirr, Awash Bank, Dashen Bank, Amhara Bank, and other major Ethiopian banks. Payment methods are set per-ad by each trader.",
+        a: "Supported methods include bank transfers, mobile money, and other local payment options. Payment methods are set per-ad by each trader.",
       },
     ],
   },
@@ -72,7 +72,7 @@ const faqs = [
       },
       {
         q: "What should I do if I suspect fraud?",
-        a: "Never release USDT before confirming ETB is in your account. If you suspect fraud, do not cancel the order — instead, use the Appeal option to open a dispute with our support team.",
+        a: "Never release USDT before confirming funds are in your account. If you suspect fraud, do not cancel the order — instead, use the Appeal option to open a dispute with our support team.",
       },
       {
         q: "Can I block someone?",
@@ -139,7 +139,7 @@ export default function HelpCenterPage() {
           <MessageCircle className="w-5 h-5 text-primary shrink-0 mt-0.5" />
           <div>
             <div className="text-sm font-medium text-primary">Need more help?</div>
-            <div className="text-xs text-muted-foreground mt-0.5">Contact us via the chat feature on any active order, or email us at support@swapbirr.com</div>
+            <div className="text-xs text-muted-foreground mt-0.5">Contact us via the chat feature on any active order, or email us at support@xendrx.com</div>
           </div>
         </div>
 

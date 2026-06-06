@@ -371,7 +371,7 @@ export default function AuthPage() {
   }
 
   if (isLoading) {
-    return <div className="auth-root"><div style={{ color: "#00d4ff", fontSize: 14 }}>Loading…</div></div>;
+    return <div className="auth-root"><div style={{ color: "#00e5ff", fontSize: 14 }}>Loading…</div></div>;
   }
 
   return (
@@ -408,7 +408,7 @@ export default function AuthPage() {
       </div>
 
       {/* Logo */}
-      <div className="auth-logo"><img src="/src/assets/logo-banner.svg" alt="SwapBirr" height={44} style={{ display: 'block' }} /></div>
+      <div className="auth-logo"><img src="/src/assets/logo-banner.svg" alt="Xendrx" height={44} style={{ display: 'block' }} /></div>
 
       {/* Auth Wrapper */}
       <div className={`auth-wrapper${toggled ? " toggled" : ""}`}>
@@ -518,7 +518,7 @@ export default function AuthPage() {
         {/* Welcome right */}
         <div className="welcome-section signin">
           <h2 className="slide-element">WELCOME<br />BACK!</h2>
-          <p className="slide-element">Trade crypto safely with SwapBirr</p>
+          <p className="slide-element">Trade crypto safely with Xendrx</p>
         </div>
 
         {/* ══ REGISTER PANEL ══ */}
@@ -673,8 +673,8 @@ export default function AuthPage() {
 
         {/* Welcome left */}
         <div className="welcome-section signup">
-          <h2 className="slide-element">JOIN<br />ETHIO<br />P2P!</h2>
-          <p className="slide-element">Ethiopia's trusted P2P exchange</p>
+          <h2 className="slide-element">JOIN<br />XENDRX!</h2>
+          <p className="slide-element">Fast &amp; secure P2P exchange</p>
         </div>
       </div>
     </div>

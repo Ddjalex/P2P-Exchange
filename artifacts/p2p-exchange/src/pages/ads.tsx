@@ -39,8 +39,8 @@ export default function AdsPage() {
     const shareUrl = `${window.location.origin}/p2p/ad/${adId}`;
     if (navigator.share) {
       navigator.share({
-        title: "SwapBirr Trade Offer",
-        text: "Trade USDT with me on SwapBirr!",
+        title: "Xendrx Trade Offer",
+        text: "Trade USDT with me on Xendrx!",
         url: shareUrl,
       }).catch(() => {});
     } else {

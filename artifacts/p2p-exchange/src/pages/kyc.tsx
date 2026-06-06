@@ -132,7 +132,7 @@ export default function KycPage() {
     fullName: "",
     dateOfBirth: "",
     nationality: "ET",
-    idType: "national_id" as "national_id" | "passport" | "drivers_license" | "kebele_id",
+    idType: "national_id" as "national_id" | "passport" | "drivers_license",
   });
 
   useEffect(() => {
@@ -363,14 +363,13 @@ export default function KycPage() {
                   { id: "national_id", label: "National ID" },
                   { id: "passport", label: "Passport" },
                   { id: "drivers_license", label: "Driver's License" },
-                  { id: "kebele_id", label: "Kebele ID" },
                 ].map(type => (
                   <button
                     key={type.id}
                     onClick={() => setFormData({ ...formData, idType: type.id as any })}
                     className={`p-3 text-sm font-medium rounded-xl border text-left transition-all ${
                       formData.idType === type.id
-                        ? "border-primary bg-primary/10 shadow-[0_0_10px_rgba(0,212,255,0.2)]"
+                        ? "border-primary bg-primary/10 shadow-[0_0_10px_rgba(0,229,255,0.2)]"
                         : "border-border bg-card hover:bg-secondary/50"
                     }`}
                   >
@@ -434,7 +433,7 @@ export default function KycPage() {
 
             {/* Camera oval — hidden once selfie is captured */}
             {livenessStep < 4 ? (
-              <div className="relative w-64 h-80 bg-secondary rounded-[100px] overflow-hidden border-4 border-primary shadow-[0_0_30px_rgba(0,212,255,0.3)]">
+              <div className="relative w-64 h-80 bg-secondary rounded-[100px] overflow-hidden border-4 border-primary shadow-[0_0_30px_rgba(0,229,255,0.3)]">
                 <video
                   ref={videoRef}
                   autoPlay
@@ -446,7 +445,7 @@ export default function KycPage() {
               </div>
             ) : (
               /* Show captured selfie after liveness is done */
-              <div className="relative w-64 h-80 rounded-[100px] overflow-hidden border-4 border-primary shadow-[0_0_30px_rgba(0,212,255,0.3)]">
+              <div className="relative w-64 h-80 rounded-[100px] overflow-hidden border-4 border-primary shadow-[0_0_30px_rgba(0,229,255,0.3)]">
                 {selfiePreview ? (
                   <img src={selfiePreview} alt="Captured selfie" className="w-full h-full object-cover" />
                 ) : (

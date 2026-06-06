@@ -6,7 +6,7 @@ const features = [
   { icon: Shield, title: "Secure Escrow", desc: "USDT is locked in escrow during every trade — released only after payment is confirmed." },
   { icon: Zap, title: "Fast Trades", desc: "Average trade completion under 2 minutes with our streamlined order flow." },
   { icon: Users, title: "Verified Traders", desc: "KYC-verified users earn a trust badge, enabling safer and larger trades." },
-  { icon: Globe, title: "Local Payments", desc: "Supports CBE Birr, TeleBirr, Awash Bank, Dashen Bank, and more." },
+  { icon: Globe, title: "Multiple Payment Methods", desc: "Supports bank transfers, mobile money, and more — flexible for any region." },
   { icon: Lock, title: "Non-Custodial Feel", desc: "Deposit and withdraw to your own wallets at any time — your funds, your control." },
   { icon: TrendingUp, title: "Competitive Rates", desc: "Traders set their own rates — market competition keeps spreads tight." },
 ];
@@ -20,16 +20,16 @@ export default function AboutPage() {
             <ArrowLeft className="w-5 h-5" />
           </button>
         </Link>
-        <h1 className="font-bold text-lg">About SwapBirr</h1>
+        <h1 className="font-bold text-lg">About Xendrx</h1>
       </header>
 
       <div className="p-4 space-y-6">
         <div className="text-center py-6">
           <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-primary/10 border border-primary/20 mb-4">
-            <img src="/src/assets/logo-icon.svg" alt="SwapBirr" width={48} height={48} />
+            <img src="/src/assets/logo-icon.svg" alt="Xendrx" width={48} height={48} />
           </div>
           <h2 className="text-2xl font-black mb-1">
-            <span className="text-primary">Swap</span>Birr
+            xen<span className="text-primary">drx</span>
           </h2>
           <p className="text-sm text-muted-foreground">Fast & Secure P2P Crypto Exchange</p>
           <div className="inline-block mt-2 px-3 py-1 bg-primary/10 rounded-full text-xs text-primary font-medium">
@@ -40,12 +40,12 @@ export default function AboutPage() {
         <div className="bg-card border border-card-border rounded-xl p-4">
           <h3 className="font-semibold mb-2">Our Mission</h3>
           <p className="text-sm text-muted-foreground leading-relaxed">
-            SwapBirr was built to give everyone direct, secure access to the global crypto economy. We connect buyers and sellers of USDT through a trusted escrow platform — no middlemen, no hidden fees, just peer-to-peer trading powered by local payment methods.
+            Xendrx was built to give everyone direct, secure access to the global crypto economy. We connect buyers and sellers of USDT through a trusted escrow platform — no middlemen, no hidden fees, just peer-to-peer trading powered by local payment methods.
           </p>
         </div>
 
         <div>
-          <h3 className="font-semibold mb-3">Why SwapBirr?</h3>
+          <h3 className="font-semibold mb-3">Why Xendrx?</h3>
           <div className="grid grid-cols-1 gap-3">
             {features.map(f => (
               <div key={f.title} className="bg-card border border-card-border rounded-xl p-4 flex items-start space-x-3">
@@ -63,11 +63,11 @@ export default function AboutPage() {
 
         <div className="bg-card border border-card-border rounded-xl divide-y divide-border">
           {[
-            ["Website", "www.swapbirr.com"],
-            ["Support", "support@swapbirr.com"],
-            ["Telegram", "@SwapBirr"],
-            ["Terms of Service", "swapbirr.com/terms"],
-            ["Privacy Policy", "swapbirr.com/privacy"],
+            ["Website", "www.xendrx.com"],
+            ["Support", "support@xendrx.com"],
+            ["Telegram", "@Xendrx"],
+            ["Terms of Service", "xendrx.com/terms"],
+            ["Privacy Policy", "xendrx.com/privacy"],
           ].map(([label, value]) => (
             <div key={label} className="flex items-center justify-between p-4">
               <span className="text-sm text-muted-foreground">{label}</span>
@@ -77,7 +77,7 @@ export default function AboutPage() {
         </div>
 
         <p className="text-center text-xs text-muted-foreground pb-2">
-          © 2026 SwapBirr. All rights reserved.
+          © 2026 Xendrx. All rights reserved.
         </p>
       </div>
     </AppLayout>

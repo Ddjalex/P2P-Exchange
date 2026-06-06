@@ -1,4 +1,4 @@
-# SwapBirr
+# Xendrx
 
 A Binance-style peer-to-peer cryptocurrency exchange — mobile-first dark-themed React web app where users can buy and sell USDT using Ethiopian birr (ETB) via local payment methods.
 

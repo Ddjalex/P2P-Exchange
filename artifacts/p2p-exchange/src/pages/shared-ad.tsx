@@ -43,7 +43,7 @@ export default function SharedAdPage() {
         alignItems: "center",
         justifyContent: "center",
         height: "100vh",
-        background: "#1a1a2e",
+        background: "#080d18",
         gap: "16px",
       }}
     >
@@ -52,8 +52,8 @@ export default function SharedAdPage() {
           width: "52px",
           height: "52px",
           borderRadius: "50%",
-          background: "rgba(0,212,255,0.15)",
-          border: "2px solid #00d4ff44",
+          background: "rgba(0,229,255,0.15)",
+          border: "2px solid #00e5ff44",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -62,7 +62,7 @@ export default function SharedAdPage() {
       >
         ₿
       </div>
-      <div style={{ color: "#00d4ff", fontSize: "14px", fontWeight: 600 }}>
+      <div style={{ color: "#00e5ff", fontSize: "14px", fontWeight: 600 }}>
         Loading trade offer...
       </div>
       <div
@@ -70,7 +70,7 @@ export default function SharedAdPage() {
           width: "36px",
           height: "36px",
           border: "3px solid #334455",
-          borderTop: "3px solid #00d4ff",
+          borderTop: "3px solid #00e5ff",
           borderRadius: "50%",
           animation: "spin 1s linear infinite",
         }}

@@ -473,8 +473,8 @@ export default function TradePage() {
               <div style={{ marginBottom: '16px' }}>
                 <label style={{ color: '#8899aa', fontSize: '12px', marginBottom: '8px', display: 'block' }}>SELECT REASON *</label>
                 {['I have paid but seller has not released', 'Seller is asking for extra fees', 'Seller is unresponsive', 'I made a wrong payment', 'Other'].map(reason => (
-                  <div key={reason} onClick={() => setAppealReason(reason)} style={{ padding: '12px 16px', marginBottom: '8px', borderRadius: '8px', border: appealReason === reason ? '1.5px solid #00d4ff' : '1px solid #334455', background: appealReason === reason ? 'rgba(0,212,255,0.08)' : 'transparent', color: appealReason === reason ? '#00d4ff' : '#fff', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ width: '16px', height: '16px', borderRadius: '50%', border: appealReason === reason ? '5px solid #00d4ff' : '2px solid #556677', flexShrink: 0 }} />
+                  <div key={reason} onClick={() => setAppealReason(reason)} style={{ padding: '12px 16px', marginBottom: '8px', borderRadius: '8px', border: appealReason === reason ? '1.5px solid #00e5ff' : '1px solid #334455', background: appealReason === reason ? 'rgba(0,229,255,0.08)' : 'transparent', color: appealReason === reason ? '#00e5ff' : '#fff', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ width: '16px', height: '16px', borderRadius: '50%', border: appealReason === reason ? '5px solid #00e5ff' : '2px solid #556677', flexShrink: 0 }} />
                     {reason}
                   </div>
                 ))}
@@ -496,7 +496,7 @@ export default function TradePage() {
                     </div>
                   ))}
                   {appealImages.length < 3 && (
-                    <label style={{ width: '80px', height: '80px', border: '1.5px dashed #00d4ff', borderRadius: '8px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#00d4ff', fontSize: '11px', gap: '4px' }}>
+                    <label style={{ width: '80px', height: '80px', border: '1.5px dashed #00e5ff', borderRadius: '8px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#00e5ff', fontSize: '11px', gap: '4px' }}>
                       <span style={{ fontSize: '24px' }}>+</span>
                       <span>Upload</span>
                       <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => {
@@ -515,7 +515,7 @@ export default function TradePage() {
                 ⚠️ Only raise appeal if you have genuinely paid. False appeals may result in account suspension.
               </div>
 
-              <button disabled={!appealReason || appealLoading} onClick={handleSubmitAppeal} style={{ width: '100%', height: '48px', background: appealReason && !appealLoading ? '#00d4ff' : '#334455', border: 'none', borderRadius: '24px', color: appealReason ? '#1a1a2e' : '#8899aa', fontSize: '15px', fontWeight: 700, cursor: appealReason ? 'pointer' : 'not-allowed' }}>
+              <button disabled={!appealReason || appealLoading} onClick={handleSubmitAppeal} style={{ width: '100%', height: '48px', background: appealReason && !appealLoading ? '#00e5ff' : '#334455', border: 'none', borderRadius: '24px', color: appealReason ? '#1a1a2e' : '#8899aa', fontSize: '15px', fontWeight: 700, cursor: appealReason ? 'pointer' : 'not-allowed' }}>
                 {appealLoading ? 'Submitting...' : 'Submit Appeal'}
               </button>
             </div>

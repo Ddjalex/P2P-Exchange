@@ -15,7 +15,7 @@ async function seed() {
     .insert(usersTable)
     .values({
       username: "alem_tesfaye",
-      email: "alem@swapbirr.com",
+      email: "alem@xendrx.com",
       phone: "+251911234567",
       country: "Ethiopia",
       kycStatus: "verified",
@@ -31,7 +31,7 @@ async function seed() {
     .insert(usersTable)
     .values({
       username: "biruk_haile",
-      email: "biruk@swapbirr.com",
+      email: "biruk@xendrx.com",
       phone: "+251922345678",
       country: "Ethiopia",
       kycStatus: "verified",
@@ -46,7 +46,7 @@ async function seed() {
     .insert(usersTable)
     .values({
       username: "sara_girma",
-      email: "sara@swapbirr.com",
+      email: "sara@xendrx.com",
       phone: "+251933456789",
       country: "Ethiopia",
       kycStatus: "verified",
@@ -60,7 +60,7 @@ async function seed() {
     .insert(usersTable)
     .values({
       username: "yonas_bekele",
-      email: "yonas@swapbirr.com",
+      email: "yonas@xendrx.com",
       phone: "+251944567890",
       country: "Ethiopia",
       kycStatus: "verified",
@@ -75,7 +75,7 @@ async function seed() {
     .insert(usersTable)
     .values({
       username: "meron_tadesse",
-      email: "meron@swapbirr.com",
+      email: "meron@xendrx.com",
       phone: "+251955678901",
       country: "Ethiopia",
       kycStatus: "verified",
@@ -279,7 +279,7 @@ async function seed() {
         {
           userId: devUser.id,
           type: "system",
-          title: "Welcome to SwapBirr!",
+          title: "Welcome to Xendrx!",
           message: "Your account is ready. Complete KYC to unlock full trading features.",
           isRead: false,
         },

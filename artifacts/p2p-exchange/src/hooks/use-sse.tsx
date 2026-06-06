@@ -7,7 +7,7 @@ const TOKEN_KEY = "p2p_token";
 const KYC_MESSAGES: Record<string, { title: string; description: string; variant?: "default" | "destructive" }> = {
   verified: {
     title: "🎉 KYC Approved!",
-    description: "Your identity has been verified. You can now trade on SwapBirr.",
+    description: "Your identity has been verified. You can now trade on Xendrx.",
     variant: "default",
   },
   rejected: {

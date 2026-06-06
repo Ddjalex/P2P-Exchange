@@ -4,7 +4,7 @@ import { db } from "@workspace/db";
 import { usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 
-const JWT_SECRET = process.env.JWT_SECRET || "swapbirr-dev-secret-change-in-production";
+const JWT_SECRET = process.env.JWT_SECRET || "xendrx-dev-secret-change-in-production";
 
 // Throttle lastActiveAt updates: track last write per userId (in-memory, resets on restart)
 const lastActiveCache = new Map<number, number>();

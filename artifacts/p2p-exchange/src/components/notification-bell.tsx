@@ -26,8 +26,8 @@ const NOTIF_ICONS: Record<string, string> = {
 };
 
 const NOTIF_COLORS: Record<string, string> = {
-  order_created: "#00d4ff",
-  payment_sent: "#00d4ff",
+  order_created: "#00e5ff",
+  payment_sent: "#00e5ff",
   order_completed: "#00e676",
   order_cancelled: "#ff4444",
   appeal_raised: "#ff8800",
@@ -37,7 +37,7 @@ const NOTIF_COLORS: Record<string, string> = {
   kyc_approved: "#00e676",
   kyc_rejected: "#ff4444",
   kyc_more_info: "#ff8800",
-  new_message: "#00d4ff",
+  new_message: "#00e5ff",
   account_suspended: "#ff4444",
   account_unsuspended: "#00e676",
 };
@@ -220,7 +220,7 @@ export function NotificationBell() {
                   style={{
                     background: "none",
                     border: "none",
-                    color: "#00d4ff",
+                    color: "#00e5ff",
                     fontSize: "12px",
                     cursor: "pointer",
                     fontWeight: 600,
@@ -265,7 +265,7 @@ export function NotificationBell() {
                       cursor: notif.relatedOrderId ? "pointer" : "default",
                       background: notif.isRead
                         ? "transparent"
-                        : "rgba(0,212,255,0.04)",
+                        : "rgba(0,229,255,0.04)",
                     }}
                   >
                     <div
@@ -273,8 +273,8 @@ export function NotificationBell() {
                         width: "40px",
                         height: "40px",
                         borderRadius: "50%",
-                        background: `${NOTIF_COLORS[notif.type] || "#00d4ff"}22`,
-                        border: `1.5px solid ${NOTIF_COLORS[notif.type] || "#00d4ff"}44`,
+                        background: `${NOTIF_COLORS[notif.type] || "#00e5ff"}22`,
+                        border: `1.5px solid ${NOTIF_COLORS[notif.type] || "#00e5ff"}44`,
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
@@ -310,7 +310,7 @@ export function NotificationBell() {
                               width: "8px",
                               height: "8px",
                               borderRadius: "50%",
-                              background: "#00d4ff",
+                              background: "#00e5ff",
                               flexShrink: 0,
                               marginLeft: "8px",
                               marginTop: "4px",

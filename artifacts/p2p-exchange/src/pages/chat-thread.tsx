@@ -418,7 +418,7 @@ export default function ChatThreadPage() {
               width: "38px", height: "38px",
               minWidth: "38px",
               borderRadius: "50%",
-              background: canSend ? "#00d4ff" : "rgba(255,255,255,0.12)",
+              background: canSend ? "#00e5ff" : "rgba(255,255,255,0.12)",
               border: "none",
               cursor: canSend ? "pointer" : "not-allowed",
               display: "flex", alignItems: "center", justifyContent: "center",

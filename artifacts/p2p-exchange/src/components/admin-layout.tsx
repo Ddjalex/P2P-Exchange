@@ -77,9 +77,9 @@ export function AdminLayout({ children, title }: { children: React.ReactNode; ti
       <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-card border-r border-border flex flex-col transition-transform duration-200 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 lg:static lg:flex`}>
         <div className="p-5 border-b border-border flex items-center justify-between flex-shrink-0">
           <div className="flex items-center gap-2.5">
-            <img src="/src/assets/logo-icon.svg" alt="SwapBirr" width={36} height={36} />
+            <img src="/src/assets/logo-icon.svg" alt="Xendrx" width={36} height={36} />
             <div>
-              <div style={{ color: '#fff', fontWeight: 800, fontSize: '15px', lineHeight: 1.2 }}>Swap<span style={{ color: '#00d4ff' }}>Birr</span></div>
+              <div style={{ color: '#fff', fontWeight: 800, fontSize: '15px', lineHeight: 1.2 }}>xen<span style={{ color: '#00e5ff' }}>drx</span></div>
               <div className="text-xs text-muted-foreground font-medium" style={{ letterSpacing: '1px' }}>ADMIN PANEL</div>
             </div>
           </div>

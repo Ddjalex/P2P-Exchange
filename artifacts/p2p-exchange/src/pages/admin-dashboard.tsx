@@ -5,7 +5,7 @@ import { Link } from "wouter";
 import { Users, ShieldCheck, ClipboardList, Scale, Wallet, ArrowRight, TrendingUp } from "lucide-react";
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 
-const COLORS = ["#00d4ff", "#f39c12", "#e74c3c", "#00b894"];
+const COLORS = ["#00e5ff", "#f39c12", "#e74c3c", "#00b894"];
 
 interface Stats {
   totalUsers: number; pendingKyc: number; openOrders: number;
@@ -81,7 +81,7 @@ export default function AdminDashboardPage() {
                 <XAxis dataKey="name" tick={{ fontSize: 10 }} stroke="#8899aa" />
                 <YAxis tick={{ fontSize: 10 }} stroke="#8899aa" />
                 <Tooltip contentStyle={{ background: '#16213e', border: '1px solid #2a2a4a', fontSize: 12 }} />
-                <Line type="monotone" dataKey="usdt" stroke="#00d4ff" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="usdt" stroke="#00e5ff" strokeWidth={2} dot={false} />
               </LineChart>
             </ResponsiveContainer>
           </div>

@@ -243,7 +243,7 @@ export default function AdminDisputeDetailPage({ params }: { params: { id: strin
                   }
 
                   const senderLabel = isBuyerMsg ? "Buyer" : isSellerMsg ? "Seller" : "Other";
-                  const senderColor = isBuyerMsg ? "#00d4ff" : "#ff8800";
+                  const senderColor = isBuyerMsg ? "#00e5ff" : "#ff8800";
                   const alignRight = isBuyerMsg;
 
                   return (
@@ -251,7 +251,7 @@ export default function AdminDisputeDetailPage({ params }: { params: { id: strin
                       <span style={{ color: senderColor, fontSize: "10px", fontWeight: 600, marginBottom: "3px" }}>
                         {senderLabel} · {msg.senderUsername ?? ""}
                       </span>
-                      <div style={{ maxWidth: "75%", background: alignRight ? "rgba(0,212,255,0.1)" : "rgba(255,136,0,0.08)", border: `1px solid ${alignRight ? "rgba(0,212,255,0.2)" : "rgba(255,136,0,0.2)"}`, borderRadius: "12px", padding: "8px 12px" }}>
+                      <div style={{ maxWidth: "75%", background: alignRight ? "rgba(0,229,255,0.1)" : "rgba(255,136,0,0.08)", border: `1px solid ${alignRight ? "rgba(0,229,255,0.2)" : "rgba(255,136,0,0.2)"}`, borderRadius: "12px", padding: "8px 12px" }}>
                         {msg.type === "image" && msg.content && (
                           <img src={msg.content} alt="Evidence" style={{ maxWidth: "200px", maxHeight: "200px", borderRadius: "8px", display: "block", cursor: "pointer" }} onClick={() => setLightboxUrl(msg.content)} />
                         )}
@@ -271,11 +271,11 @@ export default function AdminDisputeDetailPage({ params }: { params: { id: strin
                   <div style={{ display: "flex", gap: "12px", marginTop: "16px" }}>
                     <button
                       onClick={() => setActiveAdminChat(activeAdminChat === "buyer" ? null : "buyer")}
-                      style={{ flex: 1, padding: "12px", background: activeAdminChat === "buyer" ? "rgba(0,212,255,0.15)" : "transparent", border: `1.5px solid ${activeAdminChat === "buyer" ? "#00d4ff" : "#334455"}`, borderRadius: "10px", color: activeAdminChat === "buyer" ? "#00d4ff" : "#8899aa", fontSize: "13px", fontWeight: 600, cursor: "pointer", position: "relative" }}
+                      style={{ flex: 1, padding: "12px", background: activeAdminChat === "buyer" ? "rgba(0,229,255,0.15)" : "transparent", border: `1.5px solid ${activeAdminChat === "buyer" ? "#00e5ff" : "#334455"}`, borderRadius: "10px", color: activeAdminChat === "buyer" ? "#00e5ff" : "#8899aa", fontSize: "13px", fontWeight: 600, cursor: "pointer", position: "relative" }}
                     >
                       💬 Chat with Buyer
                       {buyerMessageCount > 0 && (
-                        <span style={{ background: "#00d4ff", color: "#1a1a2e", borderRadius: "10px", padding: "1px 6px", fontSize: "10px", fontWeight: 700, marginLeft: "6px" }}>
+                        <span style={{ background: "#00e5ff", color: "#1a1a2e", borderRadius: "10px", padding: "1px 6px", fontSize: "10px", fontWeight: 700, marginLeft: "6px" }}>
                           {buyerMessageCount}
                         </span>
                       )}
@@ -296,9 +296,9 @@ export default function AdminDisputeDetailPage({ params }: { params: { id: strin
                   </div>
 
                   {activeAdminChat && (
-                    <div style={{ marginTop: "16px", background: "#0a1628", border: `1px solid ${activeAdminChat === "buyer" ? "rgba(0,212,255,0.3)" : "rgba(255,136,0,0.3)"}`, borderRadius: "12px", overflow: "hidden" }}>
-                      <div style={{ padding: "12px 16px", background: activeAdminChat === "buyer" ? "rgba(0,212,255,0.08)" : "rgba(255,136,0,0.08)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <span style={{ color: activeAdminChat === "buyer" ? "#00d4ff" : "#ff8800", fontSize: "13px", fontWeight: 600 }}>
+                    <div style={{ marginTop: "16px", background: "#0a1628", border: `1px solid ${activeAdminChat === "buyer" ? "rgba(0,229,255,0.3)" : "rgba(255,136,0,0.3)"}`, borderRadius: "12px", overflow: "hidden" }}>
+                      <div style={{ padding: "12px 16px", background: activeAdminChat === "buyer" ? "rgba(0,229,255,0.08)" : "rgba(255,136,0,0.08)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <span style={{ color: activeAdminChat === "buyer" ? "#00e5ff" : "#ff8800", fontSize: "13px", fontWeight: 600 }}>
                           🔒 Private — Admin → {activeAdminChat === "buyer" ? "Buyer" : "Seller"}
                         </span>
                         <button onClick={() => setActiveAdminChat(null)} style={{ background: "none", border: "none", color: "#8899aa", cursor: "pointer", fontSize: "18px", lineHeight: 1 }}>×</button>
@@ -328,7 +328,7 @@ export default function AdminDisputeDetailPage({ params }: { params: { id: strin
                         <button
                           onClick={handleSendAdminMessage}
                           disabled={!adminMessage.trim() || sending}
-                          style={{ padding: "10px 16px", background: activeAdminChat === "buyer" ? "#00d4ff" : "#ff8800", border: "none", borderRadius: "8px", color: "#1a1a2e", fontWeight: 700, cursor: "pointer", fontSize: "13px", opacity: (!adminMessage.trim() || sending) ? 0.5 : 1 }}
+                          style={{ padding: "10px 16px", background: activeAdminChat === "buyer" ? "#00e5ff" : "#ff8800", border: "none", borderRadius: "8px", color: "#1a1a2e", fontWeight: 700, cursor: "pointer", fontSize: "13px", opacity: (!adminMessage.trim() || sending) ? 0.5 : 1 }}
                         >
                           {sending ? "..." : "Send"}
                         </button>

@@ -1,17 +1,17 @@
 import { db } from "@workspace/db";
 
 const SEEDED_EMAILS = [
-  "alem@swapbirr.com",
-  "biruk@swapbirr.com",
-  "sara@swapbirr.com",
-  "yonas@swapbirr.com",
-  "tigist@swapbirr.com",
+  "alem@xendrx.com",
+  "biruk@xendrx.com",
+  "sara@xendrx.com",
+  "yonas@xendrx.com",
+  "tigist@xendrx.com",
   // legacy emails (pre-rebrand)
-  "alem@ethiop2p.com",
-  "biruk@ethiop2p.com",
-  "sara@ethiop2p.com",
-  "yonas@ethiop2p.com",
-  "tigist@ethiop2p.com",
+  "alem@xendrx.com",
+  "biruk@xendrx.com",
+  "sara@xendrx.com",
+  "yonas@xendrx.com",
+  "tigist@xendrx.com",
 ];
 
 async function cleanup() {

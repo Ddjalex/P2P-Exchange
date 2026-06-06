@@ -30,9 +30,9 @@ export default function AdminLoginPage() {
     <div className="min-h-screen bg-background flex items-center justify-center p-4" style={{ fontFamily: 'Poppins, sans-serif' }}>
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <img src="/src/assets/logo-icon.svg" alt="SwapBirr" width={56} height={56} style={{ margin: '0 auto 12px' }} />
+          <img src="/src/assets/logo-icon.svg" alt="Xendrx" width={56} height={56} style={{ margin: '0 auto 12px' }} />
           <div className="text-3xl font-bold mb-1">
-            Swap<span style={{ color: '#00d4ff' }}>Birr</span>
+            xen<span style={{ color: '#00e5ff' }}>drx</span>
           </div>
           <div className="text-muted-foreground text-sm">Admin Dashboard</div>
         </div>
@@ -53,7 +53,7 @@ export default function AdminLoginPage() {
                 type="email"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
-                placeholder="admin@swapbirr.com"
+                placeholder="admin@xendrx.com"
                 className="w-full px-3 py-2.5 bg-background border border-border rounded-lg text-sm outline-none focus:border-primary transition-colors"
                 required
               />
@@ -80,7 +80,7 @@ export default function AdminLoginPage() {
         </div>
 
         <div className="text-center mt-4 text-xs text-muted-foreground">
-          SwapBirr Admin — Authorized personnel only
+          Xendrx Admin — Authorized personnel only
         </div>
       </div>
     </div>
