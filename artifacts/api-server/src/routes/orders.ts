@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { ordersTable, adsTable, usersTable, messagesTable, appealsTable, feedbackTable, walletsTable, paymentMethodsTable, transactionsTable, feeTransactionsTable, platformWalletTable } from "@workspace/db";
-import { eq, and, or, desc, sql } from "drizzle-orm";
+import { eq, and, or, desc, sql, inArray } from "drizzle-orm";
 import { notify } from "../lib/notify.js";
 import { getFeePercents, calculateFees } from "../helpers/fees.js";
 import { PushNotify } from "./push.js";
@@ -203,9 +203,15 @@ router.post("/", async (req, res) => {
       appealAvailableAt,
     }).returning();
 
+    const newAvailable = Math.max(0, available - usdt);
     await db.update(adsTable).set({
-      availableAmount: Math.max(0, available - usdt).toFixed(4),
+      availableAmount: newAvailable.toFixed(4),
     }).where(eq(adsTable.id, adId));
+
+    // Auto-remove the ad when its available balance is fully depleted
+    if (newAvailable < 0.0001) {
+      await db.delete(adsTable).where(eq(adsTable.id, adId));
+    }
 
     await db.insert(messagesTable).values({
       orderId: order.id,
