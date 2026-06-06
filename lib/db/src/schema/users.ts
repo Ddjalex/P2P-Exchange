@@ -6,6 +6,7 @@ export const kycStatusEnum = pgEnum("kyc_status", ["none", "pending", "verified"
 
 export const usersTable = pgTable("users", {
   id: serial("id").primaryKey(),
+  uid: text("uid").unique(),
   username: text("username").notNull().unique(),
   email: text("email").notNull().unique(),
   phone: text("phone"),

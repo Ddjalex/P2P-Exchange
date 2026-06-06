@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { walletsTable, transactionsTable, systemSettingsTable } from "@workspace/db";
-import { eq, and, desc } from "drizzle-orm";
+import { walletsTable, transactionsTable, systemSettingsTable, usersTable, internalTransfersTable, notificationsTable } from "@workspace/db";
+import { eq, and, desc, or } from "drizzle-orm";
 import { sendUsdt, privateKeyToTronAddress, getTrc20TxDetails } from "../lib/tron.js";
 import { depositVerificationsTable } from "@workspace/db";
 import { getBscUsdtTx } from "../lib/bsc.js";
@@ -322,6 +322,172 @@ router.get("/transactions", async (req, res) => {
   } catch (err) {
     req.log.error({ err }, "Failed to get transactions");
     res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// GET /api/wallet/find-user — find a user by UID, email, or phone for internal transfer
+router.get("/find-user", async (req, res) => {
+  try {
+    const { identifier, type } = req.query as { identifier?: string; type?: string };
+    const userId = (req as any).userId;
+
+    if (!identifier || !type || !["uid", "email", "phone"].includes(type)) {
+      return res.status(400).json({ message: "identifier and type (uid|email|phone) required" });
+    }
+
+    let user: any;
+    if (type === "uid") {
+      user = await db.select().from(usersTable).where(eq(usersTable.uid, identifier)).then(r => r[0]);
+    } else if (type === "email") {
+      user = await db.select().from(usersTable).where(eq(usersTable.email, identifier.toLowerCase())).then(r => r[0]);
+    } else {
+      user = await db.select().from(usersTable).where(eq(usersTable.phone, identifier)).then(r => r[0]);
+    }
+
+    if (!user) return res.status(404).json({ message: "User not found on Xendrx" });
+    if (user.id === userId) return res.status(400).json({ message: "Cannot transfer to yourself" });
+
+    const name = user.username || "";
+    const displayName = name.length <= 4
+      ? name[0] + "***"
+      : name.slice(0, 2) + "***" + name.slice(-2);
+
+    return res.json({ found: true, user: { uid: user.uid, username: user.username, displayName } });
+  } catch (err) {
+    req.log.error({ err }, "find-user error");
+    return res.status(500).json({ message: "Search failed" });
+  }
+});
+
+// POST /api/wallet/internal-transfer — zero-fee transfer between Xendrx users
+router.post("/internal-transfer", async (req, res) => {
+  try {
+    const senderId = (req as any).userId;
+    const { identifier, identifierType, amount, note } = req.body;
+
+    if (!identifier || !identifierType || !amount) {
+      return res.status(400).json({ message: "All fields required" });
+    }
+
+    const transferAmount = parseFloat(amount);
+    if (isNaN(transferAmount) || transferAmount < 1) {
+      return res.status(400).json({ message: "Minimum transfer is 1 USDT" });
+    }
+
+    const sender = await db.select().from(usersTable).where(eq(usersTable.id, senderId)).then(r => r[0]);
+    if (!sender) return res.status(401).json({ message: "Unauthorized" });
+
+    let receiver: any;
+    if (identifierType === "uid") {
+      receiver = await db.select().from(usersTable).where(eq(usersTable.uid, identifier)).then(r => r[0]);
+    } else if (identifierType === "email") {
+      receiver = await db.select().from(usersTable).where(eq(usersTable.email, identifier.toLowerCase())).then(r => r[0]);
+    } else {
+      receiver = await db.select().from(usersTable).where(eq(usersTable.phone, identifier)).then(r => r[0]);
+    }
+
+    if (!receiver) return res.status(404).json({ message: "Recipient not found on Xendrx" });
+    if (receiver.id === senderId) return res.status(400).json({ message: "Cannot transfer to yourself" });
+
+    const senderWallet = await getOrCreateWallet(senderId);
+    const senderAvail = parseFloat(senderWallet.availableBalance);
+
+    if (senderAvail < transferAmount) {
+      return res.status(400).json({
+        message: `Insufficient balance. Available: ${senderAvail.toFixed(4)} USDT`,
+      });
+    }
+
+    const receiverWallet = await getOrCreateWallet(receiver.id);
+
+    const newSenderBalance = (senderAvail - transferAmount).toFixed(6);
+    const newReceiverBalance = (parseFloat(receiverWallet.availableBalance) + transferAmount).toFixed(6);
+
+    await db.transaction(async (tx) => {
+      await tx.update(walletsTable)
+        .set({ availableBalance: newSenderBalance })
+        .where(eq(walletsTable.id, senderWallet.id));
+
+      await tx.update(walletsTable)
+        .set({ availableBalance: newReceiverBalance })
+        .where(eq(walletsTable.id, receiverWallet.id));
+
+      await tx.insert(internalTransfersTable).values({
+        senderId,
+        receiverId: receiver.id,
+        amount: transferAmount.toFixed(6),
+        note: note || null,
+        status: "completed",
+      });
+
+      await tx.insert(transactionsTable).values([
+        {
+          userId: senderId,
+          type: "internal_send",
+          amount: transferAmount.toFixed(6),
+          status: "completed",
+          note: `Internal transfer to ${receiver.username} (UID: ${receiver.uid ?? "—"})`,
+        },
+        {
+          userId: receiver.id,
+          type: "internal_receive",
+          amount: transferAmount.toFixed(6),
+          status: "completed",
+          note: `Internal transfer from ${sender.username} (UID: ${sender.uid ?? "—"})`,
+        },
+      ]);
+
+      await tx.insert(notificationsTable).values({
+        userId: receiver.id,
+        type: "internal_receive",
+        title: "💸 USDT Received",
+        message: `${transferAmount.toFixed(4)} USDT received from ${sender.username}`,
+      });
+    });
+
+    const receiverName = (receiver.username || "").length <= 4
+      ? (receiver.username || "")[0] + "***"
+      : (receiver.username || "").slice(0, 2) + "***" + (receiver.username || "").slice(-2);
+
+    return res.json({
+      success: true,
+      message: `${transferAmount.toFixed(4)} USDT sent to ${receiverName} successfully!`,
+    });
+  } catch (err) {
+    req.log.error({ err }, "internal-transfer error");
+    return res.status(500).json({ message: "Transfer failed. Please try again." });
+  }
+});
+
+// GET /api/wallet/transfer-history — list of internal transfers for current user
+router.get("/transfer-history", async (req, res) => {
+  try {
+    const userId = (req as any).userId;
+
+    const transfers = await db.select().from(internalTransfersTable)
+      .where(or(eq(internalTransfersTable.senderId, userId), eq(internalTransfersTable.receiverId, userId)))
+      .orderBy(desc(internalTransfersTable.createdAt))
+      .limit(50);
+
+    const enriched = await Promise.all(transfers.map(async (t) => {
+      const [sender, receiver] = await Promise.all([
+        db.select({ username: usersTable.username, uid: usersTable.uid }).from(usersTable).where(eq(usersTable.id, t.senderId)).then(r => r[0]),
+        db.select({ username: usersTable.username, uid: usersTable.uid }).from(usersTable).where(eq(usersTable.id, t.receiverId)).then(r => r[0]),
+      ]);
+      return {
+        ...t,
+        isSender: t.senderId === userId,
+        senderUsername: sender?.username,
+        senderUid: sender?.uid,
+        receiverUsername: receiver?.username,
+        receiverUid: receiver?.uid,
+      };
+    }));
+
+    return res.json({ transfers: enriched });
+  } catch (err) {
+    req.log.error({ err }, "transfer-history error");
+    return res.status(500).json({ message: "Failed to fetch history" });
   }
 });
 

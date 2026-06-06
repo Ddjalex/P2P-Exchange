@@ -26,6 +26,7 @@ function verifyToken(token: string): { sub: number } | null {
 function formatUser(user: any) {
   return {
     id: user.id,
+    uid: user.uid ?? null,
     username: user.username,
     email: user.email,
     phone: user.phone ?? null,
@@ -34,6 +35,10 @@ function formatUser(user: any) {
     isMerchant: user.isMerchant,
     createdAt: user.createdAt,
   };
+}
+
+function generateUID(): string {
+  return String(Math.floor(100000000 + Math.random() * 900000000));
 }
 
 function generateCode(): string {
@@ -240,8 +245,17 @@ router.post("/register", async (req, res) => {
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
+
+    let finalUid = generateUID();
+    for (let attempts = 0; attempts < 10; attempts++) {
+      const existing = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.uid, finalUid)).then(r => r[0]);
+      if (!existing) break;
+      finalUid = generateUID();
+    }
+
     const [user] = await db.insert(usersTable).values({
       username,
+      uid: finalUid,
       email,
       phone: phone ?? undefined,
       country: country || "Ethiopia",

@@ -404,6 +404,15 @@ export default function ProfilePage() {
                   <><ShieldCheck className="w-4 h-4 mr-1" />Unverified</>
                 )}
               </div>
+              {user?.uid && (
+                <button
+                  className="flex items-center gap-1 mt-1.5 text-[11px] text-muted-foreground/70 hover:text-muted-foreground transition-colors"
+                  onClick={() => navigator.clipboard.writeText(user.uid!).then(() => toast({ title: "UID copied!" }))}
+                >
+                  <span>UID: {user.uid}</span>
+                  <CheckCircle2 className="w-3 h-3 opacity-60" />
+                </button>
+              )}
             </div>
           </div>
         </div>

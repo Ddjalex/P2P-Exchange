@@ -31,6 +31,7 @@ import HelpCenterPage from "@/pages/help-center";
 import AboutPage from "@/pages/about";
 import SharedAdPage from "@/pages/shared-ad";
 import CardPage from "@/pages/card";
+import TransferHistoryPage from "@/pages/transfer-history";
 
 // Admin pages
 import AdminLoginPage from "@/pages/admin-login";
@@ -95,6 +96,7 @@ function Router() {
       {/* KYC-gated pages — show verification wall if not verified */}
       <Route path="/wallet"><KycProtectedRoute component={WalletPage} /></Route>
       <Route path="/wallet/usdt"><Redirect to="/wallet" /></Route>
+      <Route path="/wallet/transfer-history"><KycProtectedRoute component={TransferHistoryPage} /></Route>
       <Route path="/p2p"><KycProtectedRoute component={P2PPage} /></Route>
       <Route path="/p2p/confirm/:adId"><KycProtectedRoute component={BuyConfirmPage} /></Route>
       <Route path="/ads"><KycProtectedRoute component={AdsPage} /></Route>

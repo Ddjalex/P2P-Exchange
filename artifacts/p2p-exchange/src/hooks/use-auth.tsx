@@ -4,6 +4,7 @@ import { setAuthTokenGetter } from "@workspace/api-client-react";
 
 interface AuthUser {
   id: number;
+  uid: string | null;
   username: string;
   email: string;
   phone: string | null;

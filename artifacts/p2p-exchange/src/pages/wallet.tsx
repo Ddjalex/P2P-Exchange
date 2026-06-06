@@ -1,6 +1,6 @@
 import { useAuth } from "@/hooks/use-auth";
 import { AppLayout } from "@/components/layout";
-import { Settings, Eye, EyeOff, ArrowDownToLine, ArrowUpFromLine, X, Copy, Check, Loader2, AlertCircle } from "lucide-react";
+import { Settings, Eye, EyeOff, ArrowDownToLine, ArrowUpFromLine, X, Copy, Check, Loader2, AlertCircle, Send } from "lucide-react";
 import { NotificationBell } from "@/components/notification-bell";
 import { Link, useLocation } from "wouter";
 import { useGetWallet, getGetWalletQueryKey } from "@workspace/api-client-react";
@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
+import { InternalTransferPanel } from "@/components/internal-transfer";
 
 const TOKEN_KEY = "p2p_token";
 function getToken() { return localStorage.getItem(TOKEN_KEY); }
@@ -256,6 +257,7 @@ function WithdrawModal({
   onClose: () => void;
   onSuccess: () => void;
 }) {
+  const [mode, setMode] = useState<"external" | "internal">("external");
   const [network] = useState<"TRC20">("TRC20");
   const [address, setAddress] = useState("");
   const [amount, setAmount] = useState("");
@@ -305,94 +307,125 @@ function WithdrawModal({
       >
         {/* Pinned header */}
         <div className="flex items-center justify-between px-6 pt-6 pb-4 flex-shrink-0">
-          <h2 className="font-bold text-lg">Withdraw USDT</h2>
+          <h2 className="font-bold text-lg">{mode === "internal" ? "Internal Transfer" : "Withdraw USDT"}</h2>
           <button onClick={onClose} className="p-1 rounded-lg hover:bg-secondary/50">
             <X className="w-5 h-5" />
           </button>
         </div>
 
+        {/* Mode tabs */}
+        <div className="px-6 pb-4 flex-shrink-0">
+          <div className="grid grid-cols-2 gap-1 p-1 bg-secondary rounded-xl">
+            <button
+              onClick={() => setMode("external")}
+              className={`flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-sm font-semibold transition-all ${mode === "external" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"}`}
+            >
+              <ArrowUpFromLine className="w-3.5 h-3.5" />
+              External
+            </button>
+            <button
+              onClick={() => setMode("internal")}
+              className={`flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-sm font-semibold transition-all ${mode === "internal" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"}`}
+            >
+              <Send className="w-3.5 h-3.5" />
+              Internal
+            </button>
+          </div>
+        </div>
+
         {/* Scrollable body */}
         <div className="overflow-y-auto flex-1 px-6 pb-8 space-y-5" style={{ WebkitOverflowScrolling: "touch" }}>
-          <div>
-            <label className="text-xs text-muted-foreground mb-2 block">Network</label>
-            <div className="py-2.5 px-4 rounded-xl text-sm font-semibold border bg-primary/10 border-primary text-primary w-fit">
-              TRC20 (TRON)
-            </div>
-          </div>
 
-          <div>
-            <label className="text-xs text-muted-foreground mb-2 block">Destination Address (TRC20)</label>
-            <input
-              type="text"
-              placeholder="T... (TRON address)"
-              value={address}
-              onChange={e => setAddress(e.target.value)}
-              className="w-full bg-secondary border border-border rounded-xl px-4 py-3 text-sm font-mono focus:outline-none focus:border-primary placeholder:text-muted-foreground"
-            />
-          </div>
+          {/* Internal Transfer mode */}
+          {mode === "internal" && (
+            <InternalTransferPanel availableBalance={availableBalance} />
+          )}
 
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-xs text-muted-foreground">Amount (USDT)</label>
-              <span className="text-xs text-muted-foreground">
-                Available: <span className="text-foreground font-medium">{avail.toLocaleString()} USDT</span>
-              </span>
-            </div>
-            <div className="relative">
-              <input
-                type="number"
-                placeholder="0.00"
-                value={amount}
-                onChange={e => setAmount(e.target.value)}
-                min="1"
-                max={avail}
-                step="0.01"
-                className="w-full bg-secondary border border-border rounded-xl px-4 py-3 pr-16 text-sm font-mono focus:outline-none focus:border-primary placeholder:text-muted-foreground"
-              />
+          {/* External Withdrawal mode */}
+          {mode === "external" && (
+            <>
+              <div>
+                <label className="text-xs text-muted-foreground mb-2 block">Network</label>
+                <div className="py-2.5 px-4 rounded-xl text-sm font-semibold border bg-primary/10 border-primary text-primary w-fit">
+                  TRC20 (TRON)
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs text-muted-foreground mb-2 block">Destination Address (TRC20)</label>
+                <input
+                  type="text"
+                  placeholder="T... (TRON address)"
+                  value={address}
+                  onChange={e => setAddress(e.target.value)}
+                  className="w-full bg-secondary border border-border rounded-xl px-4 py-3 text-sm font-mono focus:outline-none focus:border-primary placeholder:text-muted-foreground"
+                />
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs text-muted-foreground">Amount (USDT)</label>
+                  <span className="text-xs text-muted-foreground">
+                    Available: <span className="text-foreground font-medium">{avail.toLocaleString()} USDT</span>
+                  </span>
+                </div>
+                <div className="relative">
+                  <input
+                    type="number"
+                    placeholder="0.00"
+                    value={amount}
+                    onChange={e => setAmount(e.target.value)}
+                    min="1"
+                    max={avail}
+                    step="0.01"
+                    className="w-full bg-secondary border border-border rounded-xl px-4 py-3 pr-16 text-sm font-mono focus:outline-none focus:border-primary placeholder:text-muted-foreground"
+                  />
+                  <button
+                    onClick={handleSetMax}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-primary font-bold hover:underline"
+                  >
+                    MAX
+                  </button>
+                </div>
+              </div>
+
+              {amt > 0 && (
+                <div className="bg-secondary rounded-xl p-4 space-y-2 text-sm">
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>Network Fee (0.1%)</span>
+                    <span className="font-mono">{fee} USDT</span>
+                  </div>
+                  <div className="flex justify-between font-semibold border-t border-border pt-2">
+                    <span>You Receive</span>
+                    <span className="font-mono text-primary">{youGet} USDT</span>
+                  </div>
+                </div>
+              )}
+
+              {error && (
+                <div className="flex items-start space-x-2 p-3 bg-destructive/10 border border-destructive/20 rounded-xl">
+                  <AlertCircle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
+                  <p className="text-sm text-destructive">{error}</p>
+                </div>
+              )}
+
               <button
-                onClick={handleSetMax}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-primary font-bold hover:underline"
+                onClick={handleWithdraw}
+                disabled={loading || !address || amt <= 0 || amt > avail}
+                className="w-full bg-primary text-primary-foreground rounded-xl py-3 text-sm font-semibold disabled:opacity-50 flex items-center justify-center space-x-2"
               >
-                MAX
+                {loading ? (
+                  <><Loader2 className="w-4 h-4 animate-spin" /><span>Submitting...</span></>
+                ) : (
+                  <><ArrowUpFromLine className="w-4 h-4" /><span>Confirm Withdrawal</span></>
+                )}
               </button>
-            </div>
-          </div>
 
-          {amt > 0 && (
-            <div className="bg-secondary rounded-xl p-4 space-y-2 text-sm">
-              <div className="flex justify-between text-muted-foreground">
-                <span>Network Fee (0.1%)</span>
-                <span className="font-mono">{fee} USDT</span>
-              </div>
-              <div className="flex justify-between font-semibold border-t border-border pt-2">
-                <span>You Receive</span>
-                <span className="font-mono text-primary">{youGet} USDT</span>
-              </div>
-            </div>
+              <p className="text-center text-xs text-muted-foreground pb-2">
+                Minimum withdrawal: 1 USDT · Processing time: ~30 minutes
+              </p>
+            </>
           )}
-
-          {error && (
-            <div className="flex items-start space-x-2 p-3 bg-destructive/10 border border-destructive/20 rounded-xl">
-              <AlertCircle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
-              <p className="text-sm text-destructive">{error}</p>
-            </div>
-          )}
-
-          <button
-            onClick={handleWithdraw}
-            disabled={loading || !address || amt <= 0 || amt > avail}
-            className="w-full bg-primary text-primary-foreground rounded-xl py-3 text-sm font-semibold disabled:opacity-50 flex items-center justify-center space-x-2"
-          >
-            {loading ? (
-              <><Loader2 className="w-4 h-4 animate-spin" /><span>Submitting...</span></>
-            ) : (
-              <><ArrowUpFromLine className="w-4 h-4" /><span>Confirm Withdrawal</span></>
-            )}
-          </button>
-
-          <p className="text-center text-xs text-muted-foreground pb-2">
-            Minimum withdrawal: 1 USDT · Processing time: ~30 minutes
-          </p>
         </div>
       </div>
     </div>
@@ -460,7 +493,22 @@ export default function WalletPage() {
 
         <div className="p-5 rounded-xl bg-card border border-card-border space-y-4">
           <div className="flex items-center justify-between text-muted-foreground">
-            <span className="text-sm">Available Balance</span>
+            <div>
+              <span className="text-sm">Available Balance</span>
+              {user?.uid && (
+                <div className="flex items-center gap-1 mt-0.5">
+                  <span className="text-[10px] text-muted-foreground/60">UID:</span>
+                  <span className="text-[10px] font-mono text-muted-foreground/80">{user.uid}</span>
+                  <button
+                    className="text-[10px] text-primary/60 hover:text-primary"
+                    onClick={() => navigator.clipboard.writeText(user.uid!).then(() => {})}
+                    title="Copy UID"
+                  >
+                    <Copy className="w-2.5 h-2.5" />
+                  </button>
+                </div>
+              )}
+            </div>
             <button onClick={() => setShowBalance(!showBalance)}>
               {showBalance ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
             </button>
