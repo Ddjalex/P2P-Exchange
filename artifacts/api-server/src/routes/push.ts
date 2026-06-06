@@ -6,13 +6,25 @@ import webpush from "web-push";
 
 const router = Router();
 
-// Setup VAPID only if keys are configured
-if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
-  webpush.setVapidDetails(
-    `mailto:${process.env.VAPID_EMAIL ?? "support@xendrx.com"}`,
-    process.env.VAPID_PUBLIC_KEY,
-    process.env.VAPID_PRIVATE_KEY
-  );
+// Lazy VAPID setup — called before first send, not at module load
+let vapidReady = false;
+function ensureVapid(): boolean {
+  if (vapidReady) return true;
+  const pub = process.env.VAPID_PUBLIC_KEY;
+  const priv = process.env.VAPID_PRIVATE_KEY;
+  if (!pub || !priv) return false;
+  try {
+    webpush.setVapidDetails(
+      `mailto:${process.env.VAPID_EMAIL ?? "support@xendrx.com"}`,
+      pub,
+      priv
+    );
+    vapidReady = true;
+    return true;
+  } catch (e) {
+    console.error("VAPID setup error:", e);
+    return false;
+  }
 }
 
 // GET /api/push/vapid-public-key — frontend fetches this to subscribe
@@ -80,7 +92,7 @@ async function sendPush(
     image?: string;
   }
 ): Promise<void> {
-  if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) return;
+  if (!ensureVapid()) return;
 
   try {
     const subs = await db.select().from(pushSubscriptions)
