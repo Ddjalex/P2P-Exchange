@@ -494,7 +494,7 @@ export default function WalletPage() {
         <div className="p-5 rounded-xl bg-card border border-card-border space-y-4">
           <div className="flex items-center justify-between text-muted-foreground">
             <div>
-              <span className="text-sm">Available Balance</span>
+              <span className="text-sm">Total Balance</span>
               {user?.uid && (
                 <div className="flex items-center gap-1 mt-0.5">
                   <span className="text-[10px] text-muted-foreground/60">UID:</span>
@@ -517,21 +517,34 @@ export default function WalletPage() {
           <div className="space-y-1">
             {isLoading ? <Skeleton className="h-10 w-32" /> : (
               <div className="text-3xl font-bold font-mono">
-                {showBalance ? `${Number(wallet?.availableBalance || 0).toLocaleString()} USDT` : "*****"}
+                {showBalance ? `${Number(wallet?.totalBalance || 0).toLocaleString()} USDT` : "*****"}
               </div>
             )}
             {isLoading ? <Skeleton className="h-5 w-24" /> : (
               <div className="text-sm text-muted-foreground">
                 {showBalance
-                  ? `≈ ${(Number(wallet?.availableBalance || 0) * Number(wallet?.etbRate || 0)).toLocaleString()} ETB`
+                  ? `≈ ${(Number(wallet?.totalBalance || 0) * Number(wallet?.etbRate || 0)).toLocaleString()} ETB`
                   : "*****"}
               </div>
             )}
-            {!isLoading && Number(wallet?.frozenBalance || 0) > 0 && (
-              <div className="flex items-center space-x-1.5 pt-1">
-                <Link href="/orders" className="text-xs text-warning/80 hover:text-warning underline-offset-2 hover:underline transition-colors cursor-pointer">
-                  🔒 {showBalance ? `${Number(wallet?.frozenBalance || 0).toLocaleString()} USDT frozen in active orders →` : "*****"}
-                </Link>
+            {!isLoading && (
+              <div className="flex items-center gap-3 pt-2">
+                <div className="flex items-center gap-1.5 text-xs">
+                  <span className="w-2 h-2 rounded-full bg-primary inline-block" />
+                  <span className="text-muted-foreground">Available:</span>
+                  <span className="font-mono font-medium text-foreground">
+                    {showBalance ? `${Number(wallet?.availableBalance || 0).toLocaleString()} USDT` : "*****"}
+                  </span>
+                </div>
+                {Number(wallet?.frozenBalance || 0) > 0 && (
+                  <Link href="/orders" className="flex items-center gap-1.5 text-xs hover:opacity-80 transition-opacity">
+                    <span className="w-2 h-2 rounded-full bg-warning inline-block" />
+                    <span className="text-muted-foreground">Frozen:</span>
+                    <span className="font-mono font-medium text-warning">
+                      {showBalance ? `${Number(wallet?.frozenBalance || 0).toLocaleString()} USDT` : "*****"}
+                    </span>
+                  </Link>
+                )}
               </div>
             )}
           </div>
@@ -568,14 +581,14 @@ export default function WalletPage() {
             </div>
             <div className="text-right">
               {isLoading ? <Skeleton className="h-5 w-16 mb-1" /> : (
-                <div className="font-mono font-medium">{showBalance ? Number(wallet?.availableBalance || 0).toLocaleString() : "***"}</div>
+                <div className="font-mono font-medium">{showBalance ? Number(wallet?.totalBalance || 0).toLocaleString() : "***"}</div>
               )}
               {isLoading ? <Skeleton className="h-4 w-12" /> : (
                 <div className="text-xs text-muted-foreground">
                   {showBalance
                     ? Number(wallet?.frozenBalance || 0) > 0
                       ? <Link href="/orders" className="text-warning/80 hover:text-warning hover:underline underline-offset-2 transition-colors" onClick={e => e.stopPropagation()}>🔒 {Number(wallet?.frozenBalance || 0).toLocaleString()} frozen</Link>
-                      : `≈ ${(Number(wallet?.availableBalance || 0) * Number(wallet?.etbRate || 0)).toLocaleString()} Br`
+                      : `≈ ${(Number(wallet?.totalBalance || 0) * Number(wallet?.etbRate || 0)).toLocaleString()} Br`
                     : "***"}
                 </div>
               )}
