@@ -189,6 +189,15 @@ router.post("/", async (req, res) => {
     const now = new Date();
     const appealAvailableAt = new Date(now.getTime() + ad.paymentTimeLimit * 60 * 1000);
 
+    // If order creator is the seller (selling to a buy ad), check they have sufficient USDT
+    if (!isBuying) {
+      const sellerWallet = await getOrCreateWallet(sellerId);
+      const sellerAvailable = parseFloat(sellerWallet.availableBalance);
+      if (sellerAvailable < usdt) {
+        return res.status(400).json({ message: "Insufficient USDT balance to create this sell order" });
+      }
+    }
+
     const [order] = await db.insert(ordersTable).values({
       adId,
       buyerId,
@@ -202,6 +211,11 @@ router.post("/", async (req, res) => {
       frozenAt: now,
       appealAvailableAt,
     }).returning();
+
+    // If selling to a buy ad, freeze the seller's USDT now (escrow per order)
+    if (!isBuying) {
+      await freezeSellerUsdt(sellerId, amountUsdt);
+    }
 
     const newAvailable = Math.max(0, available - usdt);
     await db.update(adsTable).set({
@@ -342,13 +356,28 @@ router.post("/:id/release", async (req, res) => {
     const now = new Date();
 
     await db.transaction(async (tx) => {
-      // 1. Release seller frozen USDT
+      // 1. Release seller's escrowed USDT.
+      //    • Sell-ad orders: USDT was frozen at ad-creation time → deduct from frozenBalance
+      //    • Buy-ad orders: USDT was frozen at order-creation time (same mechanism)
+      //    Safety net: if frozenBalance is somehow < grossUsdt, deduct from availableBalance.
       const sellerWallet = await tx.select().from(walletsTable).where(eq(walletsTable.userId, order.sellerId)).then(r => r[0]);
       if (sellerWallet) {
         const sellerFrozen = parseFloat(sellerWallet.frozenBalance);
-        await tx.update(walletsTable)
-          .set({ frozenBalance: Math.max(0, sellerFrozen - grossUsdt).toFixed(8) })
-          .where(eq(walletsTable.userId, order.sellerId));
+        const sellerAvailable = parseFloat(sellerWallet.availableBalance);
+        if (sellerFrozen >= grossUsdt) {
+          await tx.update(walletsTable)
+            .set({ frozenBalance: (sellerFrozen - grossUsdt).toFixed(8) })
+            .where(eq(walletsTable.userId, order.sellerId));
+        } else {
+          // Safety net: deduct whatever remains from frozen then from available
+          const fromAvailable = grossUsdt - sellerFrozen;
+          await tx.update(walletsTable)
+            .set({
+              frozenBalance: "0.00000000",
+              availableBalance: Math.max(0, sellerAvailable - fromAvailable).toFixed(8),
+            })
+            .where(eq(walletsTable.userId, order.sellerId));
+        }
       }
 
       // 2. Credit buyer with NET amount (after fees)
@@ -497,6 +526,20 @@ router.post("/:id/cancel", async (req, res) => {
       await db.update(adsTable).set({
         availableAmount: Math.min(restored, cap).toFixed(4),
       }).where(eq(adsTable.id, order.adId));
+
+      // Buy ad: seller froze USDT at order creation → return it on cancel
+      if (ad.type === "buy") {
+        await returnUsdtToSeller(order.sellerId, order.amountUsdt);
+      }
+    } else {
+      // Ad was deleted (fully depleted when order was created).
+      // If it was a buy ad the seller's USDT was frozen — unfreeze it.
+      // We detect this by checking whether the seller's frozenBalance covers the order.
+      const sellerWallet = await getOrCreateWallet(order.sellerId);
+      const sellerFrozen = parseFloat(sellerWallet.frozenBalance);
+      if (sellerFrozen >= parseFloat(order.amountUsdt)) {
+        await returnUsdtToSeller(order.sellerId, order.amountUsdt);
+      }
     }
 
     const cancelledByRole = userId === order.buyerId ? "buyer" : "seller";

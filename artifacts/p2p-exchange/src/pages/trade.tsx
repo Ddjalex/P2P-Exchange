@@ -430,7 +430,7 @@ export default function TradePage() {
           <div className="inline-flex items-center px-3 py-1 rounded-full bg-success/15 text-success text-xs font-bold">Buy USDT</div>
 
           <div className="bg-card border border-border rounded-xl p-4 space-y-3">
-            <OrderDetailRow label="KYC Name" value={order.sellerAccountName ?? "—"} onCopy={() => handleCopy(order.sellerAccountName ?? "")} />
+            <OrderDetailRow label="KYC Name" value={order.sellerAccountName || "—"} onCopy={() => handleCopy(order.sellerAccountName ?? "")} />
             <OrderDetailRow label="Amount" value={`${Number(order.amountEtb).toLocaleString()} ETB`} onCopy={() => handleCopy(String(order.amountEtb))} />
             <OrderDetailRow label="Price" value={`${Number(order.price).toLocaleString()} ETB/USDT`} />
             <OrderDetailRow label="Quantity" value={`${parseFloat(order.amountUsdt).toFixed(4)} USDT`} />
@@ -648,14 +648,14 @@ export default function TradePage() {
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">KYC Name</span>
                   <div className="flex items-center space-x-1">
-                    <span className="font-medium">{order.sellerAccountName ?? "—"}</span>
+                    <span className="font-medium">{order.sellerAccountName || "—"}</span>
                     <button onClick={() => handleCopy(order.sellerAccountName ?? "")}><Copy className="w-3 h-3 text-muted-foreground" /></button>
                   </div>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Phone Number</span>
                   <div className="flex items-center space-x-1">
-                    <span className="font-mono font-medium">{order.sellerAccountNumber ?? "—"}</span>
+                    <span className="font-mono font-medium">{order.sellerAccountNumber || "—"}</span>
                     <button onClick={() => handleCopy(order.sellerAccountNumber ?? "")}><Copy className="w-3 h-3 text-muted-foreground" /></button>
                   </div>
                 </div>
@@ -699,7 +699,7 @@ export default function TradePage() {
               <div className="flex justify-between items-center">
                 <span className="text-xs text-muted-foreground">KYC Name</span>
                 <div className="flex items-center space-x-1">
-                  <span className="text-sm font-medium">{order.sellerAccountName ?? "—"}</span>
+                  <span className="text-sm font-medium">{order.sellerAccountName || "—"}</span>
                   <button onClick={() => handleCopy(order.sellerAccountName ?? "", "Name")}><Copy className="w-3 h-3 text-muted-foreground" /></button>
                 </div>
               </div>
@@ -713,7 +713,7 @@ export default function TradePage() {
               <div className="flex justify-between items-center">
                 <span className="text-xs text-muted-foreground">Phone / Account</span>
                 <div className="flex items-center space-x-1">
-                  <span className="font-mono text-sm font-bold text-primary">{order.sellerAccountNumber ?? "—"}</span>
+                  <span className="font-mono text-sm font-bold text-primary">{order.sellerAccountNumber || "—"}</span>
                   <button onClick={() => handleCopy(order.sellerAccountNumber ?? "", "Account")}><Copy className="w-3 h-3 text-muted-foreground" /></button>
                 </div>
               </div>
