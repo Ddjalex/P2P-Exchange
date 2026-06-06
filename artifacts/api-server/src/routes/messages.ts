@@ -3,6 +3,8 @@ import { db } from "@workspace/db";
 import { messagesTable, ordersTable, usersTable } from "@workspace/db";
 import { eq, and, or, desc, ne } from "drizzle-orm";
 import { notify } from "../lib/notify.js";
+import { PushNotify } from "./push.js";
+import { TelegramNotify } from "../telegram/notify.js";
 import multer from "multer";
 import path from "node:path";
 import { mkdirSync } from "node:fs";
@@ -142,6 +144,8 @@ router.post("/:orderId", async (req, res) => {
       message: `${sender?.username ?? "Someone"}: ${content.slice(0, 50)}${content.length > 50 ? "..." : ""}`,
       relatedOrderId: orderId,
     });
+    PushNotify.newMessage(receiverId, orderId, sender?.username ?? "Someone", content).catch(console.error);
+    TelegramNotify.newMessage(receiverId, orderId, sender?.username ?? "Someone", content).catch(console.error);
 
     res.status(201).json({
       id: msg.id,

@@ -4,6 +4,8 @@ import { ordersTable, adsTable, usersTable, messagesTable, appealsTable, feedbac
 import { eq, and, or, desc, sql } from "drizzle-orm";
 import { notify } from "../lib/notify.js";
 import { getFeePercents, calculateFees } from "../helpers/fees.js";
+import { PushNotify } from "./push.js";
+import { TelegramNotify } from "../telegram/notify.js";
 
 const router = Router();
 
@@ -220,6 +222,8 @@ router.post("/", async (req, res) => {
       message: `New order received for ${parseFloat(order.amountUsdt).toFixed(4)} USDT (Br ${Number(order.amountEtb).toLocaleString()})`,
       relatedOrderId: order.id,
     });
+    PushNotify.newOrder(sellerId, order.id, parseFloat(order.amountUsdt).toFixed(4), Number(order.amountEtb).toLocaleString()).catch(console.error);
+    TelegramNotify.newOrder(sellerId, order.id, parseFloat(order.amountUsdt).toFixed(4), Number(order.amountEtb).toLocaleString()).catch(console.error);
 
     res.status(201).json(await formatOrder(order, userId));
   } catch (err) {
@@ -295,6 +299,8 @@ router.post("/:id/mark-paid", async (req, res) => {
       message: `Buyer has marked payment as sent for order #${id}. Please verify and release crypto.`,
       relatedOrderId: id,
     });
+    PushNotify.paymentSent(order.sellerId, id, Number(updated.amountEtb).toLocaleString()).catch(console.error);
+    TelegramNotify.paymentSent(order.sellerId, id, Number(updated.amountEtb).toLocaleString()).catch(console.error);
 
     res.json(await formatOrder(updated, userId));
   } catch (err) {
@@ -442,6 +448,8 @@ router.post("/:id/release", async (req, res) => {
       message: `Order #${id} completed. Br ${Number(order.amountEtb).toLocaleString()} received.`,
       relatedOrderId: id,
     });
+    PushNotify.orderCompleted(order.buyerId, id, buyerReceives.toFixed(4)).catch(console.error);
+    TelegramNotify.orderCompleted(order.buyerId, id, buyerReceives.toFixed(4)).catch(console.error);
 
     const updated = await db.select().from(ordersTable).where(eq(ordersTable.id, id)).then(r => r[0]);
     res.json(await formatOrder(updated, userId));
@@ -487,6 +495,8 @@ router.post("/:id/cancel", async (req, res) => {
       message: `Order #${id} has been cancelled by the ${cancelledByRole}.`,
       relatedOrderId: id,
     });
+    PushNotify.orderCancelled(counterpartyId, id).catch(console.error);
+    TelegramNotify.orderCancelled(counterpartyId, id).catch(console.error);
 
     res.json(await formatOrder(updated, userId));
   } catch (err) {
@@ -542,6 +552,8 @@ router.post("/:id/appeal", async (req, res) => {
       message: `Appeal filed on order #${id}.`,
       relatedOrderId: id,
     });
+    PushNotify.appealRaised(appealCounterpartyId, id).catch(console.error);
+    TelegramNotify.appealRaised(appealCounterpartyId, id).catch(console.error);
 
     res.status(201).json({
       id: appeal.id,

@@ -19,3 +19,5 @@ export * from "./card_waitlist";
 export * from "./fee_settings";
 export * from "./platform_wallet";
 export * from "./fee_transactions";
+export * from "./telegram_users";
+export * from "./push_subscriptions";

@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { usersTable, paymentMethodsTable, ordersTable, feedbackTable, followsTable, blockedUsersTable, verificationCodesTable } from "@workspace/db";
+import { usersTable, paymentMethodsTable, ordersTable, feedbackTable, followsTable, blockedUsersTable, verificationCodesTable, telegramUsersTable } from "@workspace/db";
 import { eq, and, or, gte, desc, gt } from "drizzle-orm";
 
 const router = Router();
@@ -355,6 +355,61 @@ router.delete("/payment-methods/:id", async (req, res) => {
   } catch (err) {
     req.log.error({ err }, "Failed to delete payment method");
     res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── Telegram Link ─────────────────────────────────────────────────────────────
+
+router.post("/link-telegram", async (req, res) => {
+  try {
+    const userId = (req as any).userId;
+    const { telegramId, telegramUsername, telegramFirstName } = req.body ?? {};
+    if (!telegramId) return res.status(400).json({ message: "telegramId required" });
+
+    await db.insert(telegramUsersTable).values({
+      userId,
+      telegramId: String(telegramId),
+      telegramUsername: telegramUsername ?? null,
+      telegramFirstName: telegramFirstName ?? null,
+    }).onConflictDoUpdate({
+      target: telegramUsersTable.userId,
+      set: {
+        telegramId: String(telegramId),
+        telegramUsername: telegramUsername ?? null,
+        telegramFirstName: telegramFirstName ?? null,
+        linkedAt: new Date(),
+      },
+    });
+
+    return res.json({ success: true, message: "Telegram linked successfully!" });
+  } catch (error) {
+    console.error("Link telegram error:", error);
+    return res.status(500).json({ message: "Failed to link Telegram" });
+  }
+});
+
+router.delete("/unlink-telegram", async (req, res) => {
+  try {
+    await db.delete(telegramUsersTable)
+      .where(eq(telegramUsersTable.userId, (req as any).userId));
+    return res.json({ success: true, message: "Telegram unlinked" });
+  } catch {
+    return res.status(500).json({ message: "Failed to unlink" });
+  }
+});
+
+router.get("/telegram-status", async (req, res) => {
+  try {
+    const tg = await db.select().from(telegramUsersTable)
+      .where(eq(telegramUsersTable.userId, (req as any).userId))
+      .then(r => r[0]);
+    return res.json({
+      linked: !!tg,
+      telegramUsername: tg?.telegramUsername ?? null,
+      linkedAt: tg?.linkedAt ?? null,
+    });
+  } catch {
+    return res.json({ linked: false });
   }
 });
 

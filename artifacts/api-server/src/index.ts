@@ -1,6 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { startDepositMonitor } from "./lib/deposit-monitor";
+import { startBot, stopBot } from "./telegram/bot.js";
 
 const rawPort = process.env["API_PORT"] ?? process.env["PORT"];
 
@@ -26,4 +27,10 @@ app.listen(port, (err) => {
 
   // Start blockchain deposit monitor
   startDepositMonitor();
+
+  // Start Telegram bot (no-op if TELEGRAM_BOT_TOKEN not set)
+  startBot();
 });
+
+process.once("SIGTERM", stopBot);
+process.once("SIGINT", stopBot);

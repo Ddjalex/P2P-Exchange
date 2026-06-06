@@ -27,26 +27,51 @@ export function useBadges() {
     enabled: !!token(),
   });
 
+  const { data: notifData } = useQuery({
+    queryKey: ["notif-count"],
+    queryFn: () =>
+      fetch("/api/notifications/unread-count", {
+        headers: { Authorization: `Bearer ${token()}` },
+      }).then((r) => r.json()),
+    refetchInterval: 10000,
+    refetchIntervalInBackground: true,
+    enabled: !!token(),
+  });
+
+  const chatCount = chatBadge?.count ?? 0;
+  const orderCount = orderBadge?.count ?? 0;
+  const notifCount = notifData?.count ?? 0;
+  const totalBadge = chatCount + orderCount + notifCount;
+
   const prevChat = useRef(-1);
   const prevOrder = useRef(-1);
 
+  // ── SET APP ICON BADGE ──
   useEffect(() => {
-    const chatC = chatBadge?.count ?? 0;
-    const orderC = orderBadge?.count ?? 0;
+    if ("setAppBadge" in navigator) {
+      if (totalBadge > 0) {
+        (navigator as any).setAppBadge(totalBadge);
+      } else {
+        (navigator as any).clearAppBadge();
+      }
+    }
+  }, [totalBadge]);
 
-    if (prevChat.current >= 0 && chatC > prevChat.current) {
+  // ── DETECT NEW MESSAGES → SOUND + VIBRATE ──
+  useEffect(() => {
+    if (prevChat.current >= 0 && chatCount > prevChat.current) {
       triggerNotification("message");
     }
-    prevChat.current = chatC;
+    prevChat.current = chatCount;
+  }, [chatCount]);
 
-    if (prevOrder.current >= 0 && orderC > prevOrder.current) {
+  // ── DETECT NEW ORDERS → SOUND + VIBRATE ──
+  useEffect(() => {
+    if (prevOrder.current >= 0 && orderCount > prevOrder.current) {
       triggerNotification("order");
     }
-    prevOrder.current = orderC;
-  }, [chatBadge?.count, orderBadge?.count]);
+    prevOrder.current = orderCount;
+  }, [orderCount]);
 
-  return {
-    chatCount: chatBadge?.count ?? 0,
-    orderCount: orderBadge?.count ?? 0,
-  };
+  return { chatCount, orderCount, notifCount, totalBadge };
 }

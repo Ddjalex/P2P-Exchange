@@ -11,6 +11,8 @@ import {
 } from "@workspace/db";
 import { eq, desc, and, or, ilike, sql, ne, count } from "drizzle-orm";
 import { getFeePercents, calculateFees } from "../helpers/fees.js";
+import { PushNotify } from "./push.js";
+import { TelegramNotify } from "../telegram/notify.js";
 
 const router = Router();
 
@@ -350,6 +352,13 @@ router.post("/kyc/:userId/review", adminAuth, async (req: any, res) => {
       rejectionReason: rejectionReason ?? null,
       adminMessage: adminMessage ?? null,
     });
+    if (newStatus === "verified") {
+      PushNotify.kycApproved(userId).catch(console.error);
+      TelegramNotify.kycApproved(userId).catch(console.error);
+    } else if (newStatus === "rejected") {
+      PushNotify.kycRejected(userId, rejectionReason ?? "Documents not accepted").catch(console.error);
+      TelegramNotify.kycRejected(userId, rejectionReason ?? "Documents not accepted").catch(console.error);
+    }
     const sub = await db.select().from(kycSubmissionsTable).where(eq(kycSubmissionsTable.userId, userId)).then(r => r[0]);
     res.json(await formatKyc(sub!));
   } catch (err) {
@@ -720,6 +729,11 @@ router.put("/disputes/:id/resolve", adminAuth, async (req: any, res) => {
     }
 
     await log(req.adminEmail, "resolve_dispute", "appeal", id, `${decision}: ${adminNote}`);
+    if (order) {
+      const buyerWins = decision === "buyer_wins";
+      TelegramNotify.appealResolved(order.buyerId, order.id, buyerWins).catch(console.error);
+      TelegramNotify.appealResolved(order.sellerId, order.id, !buyerWins).catch(console.error);
+    }
     res.json({ success: true });
   } catch (err) {
     req.log.error({ err }, "Admin resolve dispute failed");
@@ -815,8 +829,13 @@ router.get("/wallet/transactions", adminAuth, async (req, res) => {
 router.put("/wallet/transactions/:id/approve", adminAuth, async (req: any, res) => {
   try {
     const id = parseInt(req.params.id);
+    const approvedTx = await db.select().from(transactionsTable).where(eq(transactionsTable.id, id)).then(r => r[0]);
     await db.update(transactionsTable).set({ status: "completed" }).where(eq(transactionsTable.id, id));
     await log(req.adminEmail, "approve_withdrawal", "transaction", id);
+    if (approvedTx) {
+      PushNotify.withdrawalApproved(approvedTx.userId, approvedTx.amount).catch(console.error);
+      TelegramNotify.withdrawalApproved(approvedTx.userId, approvedTx.amount).catch(console.error);
+    }
     res.json({ success: true });
   } catch (err) {
     req.log.error({ err }, "Admin approve withdrawal failed");
@@ -835,6 +854,8 @@ router.put("/wallet/transactions/:id/reject", adminAuth, async (req: any, res) =
         const newBalance = (parseFloat(wallet.availableBalance) + parseFloat(tx.amount)).toFixed(2);
         await db.update(walletsTable).set({ availableBalance: newBalance }).where(eq(walletsTable.userId, tx.userId));
       }
+      PushNotify.withdrawalRejected(tx.userId, tx.amount, "Rejected by admin").catch(console.error);
+      TelegramNotify.withdrawalRejected(tx.userId, tx.amount, "Rejected by admin").catch(console.error);
     }
     await log(req.adminEmail, "reject_withdrawal", "transaction", id);
     res.json({ success: true });

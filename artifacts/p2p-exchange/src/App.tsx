@@ -6,6 +6,7 @@ import { AuthProvider, useAuth } from "@/hooks/use-auth";
 import { AdminAuthProvider } from "@/hooks/use-admin-auth";
 import { useSse } from "@/hooks/use-sse";
 import { KycGate } from "@/components/kyc-gate";
+import { NotificationPermissionBanner } from "@/components/notification-permission";
 
 // Regular pages
 import AuthPage from "@/pages/auth";
@@ -76,6 +77,7 @@ function Router() {
   useSse();
 
   return (
+    <>
     <Switch>
       {/* Root redirect */}
       <Route path="/">
@@ -140,6 +142,8 @@ function Router() {
 
       <Route component={NotFound} />
     </Switch>
+    {user && <NotificationPermissionBanner userId={user.id} />}
+    </>
   );
 }
 

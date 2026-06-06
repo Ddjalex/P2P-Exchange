@@ -16,6 +16,7 @@ import sseRouter from "./sse";
 import usersRouter from "./users";
 import cardRouter from "./card";
 import feesRouter from "./fees";
+import pushRouter from "./push";
 
 const router: IRouter = Router();
 
@@ -36,6 +37,7 @@ router.use("/stats", userAuth, statsRouter);
 router.use("/sse", sseRouter);
 router.use("/users", userAuth, usersRouter);
 router.use("/card", cardRouter);
+router.use("/push", userAuth, pushRouter);
 
 router.use("/admin", adminRouter);
 
