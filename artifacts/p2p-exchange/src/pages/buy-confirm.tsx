@@ -171,6 +171,11 @@ export default function BuyConfirmPage() {
 
   const paymentMethods: string[] = ad.paymentMethods ?? [];
 
+  // When the ad type is "buy", the ad poster wants to BUY — so the current user is SELLING
+  const isSelling = ad.type === "buy";
+  const actionLabel = isSelling ? "Sell USDT" : "Buy USDT";
+  const counterpartyLabel = isSelling ? "Buyer Information" : "Seller Information";
+
   const limitText = (() => {
     if (minLimit === 0 && maxLimit === 0) return null;
     if (minLimit === 0) return `Up to ${maxLimit.toLocaleString()} USDT`;
@@ -185,7 +190,7 @@ export default function BuyConfirmPage() {
           <ArrowLeft className="w-5 h-5" />
         </button>
         <div>
-          <h1 className="font-bold">Buy USDT</h1>
+          <h1 className="font-bold">{actionLabel}</h1>
           <p className="text-xs text-muted-foreground">P2P Order Confirmation</p>
         </div>
       </header>
@@ -207,7 +212,9 @@ export default function BuyConfirmPage() {
         {/* Amount Input */}
         <div className="bg-card border border-border rounded-xl p-4">
           <label className="text-xs text-muted-foreground block mb-2">
-            {inputMode === "ETB" ? "I want to pay" : "I want to receive"}
+            {isSelling
+              ? (inputMode === "USDT" ? "I want to send" : "I want to receive")
+              : (inputMode === "ETB" ? "I want to pay" : "I want to receive")}
           </label>
           <div className="flex items-center space-x-2">
             <input
@@ -244,7 +251,9 @@ export default function BuyConfirmPage() {
         {/* I will receive — with fee breakdown */}
         <div className="bg-card border border-border rounded-xl p-4">
           <label className="text-xs text-muted-foreground block mb-2">
-            {inputMode === "ETB" ? "I will receive" : "I will pay"}
+            {isSelling
+              ? (inputMode === "USDT" ? "I will receive" : "I will send")
+              : (inputMode === "ETB" ? "I will receive" : "I will pay")}
           </label>
           {inputMode === "ETB" ? (
             <>
@@ -317,7 +326,7 @@ export default function BuyConfirmPage() {
 
         {/* Seller Information */}
         <div className="bg-card border border-border rounded-xl p-4">
-          <p className="text-xs text-muted-foreground font-semibold mb-3 uppercase tracking-wide">Seller Information</p>
+          <p className="text-xs text-muted-foreground font-semibold mb-3 uppercase tracking-wide">{counterpartyLabel}</p>
           <div className="flex items-center space-x-3 mb-3">
             <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center text-primary font-bold text-lg flex-shrink-0">
               {ad.username.charAt(0).toUpperCase()}
@@ -371,9 +380,9 @@ export default function BuyConfirmPage() {
         <button
           onClick={handleBuy}
           disabled={!canBuy || creating}
-          className="w-full py-3.5 rounded-full font-bold text-white text-base bg-success disabled:opacity-40 disabled:cursor-not-allowed transition-opacity"
+          className={`w-full py-3.5 rounded-full font-bold text-white text-base disabled:opacity-40 disabled:cursor-not-allowed transition-opacity ${isSelling ? "bg-destructive" : "bg-success"}`}
         >
-          {creating ? "Creating Order..." : "Buy USDT"}
+          {creating ? "Creating Order..." : actionLabel}
         </button>
       </div>
     </AppLayout>
