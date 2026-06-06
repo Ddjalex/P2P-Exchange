@@ -2,7 +2,7 @@ import app from "./app";
 import { logger } from "./lib/logger";
 import { startDepositMonitor } from "./lib/deposit-monitor";
 
-const rawPort = process.env["PORT"];
+const rawPort = process.env["API_PORT"] ?? process.env["PORT"];
 
 if (!rawPort) {
   throw new Error(

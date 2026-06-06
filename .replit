@@ -33,7 +33,7 @@ outputType = "console"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "PORT=8080 pnpm --filter @workspace/api-server run dev"
+args = "pnpm --filter @workspace/api-server run dev"
 waitForPort = 8080
 
 [[workflows.workflow]]
@@ -45,7 +45,7 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "PORT=5000 BASE_PATH=/ pnpm --filter @workspace/p2p-exchange run dev"
+args = "pnpm --filter @workspace/p2p-exchange run dev"
 waitForPort = 5000
 
 [agent]
@@ -58,11 +58,11 @@ timeoutMs = 20000
 
 [[ports]]
 localPort = 5000
-externalPort = 5000
+externalPort = 80
 
 [[ports]]
 localPort = 8080
-externalPort = 80
+externalPort = 8080
 
 [[ports]]
 localPort = 8081
@@ -83,6 +83,10 @@ JWT_SECRET = "ethiop2p-dev-secret-change-in-production"
 ADMIN_JWT_SECRET = "03ba394ac70d9f81b505cc6e44c6d21b09a0150a6bfa454e3c2d1981132e12b8"
 ADMIN_EMAIL = "admin@ethiop2p.com"
 ADMIN_PASSWORD = "Admin@EthioP2P2024"
+PORT = "5000"
+BASE_PATH = "/"
+LOG_LEVEL = "info"
+API_PORT = "8080"
 
 [nix]
 channel = "stable-25_05"
