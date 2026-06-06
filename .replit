@@ -1,4 +1,4 @@
-modules = ["nodejs-24", "postgresql-16"]
+modules = ["nodejs-24", "postgresql-16", "python-3.11"]
 
 [deployment]
 router = "application"
@@ -53,7 +53,7 @@ LOG_LEVEL = "info"
 API_PORT = "8080"
 VAPID_EMAIL = "support@xendrx.com"
 VITE_VAPID_PUBLIC_KEY = "BLmNvrREYIu57En84KBWFimJDMQdHUvOgaZokih-8N0gEFeZ54G5wXQyDg0T6eL8-b1CmQDEiWHH_f7RtFuN6G0"
-APP_URL = "https://2fd531b0-8fb1-444f-9b37-32df82523791-00-2qf7mlbs0f9t4.janeway.replit.dev"
+APP_URL = "https://8db130e3-07e6-4177-93af-a0d277236085-00-389x3b5dubda1.spock.replit.dev"
 VAPID_PUBLIC_KEY = "BLmNvrREYIu57En84KBWFimJDMQdHUvOgaZokih-8N0gEFeZ54G5wXQyDg0T6eL8-b1CmQDEiWHH_f7RtFuN6G0"
 VAPID_PRIVATE_KEY = "LQeljwDbd_p9BjFJufByQftP_nUghHm3-X0udBqgxUc"
 VITE_TURNSTILE_SITE_KEY = "0x4AAAAAADfuSYe1Ks9-MMzT"
