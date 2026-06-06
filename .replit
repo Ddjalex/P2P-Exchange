@@ -28,13 +28,13 @@ args = "Start Backend"
 name = "Start application"
 author = "agent"
 
+[workflows.workflow.metadata]
+outputType = "webview"
+
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "pnpm --filter @workspace/p2p-exchange run dev"
 waitForPort = 5000
-
-[workflows.workflow.metadata]
-outputType = "webview"
 
 [[workflows.workflow]]
 name = "Start Backend"
@@ -56,22 +56,6 @@ expertMode = true
 path = "scripts/post-merge.sh"
 timeoutMs = 20000
 
-[[ports]]
-localPort = 5000
-externalPort = 80
-
-[[ports]]
-localPort = 8080
-externalPort = 8080
-
-[[ports]]
-localPort = 8082
-externalPort = 3001
-
-[[ports]]
-localPort = 21832
-externalPort = 3000
-
 [userenv]
 
 [userenv.shared]
@@ -91,3 +75,11 @@ VAPID_PRIVATE_KEY = "LQeljwDbd_p9BjFJufByQftP_nUghHm3-X0udBqgxUc"
 
 [nix]
 channel = "stable-25_05"
+
+[[ports]]
+localPort = 5000
+externalPort = 80
+
+[[ports]]
+localPort = 8080
+externalPort = 8080
