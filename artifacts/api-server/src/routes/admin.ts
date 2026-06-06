@@ -14,7 +14,7 @@ import { getFeePercents, calculateFees } from "../helpers/fees.js";
 import { PushNotify } from "./push.js";
 import { TelegramNotify } from "../telegram/notify.js";
 import { telegramUsersTable } from "@workspace/db";
-import { sendTelegramMessage } from "../telegram/bot.js";
+import { sendTelegramMessage, restartBotWithToken, getBotStatus } from "../telegram/bot.js";
 
 const router = Router();
 
@@ -1075,6 +1075,8 @@ const DEFAULT_SETTINGS: Record<string, string> = {
   brevoSenderName: "Xendrx",
   trongridApiKey: "",
   bscscanApiKey: "",
+  telegramBotToken: "",
+  telegramBotUsername: process.env.TELEGRAM_BOT_USERNAME ?? "XendrxBot",
 };
 
 router.get("/settings", adminAuth, async (req, res) => {
@@ -1101,6 +1103,33 @@ router.put("/settings", adminAuth, async (req: any, res) => {
   } catch (err) {
     req.log.error({ err }, "Admin settings update failed");
     res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ─── TELEGRAM BOT MANAGEMENT ─────────────────────────────────────────────────
+
+router.get("/telegram/bot-status", adminAuth, async (_req, res) => {
+  res.json(getBotStatus());
+});
+
+router.post("/telegram/apply-token", adminAuth, async (req: any, res) => {
+  try {
+    const { token, username } = req.body ?? {};
+    if (!token?.trim()) return res.status(400).json({ error: "Bot token is required" });
+
+    const info = await restartBotWithToken(token.trim(), username?.trim() || undefined);
+
+    // Persist in DB settings
+    await db.insert(systemSettingsTable).values({ key: "telegramBotToken", value: token.trim(), updatedAt: new Date() })
+      .onConflictDoUpdate({ target: systemSettingsTable.key, set: { value: token.trim(), updatedAt: new Date() } });
+    await db.insert(systemSettingsTable).values({ key: "telegramBotUsername", value: info.username, updatedAt: new Date() })
+      .onConflictDoUpdate({ target: systemSettingsTable.key, set: { value: info.username, updatedAt: new Date() } });
+
+    await log(req.adminEmail, "update_telegram_bot", "settings", undefined, `@${info.username}`);
+    res.json({ success: true, username: info.username });
+  } catch (err: any) {
+    const msg = err?.message ?? "Failed to start bot";
+    res.status(400).json({ error: msg.includes("401") ? "Invalid bot token — check your token from @BotFather" : msg });
   }
 });
 

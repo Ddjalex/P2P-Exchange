@@ -2,6 +2,12 @@ import { useEffect, useState } from "react";
 import { AdminLayout, AdminGuard } from "@/components/admin-layout";
 import { adminGet, adminPut, adminPost } from "@/lib/admin-api";
 
+const TG_ICON = (
+  <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
+    <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/>
+  </svg>
+);
+
 export default function AdminSettingsPage() {
   const [settings, setSettings] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
@@ -11,6 +17,7 @@ export default function AdminSettingsPage() {
   const [showBrevo, setShowBrevo] = useState(false);
   const [showTrongrid, setShowTrongrid] = useState(false);
   const [showBscscan, setShowBscscan] = useState(false);
+  const [showTgToken, setShowTgToken] = useState(false);
   const [trongridTestStatus, setTrongridTestStatus] = useState<{ ok: boolean; msg: string } | null>(null);
   const [bscscanTestStatus, setBscscanTestStatus] = useState<{ ok: boolean; msg: string } | null>(null);
   const [trongridTestLoading, setTrongridTestLoading] = useState(false);
@@ -23,9 +30,33 @@ export default function AdminSettingsPage() {
   const [smsTestLoading, setSmsTestLoading] = useState(false);
   const [emailTestLoading, setEmailTestLoading] = useState(false);
 
+  const [botStatus, setBotStatus] = useState<{ running: boolean; username: string | null } | null>(null);
+  const [tgApplying, setTgApplying] = useState(false);
+  const [tgApplyStatus, setTgApplyStatus] = useState<{ ok: boolean; msg: string } | null>(null);
+
   useEffect(() => {
     adminGet<Record<string, string>>("/settings").then(setSettings).catch(() => {}).finally(() => setLoading(false));
+    adminGet<{ running: boolean; username: string | null }>("/telegram/bot-status").then(setBotStatus).catch(() => {});
   }, []);
+
+  const applyTgToken = async () => {
+    const token = settings["telegramBotToken"]?.trim();
+    if (!token) { setTgApplyStatus({ ok: false, msg: "Paste a bot token first" }); return; }
+    setTgApplying(true);
+    setTgApplyStatus(null);
+    try {
+      const data = await adminPost<{ success: boolean; username: string; error?: string }>("/telegram/apply-token", {
+        token,
+        username: settings["telegramBotUsername"]?.trim() || undefined,
+      });
+      setBotStatus({ running: true, username: data.username });
+      setTgApplyStatus({ ok: true, msg: `✅ Bot @${data.username} is now live!` });
+    } catch (e: any) {
+      setTgApplyStatus({ ok: false, msg: e.message ?? "Failed to start bot" });
+    } finally {
+      setTgApplying(false);
+    }
+  };
 
   const update = (key: string, value: string) => setSettings(s => ({ ...s, [key]: value }));
   const toggle = (key: string) => update(key, settings[key] === "true" ? "false" : "true");
@@ -324,6 +355,77 @@ export default function AdminSettingsPage() {
                   )}
                 </div>
               </div>
+            </div>
+          </div>
+
+          {/* Telegram Bot */}
+          <div className="bg-card border border-border rounded-xl p-5">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-[#229ed9]">{TG_ICON}</span>
+              <h3 className="font-semibold">Telegram Bot</h3>
+              <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium">Integrations</span>
+              {botStatus && (
+                <span className={`ml-auto text-xs px-2 py-0.5 rounded-full font-medium ${botStatus.running ? "bg-success/10 text-success" : "bg-warning/10 text-warning"}`}>
+                  {botStatus.running ? `🟢 Active — @${botStatus.username}` : "⚪ Inactive"}
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground mb-5">
+              Paste your bot token from <a href="https://t.me/BotFather" target="_blank" rel="noreferrer" className="text-primary hover:underline">@BotFather</a> to enable Telegram notifications and broadcast messages. The token is stored securely in the database.
+            </p>
+
+            <div className="border border-border rounded-lg p-4 space-y-3">
+              <div className="flex items-center justify-between gap-4">
+                <label className="text-sm text-muted-foreground flex-shrink-0 w-28">Bot Token</label>
+                <div className="relative flex-1">
+                  <input
+                    type={showTgToken ? "text" : "password"}
+                    value={settings["telegramBotToken"] ?? ""}
+                    onChange={e => { update("telegramBotToken", e.target.value); setTgApplyStatus(null); }}
+                    placeholder="1234567890:AAF..."
+                    className="w-full px-3 py-1.5 pr-9 bg-background border border-border rounded-lg text-sm font-mono outline-none focus:border-primary"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowTgToken(v => !v)}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors text-xs"
+                  >
+                    {showTgToken ? "hide" : "show"}
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between gap-4">
+                <label className="text-sm text-muted-foreground flex-shrink-0 w-28">Bot Username</label>
+                <input
+                  type="text"
+                  value={settings["telegramBotUsername"] ?? ""}
+                  onChange={e => update("telegramBotUsername", e.target.value)}
+                  placeholder="XendrxBot"
+                  className="flex-1 px-3 py-1.5 bg-background border border-border rounded-lg text-sm outline-none focus:border-primary"
+                />
+              </div>
+
+              <div className="text-xs text-muted-foreground/60 space-y-0.5">
+                <p>1. Open Telegram and start a chat with <a href="https://t.me/BotFather" target="_blank" rel="noreferrer" className="text-primary hover:underline">@BotFather</a></p>
+                <p>2. Send <code className="text-primary/80">/newbot</code> and follow the prompts</p>
+                <p>3. Copy the token and paste it above, then click Apply</p>
+              </div>
+
+              {tgApplyStatus && (
+                <div className={`text-xs px-3 py-2 rounded-lg ${tgApplyStatus.ok ? 'bg-success/10 text-success' : 'bg-destructive/10 text-destructive'}`}>
+                  {tgApplyStatus.msg}
+                </div>
+              )}
+
+              <button
+                onClick={applyTgToken}
+                disabled={tgApplying || !settings["telegramBotToken"]?.trim()}
+                className="flex items-center gap-2 px-4 py-2 bg-[#229ed9]/10 text-[#229ed9] border border-[#229ed9]/30 rounded-lg text-sm font-medium hover:bg-[#229ed9]/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <span>{TG_ICON}</span>
+                <span>{tgApplying ? "Connecting…" : "Apply & Activate Bot"}</span>
+              </button>
             </div>
           </div>
 

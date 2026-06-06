@@ -1,18 +1,17 @@
 import { Bot, InlineKeyboard } from "grammy";
 
-const TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? "";
 const APP_URL = process.env.APP_URL ?? "";
-const BOT_USERNAME = process.env.TELEGRAM_BOT_USERNAME ?? "XendrxBot";
 
 let bot: Bot | null = null;
+let activeToken: string = process.env.TELEGRAM_BOT_TOKEN ?? "";
+let activeBotUsername: string = process.env.TELEGRAM_BOT_USERNAME ?? "XendrxBot";
 
-function createBot(): Bot {
-  const b = new Bot(TOKEN);
+function buildBot(token: string): Bot {
+  const b = new Bot(token);
 
   b.command("start", async (ctx) => {
     const firstName = ctx.from?.first_name ?? "Trader";
     const keyboard = new InlineKeyboard().webApp("🚀 Open Xendrx", APP_URL || "https://xendrx.replit.app");
-
     try {
       await ctx.replyWithPhoto(
         { url: `${APP_URL}/icons/icon-512x512.png` },
@@ -40,10 +39,7 @@ function createBot(): Bot {
   });
 
   b.on("message", async (ctx) => {
-    const keyboard = new InlineKeyboard().webApp(
-      "🚀 Open Xendrx",
-      APP_URL || "https://xendrx.replit.app"
-    );
+    const keyboard = new InlineKeyboard().webApp("🚀 Open Xendrx", APP_URL || "https://xendrx.replit.app");
     await ctx.reply("👇 Tap below to open Xendrx:", { reply_markup: keyboard });
   });
 
@@ -55,7 +51,7 @@ export async function sendTelegramMessage(
   text: string,
   url?: string
 ): Promise<void> {
-  if (!TOKEN || !telegramId || !bot) return;
+  if (!activeToken || !telegramId || !bot) return;
   try {
     const targetUrl = url ?? APP_URL ?? "https://xendrx.replit.app";
     const keyboard = new InlineKeyboard().webApp(
@@ -75,30 +71,58 @@ export async function sendTelegramMessage(
   }
 }
 
-export async function startBot(): Promise<void> {
-  if (!TOKEN) {
+export function getBotStatus(): { running: boolean; username: string | null } {
+  return { running: bot !== null, username: bot !== null ? activeBotUsername : null };
+}
+
+export async function startBot(token?: string, username?: string): Promise<void> {
+  const tok = token ?? activeToken;
+  if (!tok) {
     console.log("TELEGRAM_BOT_TOKEN not set — bot disabled");
     return;
   }
   try {
-    bot = createBot();
-
-    // Set commands list shown in Telegram
-    await bot.api.setMyCommands([
-      { command: "start", description: "Open Xendrx" },
-    ]);
-
-    // Start long-polling in the background (do NOT await — it runs until stopped)
+    bot = buildBot(tok);
+    await bot.api.setMyCommands([{ command: "start", description: "Open Xendrx" }]);
     bot.start({
       onStart: (info) => {
-        console.log(`✅ @${info.username} bot running`);
+        activeBotUsername = info.username;
+        activeToken = tok;
+        if (username) activeBotUsername = username;
+        console.log(`✅ @${activeBotUsername} bot running`);
       },
     }).catch((err) => {
       console.error("Bot polling error:", err);
+      bot = null;
     });
   } catch (error) {
     console.error("Bot launch error:", error);
+    bot = null;
   }
+}
+
+export async function restartBotWithToken(token: string, username?: string): Promise<{ username: string }> {
+  stopBot();
+  await new Promise(r => setTimeout(r, 500));
+
+  const b = buildBot(token);
+  // Verify token is valid by calling getMe
+  const me = await b.api.getMe();
+  activeBotUsername = username || me.username || "XendrxBot";
+  activeToken = token;
+
+  bot = b;
+  await bot.api.setMyCommands([{ command: "start", description: "Open Xendrx" }]);
+  bot.start({
+    onStart: (info) => {
+      console.log(`✅ @${info.username} bot running (restarted)`);
+    },
+  }).catch((err) => {
+    console.error("Bot polling error:", err);
+    bot = null;
+  });
+
+  return { username: activeBotUsername };
 }
 
 export function stopBot(): void {
