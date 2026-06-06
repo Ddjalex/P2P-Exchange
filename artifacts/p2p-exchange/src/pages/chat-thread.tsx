@@ -259,7 +259,7 @@ export default function ChatThreadPage() {
             )}
             {messages?.map((msg) => {
               const isMe = msg.senderId === user?.id;
-              if (msg.type === "admin" && msg.receiverId === user?.id) {
+              if (msg.type === "admin") {
                 return (
                   <div key={msg.id} className="my-3 px-1">
                     <div style={{
@@ -271,6 +271,11 @@ export default function ChatThreadPage() {
                     }}>
                       <div style={{ color: "#00e676", fontSize: "10px", fontWeight: 600, marginBottom: "4px" }}>
                         ⚖️ Message from Admin
+                        {msg.receiverId !== user?.id && (
+                          <span style={{ color: "#888", fontWeight: 400, marginLeft: "6px" }}>
+                            (sent to {msg.receiverId === order?.buyerId ? "buyer" : "seller"})
+                          </span>
+                        )}
                       </div>
                       <p style={{ color: "var(--foreground)", fontSize: "13px", margin: 0, lineHeight: 1.5 }}>
                         {msg.content}
