@@ -7,8 +7,10 @@ import {
   transactionsTable, walletsTable, messagesTable, notificationsTable,
   adminLogsTable, systemSettingsTable, notificationHistoryTable, fraudFlagsTable,
   depositVerificationsTable, cardWaitlistTable, feeSettingsTable, platformWalletTable,
+  feeTransactionsTable,
 } from "@workspace/db";
 import { eq, desc, and, or, ilike, sql, ne, count } from "drizzle-orm";
+import { getFeePercents, calculateFees } from "../helpers/fees.js";
 
 const router = Router();
 
@@ -463,7 +465,73 @@ router.put("/orders/:id/force-complete", adminAuth, async (req: any, res) => {
   try {
     const id = parseInt(req.params.id);
     const { note } = req.body ?? {};
-    await db.update(ordersTable).set({ status: "completed", completedAt: new Date() }).where(eq(ordersTable.id, id));
+
+    const order = await db.select().from(ordersTable).where(eq(ordersTable.id, id)).then(r => r[0]);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+
+    const { makerFeePercent, takerFeePercent } = await getFeePercents();
+    const grossUsdt = parseFloat(order.amountUsdt);
+    const { makerFee, takerFee, totalFee, netUsdt } = calculateFees(grossUsdt, makerFeePercent, takerFeePercent);
+    const now = new Date();
+
+    await db.transaction(async (tx) => {
+      // Release seller frozen USDT
+      const sellerWallet = await tx.select().from(walletsTable).where(eq(walletsTable.userId, order.sellerId)).then(r => r[0]);
+      if (sellerWallet) {
+        await tx.update(walletsTable)
+          .set({ frozenBalance: Math.max(0, parseFloat(sellerWallet.frozenBalance) - grossUsdt).toFixed(8) })
+          .where(eq(walletsTable.userId, order.sellerId));
+      }
+
+      // Credit buyer with net amount (after fees)
+      const buyerWallet = await tx.select().from(walletsTable).where(eq(walletsTable.userId, order.buyerId)).then(r => r[0]);
+      if (buyerWallet) {
+        await tx.update(walletsTable)
+          .set({ availableBalance: (parseFloat(buyerWallet.availableBalance) + netUsdt).toFixed(8) })
+          .where(eq(walletsTable.userId, order.buyerId));
+      } else {
+        await tx.insert(walletsTable).values({ userId: order.buyerId, availableBalance: netUsdt.toFixed(8), frozenBalance: "0.00" });
+      }
+
+      // Add fees to platform wallet
+      const pw = await tx.select().from(platformWalletTable).where(eq(platformWalletTable.asset, "USDT")).then(r => r[0]);
+      if (pw) {
+        await tx.update(platformWalletTable)
+          .set({ totalCollected: (parseFloat(String(pw.totalCollected)) + totalFee).toFixed(8), updatedAt: now })
+          .where(eq(platformWalletTable.asset, "USDT"));
+      } else {
+        await tx.insert(platformWalletTable).values({ asset: "USDT", totalCollected: totalFee.toFixed(8) });
+      }
+
+      // Update order with fee details
+      await tx.update(ordersTable).set({
+        status: "completed",
+        makerFeePercent: String(makerFeePercent),
+        takerFeePercent: String(takerFeePercent),
+        makerFeeAmount: makerFee.toFixed(8),
+        takerFeeAmount: takerFee.toFixed(8),
+        makerNetAmount: (grossUsdt - makerFee).toFixed(8),
+        takerNetAmount: netUsdt.toFixed(8),
+        releasedAt: now,
+        completedAt: now,
+      }).where(eq(ordersTable.id, id));
+
+      // Log fee transactions
+      const ad = await tx.select().from(adsTable).where(eq(adsTable.id, order.adId)).then(r => r[0]);
+      const makerId = ad?.userId ?? order.sellerId;
+      const takerId = makerId === order.buyerId ? order.sellerId : order.buyerId;
+      await tx.insert(feeTransactionsTable).values([
+        { orderId: id, userId: makerId, feeType: "maker", feePercent: String(makerFeePercent), grossAmount: grossUsdt.toFixed(8), feeAmount: makerFee.toFixed(8), netAmount: (grossUsdt - makerFee).toFixed(8) },
+        { orderId: id, userId: takerId, feeType: "taker", feePercent: String(takerFeePercent), grossAmount: grossUsdt.toFixed(8), feeAmount: takerFee.toFixed(8), netAmount: netUsdt.toFixed(8) },
+      ]);
+
+      // Transaction records
+      await tx.insert(transactionsTable).values([
+        { userId: order.buyerId, type: "p2p_buy", amount: netUsdt.toFixed(8), status: "completed", note: `Admin force-completed. Bought ${grossUsdt} USDT. Fee: ${totalFee.toFixed(8)} USDT. Received: ${netUsdt.toFixed(8)} USDT` },
+        { userId: order.sellerId, type: "p2p_sell", amount: grossUsdt.toFixed(8), status: "completed", note: `Admin force-completed. Sold ${grossUsdt} USDT` },
+      ]);
+    });
+
     await log(req.adminEmail, "force_complete_order", "order", id, note);
     res.json({ success: true });
   } catch (err) {
@@ -549,44 +617,106 @@ router.put("/disputes/:id/resolve", adminAuth, async (req: any, res) => {
 
     const order = await db.select().from(ordersTable).where(eq(ordersTable.id, appeal.orderId)).then(r => r[0]);
 
-    await db.update(appealsTable)
-      .set({ status: "resolved", adminDecision: decision, resolvedAt: new Date() })
-      .where(eq(appealsTable.id, id));
-
-    const newStatus = decision === "buyer_wins" ? "completed" : "cancelled";
-    await db.update(ordersTable)
-      .set({ status: newStatus as any, completedAt: new Date() })
-      .where(eq(ordersTable.id, appeal.orderId));
-
-    // Release frozen USDT based on decision
     if (order) {
-      const amount = parseFloat(order.amountUsdt);
+      const grossUsdt = parseFloat(order.amountUsdt);
+      const now = new Date();
 
-      const sellerWallet = await db.select().from(walletsTable).where(eq(walletsTable.userId, order.sellerId)).then(r => r[0]);
-      if (sellerWallet) {
-        const sellerFrozen = parseFloat(sellerWallet.frozenBalance);
-        const sellerAvailable = parseFloat(sellerWallet.availableBalance);
+      if (decision === "buyer_wins") {
+        // Apply fees and settle — buyer gets net USDT, platform collects fee
+        const { makerFeePercent, takerFeePercent } = await getFeePercents();
+        const { makerFee, takerFee, totalFee, netUsdt } = calculateFees(grossUsdt, makerFeePercent, takerFeePercent);
 
-        if (decision === "buyer_wins") {
-          // Deduct from seller frozen, add to buyer available
-          await db.update(walletsTable).set({
-            frozenBalance: Math.max(0, sellerFrozen - amount).toFixed(4),
-          }).where(eq(walletsTable.userId, order.sellerId));
-
-          const buyerWallet = await db.select().from(walletsTable).where(eq(walletsTable.userId, order.buyerId)).then(r => r[0]);
-          if (buyerWallet) {
-            await db.update(walletsTable).set({
-              availableBalance: (parseFloat(buyerWallet.availableBalance) + amount).toFixed(4),
-            }).where(eq(walletsTable.userId, order.buyerId));
+        await db.transaction(async (tx) => {
+          // Release seller frozen
+          const sellerWallet = await tx.select().from(walletsTable).where(eq(walletsTable.userId, order.sellerId)).then(r => r[0]);
+          if (sellerWallet) {
+            await tx.update(walletsTable)
+              .set({ frozenBalance: Math.max(0, parseFloat(sellerWallet.frozenBalance) - grossUsdt).toFixed(8) })
+              .where(eq(walletsTable.userId, order.sellerId));
           }
-        } else {
-          // seller_wins — return USDT from frozen back to seller available
-          await db.update(walletsTable).set({
-            availableBalance: (sellerAvailable + amount).toFixed(4),
-            frozenBalance: Math.max(0, sellerFrozen - amount).toFixed(4),
-          }).where(eq(walletsTable.userId, order.sellerId));
-        }
+
+          // Credit buyer with net amount
+          const buyerWallet = await tx.select().from(walletsTable).where(eq(walletsTable.userId, order.buyerId)).then(r => r[0]);
+          if (buyerWallet) {
+            await tx.update(walletsTable)
+              .set({ availableBalance: (parseFloat(buyerWallet.availableBalance) + netUsdt).toFixed(8) })
+              .where(eq(walletsTable.userId, order.buyerId));
+          } else {
+            await tx.insert(walletsTable).values({ userId: order.buyerId, availableBalance: netUsdt.toFixed(8), frozenBalance: "0.00" });
+          }
+
+          // Add fees to platform wallet
+          const pw = await tx.select().from(platformWalletTable).where(eq(platformWalletTable.asset, "USDT")).then(r => r[0]);
+          if (pw) {
+            await tx.update(platformWalletTable)
+              .set({ totalCollected: (parseFloat(String(pw.totalCollected)) + totalFee).toFixed(8), updatedAt: now })
+              .where(eq(platformWalletTable.asset, "USDT"));
+          } else {
+            await tx.insert(platformWalletTable).values({ asset: "USDT", totalCollected: totalFee.toFixed(8) });
+          }
+
+          // Update appeal and order with fee details
+          await tx.update(appealsTable)
+            .set({ status: "resolved", adminDecision: decision, resolvedAt: now })
+            .where(eq(appealsTable.id, id));
+
+          await tx.update(ordersTable).set({
+            status: "completed",
+            makerFeePercent: String(makerFeePercent),
+            takerFeePercent: String(takerFeePercent),
+            makerFeeAmount: makerFee.toFixed(8),
+            takerFeeAmount: takerFee.toFixed(8),
+            makerNetAmount: (grossUsdt - makerFee).toFixed(8),
+            takerNetAmount: netUsdt.toFixed(8),
+            releasedAt: now,
+            completedAt: now,
+            adminNote: adminNote ?? null,
+          }).where(eq(ordersTable.id, order.id));
+
+          // Log fee transactions
+          const ad = await tx.select().from(adsTable).where(eq(adsTable.id, order.adId)).then(r => r[0]);
+          const makerId = ad?.userId ?? order.sellerId;
+          const takerId = makerId === order.buyerId ? order.sellerId : order.buyerId;
+          await tx.insert(feeTransactionsTable).values([
+            { orderId: order.id, userId: makerId, feeType: "maker", feePercent: String(makerFeePercent), grossAmount: grossUsdt.toFixed(8), feeAmount: makerFee.toFixed(8), netAmount: (grossUsdt - makerFee).toFixed(8) },
+            { orderId: order.id, userId: takerId, feeType: "taker", feePercent: String(takerFeePercent), grossAmount: grossUsdt.toFixed(8), feeAmount: takerFee.toFixed(8), netAmount: netUsdt.toFixed(8) },
+          ]);
+
+          // Transaction records
+          await tx.insert(transactionsTable).values([
+            { userId: order.buyerId, type: "p2p_buy", amount: netUsdt.toFixed(8), status: "completed", note: `Dispute resolved (buyer wins). Received ${netUsdt.toFixed(8)} USDT after fee.` },
+            { userId: order.sellerId, type: "p2p_sell", amount: grossUsdt.toFixed(8), status: "completed", note: `Dispute resolved (buyer wins). Sold ${grossUsdt} USDT.` },
+          ]);
+        });
+      } else {
+        // seller_wins — return USDT from frozen back to seller available, no fees
+        await db.transaction(async (tx) => {
+          const sellerWallet = await tx.select().from(walletsTable).where(eq(walletsTable.userId, order.sellerId)).then(r => r[0]);
+          if (sellerWallet) {
+            await tx.update(walletsTable).set({
+              availableBalance: (parseFloat(sellerWallet.availableBalance) + grossUsdt).toFixed(8),
+              frozenBalance: Math.max(0, parseFloat(sellerWallet.frozenBalance) - grossUsdt).toFixed(8),
+            }).where(eq(walletsTable.userId, order.sellerId));
+          }
+
+          await tx.update(appealsTable)
+            .set({ status: "resolved", adminDecision: decision, resolvedAt: now })
+            .where(eq(appealsTable.id, id));
+
+          await tx.update(ordersTable)
+            .set({ status: "cancelled", completedAt: now, adminNote: adminNote ?? null })
+            .where(eq(ordersTable.id, order.id));
+        });
       }
+    } else {
+      // No order found — just update appeal status
+      const newStatus = decision === "buyer_wins" ? "completed" : "cancelled";
+      await db.update(appealsTable)
+        .set({ status: "resolved", adminDecision: decision, resolvedAt: new Date() })
+        .where(eq(appealsTable.id, id));
+      await db.update(ordersTable)
+        .set({ status: newStatus as any, completedAt: new Date() })
+        .where(eq(ordersTable.id, appeal.orderId));
     }
 
     await log(req.adminEmail, "resolve_dispute", "appeal", id, `${decision}: ${adminNote}`);
