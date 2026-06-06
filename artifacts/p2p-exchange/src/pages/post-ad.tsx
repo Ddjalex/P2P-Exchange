@@ -241,7 +241,7 @@ export default function PostAdPage() {
             {step1Error && (
               <div className="bg-destructive/10 border border-destructive/30 rounded-xl p-4 space-y-2">
                 <p className="text-sm text-destructive font-medium">⚠ {step1Error}</p>
-                <Link href="/payment-methods" className="inline-block px-4 py-2 bg-primary text-primary-foreground rounded-lg text-xs font-semibold">
+                <Link href="/profile/payment-methods" className="inline-block px-4 py-2 bg-primary text-primary-foreground rounded-lg text-xs font-semibold">
                   Add Payment Method →
                 </Link>
               </div>
@@ -318,7 +318,7 @@ export default function PostAdPage() {
                 <div className="bg-secondary/50 border border-border rounded-xl p-4 text-center space-y-2">
                   <p className="text-sm text-muted-foreground">You have no payment methods saved.</p>
                   <p className="text-xs text-muted-foreground">Add payment methods in Profile → Payment Methods first.</p>
-                  <Link href="/payment-methods" className="inline-block mt-1 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-xs font-semibold">
+                  <Link href="/profile/payment-methods" className="inline-block mt-1 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-xs font-semibold">
                     Go to Payment Methods →
                   </Link>
                 </div>
