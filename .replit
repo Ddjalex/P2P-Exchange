@@ -88,7 +88,8 @@ BASE_PATH = "/"
 LOG_LEVEL = "info"
 API_PORT = "8080"
 VAPID_EMAIL = "support@xendrx.com"
-VITE_VAPID_PUBLIC_KEY = "BFQTJM7qG36R8BgEbehO2XWZZnVUfjE2IaqC9kjsfTPWa8AuPuhW2Inkx0oBDBogLzqjaAtqxBND6rGCU1Ty_CI"
+VITE_VAPID_PUBLIC_KEY = "BHvf3SWnpYWU6mPOEAyPGCKS9nsrQ30gR8e67KBgZFb5lXlMUHR5pUjR7QWpuCW2DrunKEB10V6xxRxtlesvwj0"
+APP_URL = "https://d692b7cf-7fe2-4838-9bef-66fb0926867f-00-1w5mpa460i1yv.worf.replit.dev"
 
 [nix]
 channel = "stable-25_05"
