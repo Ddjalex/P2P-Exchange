@@ -64,7 +64,7 @@ export default function AuthPage() {
   const [toggled, setToggled] = useState(false);
 
   // Login state
-  const [loginC, setLoginC] = useState<Country>(ET);
+  const [loginC, setLoginC] = useState<Country | null>(null);
   const [loginType, setLoginType] = useState<"phone" | "email">("phone");
   const [loginPhone, setLoginPhone] = useState("");
   const [loginEmail, setLoginEmail] = useState("");
@@ -75,7 +75,7 @@ export default function AuthPage() {
   const [loginPhoneFocused, setLoginPhoneFocused] = useState(false);
 
   // Register state
-  const [regC, setRegC] = useState<Country>(ET);
+  const [regC, setRegC] = useState<Country | null>(null);
   const [regType, setRegType] = useState<"phone" | "email">("phone");
   const [regPhone, setRegPhone] = useState("");
   const [regEmail, setRegEmail] = useState("");
@@ -241,12 +241,12 @@ export default function AuthPage() {
   });
 
   function getOtpTarget() {
-    return regType === "phone" ? `${regC.dial}${regPhone}` : regEmail;
+    return regType === "phone" ? `${regC?.dial ?? "+251"}${regPhone}` : regEmail;
   }
 
   async function doLogin() {
     setLoginErr("");
-    if (loginType === "phone" && loginC.code === "ET" && !/^[97]\d{8}$/.test(loginPhone)) {
+    if (loginType === "phone" && !/^[97]\d{8}$/.test(loginPhone)) {
       setLoginPhoneErr(true);
       return;
     }
@@ -264,10 +264,12 @@ export default function AuthPage() {
         } catch { }
       }
 
+      const country = loginC?.code ?? "ET";
+      const dialCode = loginC?.dial ?? "+251";
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ identifier, password: loginPwd, country: loginC.code, dialCode: loginC.dial, type: loginType }),
+        body: JSON.stringify({ identifier, password: loginPwd, country, dialCode, type: loginType }),
       });
       const data = await res.json();
       if (!res.ok) { setLoginErr(data.error || "Login failed"); return; }
@@ -286,7 +288,7 @@ export default function AuthPage() {
   async function doSendCode() {
     setRegErr("");
     setOtpErr("");
-    if (regType === "phone" && regC.code === "ET" && !/^[97]\d{8}$/.test(regPhone)) {
+    if (regType === "phone" && !/^[97]\d{8}$/.test(regPhone)) {
       setRegPhoneErr(true);
       return;
     }
@@ -390,7 +392,7 @@ export default function AuthPage() {
               : filteredCountries.map(c => {
                 const cur = modalCtx === "login" ? loginC : regC;
                 return (
-                  <div key={c.code} className={`modal-item${cur.code === c.code ? " active" : ""}`} onClick={() => pickCountry(c.code)}>
+                  <div key={c.code} className={`modal-item${cur?.code === c.code ? " active" : ""}`} onClick={() => pickCountry(c.code)}>
                     <span className="m-flag">{c.flag}</span>
                     <div className="m-info"><div className="m-name">{c.name}</div><div className="m-iso">{c.code}</div></div>
                     <span className="m-dial">{c.dial}</span>
@@ -414,7 +416,7 @@ export default function AuthPage() {
         <div className="credentials-panel signin">
           <h2 className="slide-element">Login</h2>
 
-          {loginC.code === "ET" && (
+          {loginC?.code === "ET" && (
             <div className="input-tabs slide-element">
               <button className={loginType === "phone" ? "active" : ""} onClick={() => setLoginType("phone")}>
                 <span className="tab-icon">📱</span><span className="tab-label">Phone</span>
@@ -429,15 +431,17 @@ export default function AuthPage() {
             <div className="phone-row-wrap slide-element">
               <div className="phone-row-label">Phone Number</div>
               <div className={`phone-row${loginPhoneFocused ? " focused" : ""}`}>
-                {/* Clickable prefix → opens inline dropdown */}
                 <div ref={loginPrefixRef} className="phone-prefix-wrap">
                   <div
                     className={`phone-prefix clickable${loginPrefixOpen ? " prefix-active" : ""}`}
                     onClick={() => openPrefixDropdown("login")}
-                    title="Change country"
+                    title="Select country"
                   >
-                    <span className="pf-flag">{loginC.flag}</span>
-                    <span className="pf-code">{loginC.dial}</span>
+                    {loginC ? (
+                      <><span className="pf-flag">{loginC.flag}</span><span className="pf-code">{loginC.dial}</span></>
+                    ) : (
+                      <><span className="pf-flag" style={{fontSize:14}}>🌍</span><span className="pf-code" style={{color:"rgba(255,255,255,.35)"}}>+—</span></>
+                    )}
                     <i className="fa-solid fa-chevron-down pf-caret"></i>
                   </div>
                   {loginPrefixOpen && (
@@ -456,7 +460,7 @@ export default function AuthPage() {
                         {filterCountries(loginPrefixSearch).map(c => (
                           <div
                             key={c.code}
-                            className={`prefix-item${loginC.code === c.code ? " active" : ""}`}
+                            className={`prefix-item${loginC?.code === c.code ? " active" : ""}`}
                             onClick={() => pickPrefixCountry(c.code, "login")}
                           >
                             <span className="pi-flag">{c.flag}</span>
@@ -522,7 +526,7 @@ export default function AuthPage() {
             <>
               <h2 className="slide-element">Register</h2>
 
-              {regC.code === "ET" && (
+              {regC?.code === "ET" && (
                 <div className="input-tabs slide-element">
                   <button className={regType === "phone" ? "active" : ""} onClick={() => setRegType("phone")}>
                     <span className="tab-icon">📱</span><span className="tab-label">Phone</span>
@@ -537,15 +541,17 @@ export default function AuthPage() {
                 <div className="phone-row-wrap slide-element">
                   <div className="phone-row-label">Phone Number</div>
                   <div className={`phone-row${regPhoneFocused ? " focused" : ""}`}>
-                    {/* Clickable prefix → opens inline dropdown */}
                     <div ref={regPrefixRef} className="phone-prefix-wrap">
                       <div
                         className={`phone-prefix clickable${regPrefixOpen ? " prefix-active" : ""}`}
                         onClick={() => openPrefixDropdown("reg")}
-                        title="Change country"
+                        title="Select country"
                       >
-                        <span className="pf-flag">{regC.flag}</span>
-                        <span className="pf-code">{regC.dial}</span>
+                        {regC ? (
+                          <><span className="pf-flag">{regC.flag}</span><span className="pf-code">{regC.dial}</span></>
+                        ) : (
+                          <><span className="pf-flag" style={{fontSize:14}}>🌍</span><span className="pf-code" style={{color:"rgba(255,255,255,.35)"}}>+—</span></>
+                        )}
                         <i className="fa-solid fa-chevron-down pf-caret"></i>
                       </div>
                       {regPrefixOpen && (
@@ -564,7 +570,7 @@ export default function AuthPage() {
                             {filterCountries(regPrefixSearch).map(c => (
                               <div
                                 key={c.code}
-                                className={`prefix-item${regC.code === c.code ? " active" : ""}`}
+                                className={`prefix-item${regC?.code === c.code ? " active" : ""}`}
                                 onClick={() => pickPrefixCountry(c.code, "reg")}
                               >
                                 <span className="pi-flag">{c.flag}</span>
