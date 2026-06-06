@@ -3,6 +3,13 @@ name: Push + Telegram notifications
 description: Architecture of the PWA push and Telegram bot notification systems added to Xendrx
 ---
 
+## ⚠️ esbuild + grammy: must be externalized
+grammy dynamically loads `./platform.node` at runtime (CJS). esbuild cannot bundle it.
+**Fix:** add `"grammy"` to the `external` array in `artifacts/api-server/build.mjs`.
+telegraf@4.x also broken on Node.js 24 (node-fetch@2 AbortSignal conflict) — use grammy instead.
+Bot API calls use `grammy`'s `InlineKeyboard` and `bot.api.sendMessage()`.
+`bot.start()` must NOT be awaited — it blocks until bot stops; call `.catch(console.error)` on it.
+
 ## PWA Push Notifications
 - `artifacts/p2p-exchange/public/sw.js` — service worker with push handler + notification click handler
 - `artifacts/p2p-exchange/src/pwa.ts` — `registerServiceWorker()`, `requestNotificationPermission()`, `subscribeToPush(userId)`
