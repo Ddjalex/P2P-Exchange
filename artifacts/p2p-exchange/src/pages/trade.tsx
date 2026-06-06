@@ -169,8 +169,11 @@ export default function TradePage() {
 
   const sendBrowserNotification = (title: string, body: string) => {
     if (!('Notification' in window)) return;
-    if (Notification.permission === 'granted') {
-      new Notification(title, { body, icon: '/favicon.ico', badge: '/favicon.ico' });
+    if (Notification.permission !== 'granted') return;
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.ready
+        .then(reg => reg.showNotification(title, { body, icon: '/icons/icon-192x192.png', badge: '/icons/icon-72x72.png', vibrate: [100, 50, 100] }))
+        .catch(() => {});
     }
   };
 

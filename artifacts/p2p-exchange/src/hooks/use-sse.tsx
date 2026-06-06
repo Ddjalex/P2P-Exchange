@@ -1,6 +1,8 @@
 import { useEffect, useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
+import { triggerNotification } from "@/helpers/notifications";
 
 const TOKEN_KEY = "p2p_token";
 
@@ -25,6 +27,7 @@ const KYC_MESSAGES: Record<string, { title: string; description: string; variant
 export function useSse() {
   const { user, refreshUser } = useAuth();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const esRef = useRef<EventSource | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -47,9 +50,10 @@ export function useSse() {
       const es = new EventSource(url);
       esRef.current = es;
 
+      // ── KYC status change ──────────────────────────────────────────────────
       es.addEventListener("kyc_update", async (e: MessageEvent) => {
         try {
-          const data = JSON.parse(e.data) as { status: string; rejectionReason?: string; adminMessage?: string };
+          const data = JSON.parse(e.data) as { status: string; rejectionReason?: string };
           const msg = KYC_MESSAGES[data.status];
           if (msg) {
             toast({
@@ -60,6 +64,63 @@ export function useSse() {
           }
           await refreshUser();
         } catch {}
+      });
+
+      // ── Order status changed ───────────────────────────────────────────────
+      es.addEventListener("order_update", (e: MessageEvent) => {
+        try {
+          const data = JSON.parse(e.data) as { orderId: number; status: string; type: string };
+
+          // Invalidate all order-related caches immediately
+          queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+          queryClient.invalidateQueries({ queryKey: ["badge-orders"] });
+          queryClient.invalidateQueries({ queryKey: ["notif-count"] });
+          queryClient.invalidateQueries({ queryKey: ["notifications"] });
+
+          if (data.orderId) {
+            queryClient.invalidateQueries({ queryKey: [`/api/orders/${data.orderId}`] });
+          }
+
+          if (data.type === "order_created") {
+            triggerNotification("order");
+            toast({ title: "🔔 New Order", description: "A new order has been created." });
+          } else if (data.type === "payment_sent") {
+            triggerNotification("order");
+            toast({ title: "💰 Payment Marked", description: "The buyer has marked payment as sent." });
+          } else if (data.type === "order_completed") {
+            triggerNotification("order");
+            toast({ title: "✅ Order Completed", description: "The order has been completed successfully." });
+          } else if (data.type === "order_cancelled") {
+            toast({ title: "❌ Order Cancelled", description: "An order has been cancelled.", variant: "destructive" });
+          }
+        } catch {}
+      });
+
+      // ── New chat message ───────────────────────────────────────────────────
+      es.addEventListener("new_message", (e: MessageEvent) => {
+        try {
+          const data = JSON.parse(e.data) as { orderId: number; senderUsername: string };
+
+          queryClient.invalidateQueries({ queryKey: ["badge-chat"] });
+          queryClient.invalidateQueries({ queryKey: ["notif-count"] });
+
+          if (data.orderId) {
+            queryClient.invalidateQueries({ queryKey: [`/api/messages/${data.orderId}`] });
+          }
+
+          triggerNotification("message");
+        } catch {}
+      });
+
+      // ── Wallet balance changed ─────────────────────────────────────────────
+      es.addEventListener("wallet_update", () => {
+        queryClient.invalidateQueries({ queryKey: ["/api/wallet"] });
+      });
+
+      // ── General notification badge ─────────────────────────────────────────
+      es.addEventListener("notification_update", () => {
+        queryClient.invalidateQueries({ queryKey: ["notif-count"] });
+        queryClient.invalidateQueries({ queryKey: ["notifications"] });
       });
 
       es.onerror = () => {

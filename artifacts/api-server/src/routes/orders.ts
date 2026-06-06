@@ -6,6 +6,7 @@ import { notify } from "../lib/notify.js";
 import { getFeePercents, calculateFees } from "../helpers/fees.js";
 import { PushNotify } from "./push.js";
 import { TelegramNotify } from "../telegram/notify.js";
+import { emitToUser } from "../lib/sse.js";
 
 const router = Router();
 
@@ -224,6 +225,8 @@ router.post("/", async (req, res) => {
     });
     PushNotify.newOrder(sellerId, order.id, parseFloat(order.amountUsdt).toFixed(4), Number(order.amountEtb).toLocaleString()).catch(console.error);
     TelegramNotify.newOrder(sellerId, order.id, parseFloat(order.amountUsdt).toFixed(4), Number(order.amountEtb).toLocaleString()).catch(console.error);
+    emitToUser(sellerId, "order_update", { orderId: order.id, status: "unpaid", type: "order_created" });
+    emitToUser(buyerId, "order_update", { orderId: order.id, status: "unpaid", type: "order_created" });
 
     res.status(201).json(await formatOrder(order, userId));
   } catch (err) {
@@ -301,6 +304,8 @@ router.post("/:id/mark-paid", async (req, res) => {
     });
     PushNotify.paymentSent(order.sellerId, id, Number(updated.amountEtb).toLocaleString()).catch(console.error);
     TelegramNotify.paymentSent(order.sellerId, id, Number(updated.amountEtb).toLocaleString()).catch(console.error);
+    emitToUser(order.sellerId, "order_update", { orderId: id, status: "paid", type: "payment_sent" });
+    emitToUser(order.buyerId, "order_update", { orderId: id, status: "paid", type: "payment_sent" });
 
     res.json(await formatOrder(updated, userId));
   } catch (err) {
@@ -450,6 +455,10 @@ router.post("/:id/release", async (req, res) => {
     });
     PushNotify.orderCompleted(order.buyerId, id, buyerReceives.toFixed(4)).catch(console.error);
     TelegramNotify.orderCompleted(order.buyerId, id, buyerReceives.toFixed(4)).catch(console.error);
+    emitToUser(order.buyerId, "order_update", { orderId: id, status: "completed", type: "order_completed" });
+    emitToUser(order.buyerId, "wallet_update", {});
+    emitToUser(order.sellerId, "order_update", { orderId: id, status: "completed", type: "order_completed" });
+    emitToUser(order.sellerId, "wallet_update", {});
 
     const updated = await db.select().from(ordersTable).where(eq(ordersTable.id, id)).then(r => r[0]);
     res.json(await formatOrder(updated, userId));
@@ -497,6 +506,8 @@ router.post("/:id/cancel", async (req, res) => {
     });
     PushNotify.orderCancelled(counterpartyId, id).catch(console.error);
     TelegramNotify.orderCancelled(counterpartyId, id).catch(console.error);
+    emitToUser(counterpartyId, "order_update", { orderId: id, status: "cancelled", type: "order_cancelled" });
+    emitToUser(userId, "order_update", { orderId: id, status: "cancelled", type: "order_cancelled" });
 
     res.json(await formatOrder(updated, userId));
   } catch (err) {
@@ -554,6 +565,8 @@ router.post("/:id/appeal", async (req, res) => {
     });
     PushNotify.appealRaised(appealCounterpartyId, id).catch(console.error);
     TelegramNotify.appealRaised(appealCounterpartyId, id).catch(console.error);
+    emitToUser(appealCounterpartyId, "order_update", { orderId: id, status: "appeal", type: "appeal_raised" });
+    emitToUser(userId, "order_update", { orderId: id, status: "appeal", type: "appeal_raised" });
 
     res.status(201).json({
       id: appeal.id,

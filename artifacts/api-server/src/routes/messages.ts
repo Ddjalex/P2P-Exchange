@@ -5,6 +5,7 @@ import { eq, and, or, desc, ne } from "drizzle-orm";
 import { notify } from "../lib/notify.js";
 import { PushNotify } from "./push.js";
 import { TelegramNotify } from "../telegram/notify.js";
+import { emitToUser } from "../lib/sse.js";
 import multer from "multer";
 import path from "node:path";
 import { mkdirSync } from "node:fs";
@@ -146,6 +147,7 @@ router.post("/:orderId", async (req, res) => {
     });
     PushNotify.newMessage(receiverId, orderId, sender?.username ?? "Someone", content).catch(console.error);
     TelegramNotify.newMessage(receiverId, orderId, sender?.username ?? "Someone", content).catch(console.error);
+    emitToUser(receiverId, "new_message", { orderId, senderId: (req as any).userId, senderUsername: sender?.username ?? "Someone" });
 
     res.status(201).json({
       id: msg.id,
@@ -194,6 +196,7 @@ router.post("/:orderId/image", chatUpload.single("image"), async (req, res) => {
       message: `${sender?.username ?? "Someone"} sent an image`,
       relatedOrderId: orderId,
     });
+    emitToUser(receiverId, "new_message", { orderId, senderId: (req as any).userId, senderUsername: sender?.username ?? "Someone" });
 
     res.status(201).json({
       id: msg.id,
