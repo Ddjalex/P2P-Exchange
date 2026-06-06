@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { rateLimit } from "express-rate-limit";
 import { db } from "@workspace/db";
-import { usersTable, walletsTable, verificationCodesTable, systemSettingsTable, kycSubmissionsTable } from "@workspace/db";
+import { usersTable, walletsTable, verificationCodesTable, systemSettingsTable, kycSubmissionsTable, notificationsTable } from "@workspace/db";
 import { eq, and, gt } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
@@ -342,8 +342,33 @@ router.post("/login", loginLimiter, async (req, res) => {
     if (!user || !user.passwordHash) return res.status(401).json({ error: "Invalid credentials" });
     if (user.isSuspended) return res.status(403).json({ error: "Account suspended" });
 
+    // Account lockout check
+    if (user.lockedUntil && new Date(user.lockedUntil) > new Date()) {
+      const mins = Math.ceil((new Date(user.lockedUntil).getTime() - Date.now()) / 60000);
+      return res.status(423).json({ error: `Account temporarily locked due to too many failed attempts. Try again in ${mins} minute${mins === 1 ? "" : "s"}.` });
+    }
+
     const valid = await bcrypt.compare(password, user.passwordHash);
-    if (!valid) return res.status(401).json({ error: "Invalid credentials" });
+    if (!valid) {
+      const attempts = (user.failedLoginAttempts ?? 0) + 1;
+      const LOCK_THRESHOLD = 5;
+      if (attempts >= LOCK_THRESHOLD) {
+        const lockedUntil = new Date(Date.now() + 30 * 60 * 1000);
+        await db.update(usersTable).set({ failedLoginAttempts: attempts, lockedUntil }).where(eq(usersTable.id, user.id));
+        await db.insert(notificationsTable).values({
+          userId: user.id,
+          type: "system",
+          title: "🔒 Account Temporarily Locked",
+          message: "Your account has been locked for 30 minutes due to 5 consecutive failed login attempts. If this wasn't you, consider changing your password.",
+        });
+      } else {
+        await db.update(usersTable).set({ failedLoginAttempts: attempts }).where(eq(usersTable.id, user.id));
+      }
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+
+    // Successful login — reset lockout counters
+    await db.update(usersTable).set({ failedLoginAttempts: 0, lockedUntil: null }).where(eq(usersTable.id, user.id));
 
     const token = signToken(user.id);
     res.json({ token, user: formatUser(user) });
