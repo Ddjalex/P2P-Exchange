@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { ordersTable, adsTable, usersTable, messagesTable, appealsTable, feedbackTable, walletsTable, paymentMethodsTable, transactionsTable, feeTransactionsTable, platformWalletTable } from "@workspace/db";
+import { ordersTable, adsTable, usersTable, messagesTable, appealsTable, feedbackTable, walletsTable, paymentMethodsTable, transactionsTable, feeTransactionsTable, platformWalletTable, kycSubmissionsTable } from "@workspace/db";
 import { eq, and, or, desc, sql, inArray } from "drizzle-orm";
 import { notify } from "../lib/notify.js";
 import { getFeePercents, calculateFees } from "../helpers/fees.js";
@@ -65,6 +65,7 @@ async function getSellerPaymentDetails(sellerId: number, paymentMethod: string):
 async function formatOrder(order: any, viewerId?: number) {
   const buyer = await db.select().from(usersTable).where(eq(usersTable.id, order.buyerId)).then(r => r[0]);
   const seller = await db.select().from(usersTable).where(eq(usersTable.id, order.sellerId)).then(r => r[0]);
+  const buyerKyc = await db.select().from(kycSubmissionsTable).where(eq(kycSubmissionsTable.userId, order.buyerId)).then(r => r[0]);
 
   let unreadCount = 0;
   if (viewerId) {
@@ -85,6 +86,7 @@ async function formatOrder(order: any, viewerId?: number) {
     buyerId: order.buyerId,
     sellerId: order.sellerId,
     buyerUsername: buyer?.username ?? "Unknown",
+    buyerKycName: buyerKyc?.fullName ?? null,
     sellerUsername: seller?.username ?? "Unknown",
     amountUsdt: order.amountUsdt,
     amountEtb: order.amountEtb,

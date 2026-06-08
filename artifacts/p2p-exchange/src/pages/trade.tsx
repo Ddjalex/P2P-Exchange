@@ -547,7 +547,7 @@ export default function TradePage() {
                 {parseFloat(order.amountUsdt).toFixed(4)} USDT
               </p>
               <p className="text-xs text-muted-foreground text-center mb-5">
-                to <span className="font-semibold text-foreground">{order.buyerUsername}</span>. This action cannot be undone.
+                to <span className="font-semibold text-foreground">{order.buyerKycName ?? order.buyerUsername}</span>. This action cannot be undone.
               </p>
               <div className="bg-warning/10 border border-warning/20 rounded-xl p-3 mb-5 text-xs text-warning text-center">
                 ⚠ Only release after you have verified the payment in your bank or wallet.
@@ -587,9 +587,9 @@ export default function TradePage() {
               <span className="text-xs text-muted-foreground">Buyer</span>
               <div className="flex items-center space-x-2">
                 <div className="w-5 h-5 rounded-full bg-primary/20 flex items-center justify-center text-primary text-[10px] font-bold flex-shrink-0">
-                  {(order.buyerUsername ?? "?").charAt(0).toUpperCase()}
+                  {(order.buyerKycName ?? order.buyerUsername ?? "?").charAt(0).toUpperCase()}
                 </div>
-                <span className="text-sm font-semibold">{order.buyerUsername ?? "—"}</span>
+                <span className="text-sm font-semibold">{order.buyerKycName ?? order.buyerUsername ?? "—"}</span>
               </div>
             </div>
             <OrderDetailRow label="Amount" value={`${Number(order.amountEtb).toLocaleString()} ETB`} />
