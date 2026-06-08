@@ -23,3 +23,4 @@ export * from "./telegram_users";
 export * from "./push_subscriptions";
 export * from "./internal_transfers";
 export * from "./address_verifications";
+export * from "./password_reset_tokens";

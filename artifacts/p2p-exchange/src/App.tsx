@@ -10,6 +10,7 @@ import { NotificationPermissionBanner } from "@/components/notification-permissi
 
 // Regular pages
 import AuthPage from "@/pages/auth";
+import ForgotPasswordPage from "@/pages/forgot-password";
 import NotFound from "@/pages/not-found";
 import WalletPage from "@/pages/wallet";
 import P2PPage from "@/pages/p2p";
@@ -92,6 +93,9 @@ function Router() {
       <Route path="/auth">
         {isLoading ? null : <AuthPage />}
       </Route>
+
+      {/* Forgot password flow — public */}
+      <Route path="/forgot-password" component={ForgotPasswordPage} />
 
       {/* Shared ad link — public, handles own auth redirect */}
       <Route path="/p2p/ad/:adId" component={SharedAdPage} />

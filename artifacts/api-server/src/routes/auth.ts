@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { rateLimit } from "express-rate-limit";
 import { db } from "@workspace/db";
-import { usersTable, walletsTable, verificationCodesTable, systemSettingsTable, kycSubmissionsTable, notificationsTable } from "@workspace/db";
+import { usersTable, walletsTable, verificationCodesTable, systemSettingsTable, kycSubmissionsTable, notificationsTable, passwordResetTokensTable, telegramUsersTable } from "@workspace/db";
 import { eq, and, gt } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
@@ -382,6 +382,167 @@ router.post("/login", loginLimiter, async (req, res) => {
   } catch (err) {
     req.log.error({ err }, "Login failed");
     res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── FORGOT PASSWORD FLOW ──────────────────────────────────────────────────────
+
+const forgotPasswordLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many reset attempts. Please wait 15 minutes." },
+});
+
+function generateOTP(): string {
+  return String(Math.floor(100000 + Math.random() * 900000));
+}
+
+// POST /api/auth/forgot-password — Step 1: send OTP
+router.post("/forgot-password", forgotPasswordLimiter, async (req, res) => {
+  try {
+    const { identifier } = req.body ?? {};
+    if (!identifier) {
+      return res.status(400).json({ message: "Email or phone number required" });
+    }
+
+    const allUsers = await db.select().from(usersTable);
+    const user = allUsers.find(
+      u => u.email === String(identifier).toLowerCase() ||
+           (u.phone && (u.phone === identifier || u.phone.endsWith(identifier)))
+    );
+
+    if (!user) {
+      return res.json({ success: true, message: "If this account exists, a reset code has been sent." });
+    }
+
+    const otp = generateOTP();
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+
+    await db.delete(passwordResetTokensTable).where(eq(passwordResetTokensTable.userId, user.id));
+
+    await db.insert(passwordResetTokensTable).values({
+      userId: user.id,
+      token: otp,
+      identifier: String(identifier),
+      expiresAt,
+      used: false,
+    });
+
+    // Try Telegram notification if user has bot linked
+    const tgUser = await db.select().from(telegramUsersTable)
+      .where(eq(telegramUsersTable.userId, user.id)).then(r => r[0]);
+
+    if (tgUser?.telegramId) {
+      try {
+        const { sendTelegramMessage } = await import("../telegram/bot.js");
+        await sendTelegramMessage(
+          tgUser.telegramId,
+          `🔐 *Xendrx Password Reset*\n\nYour reset code is:\n\n\`${otp}\`\n\nThis code expires in *15 minutes*.\nIf you did not request this, ignore this message.`
+        );
+      } catch {
+        // Telegram is optional — don't fail the request
+      }
+    }
+
+    req.log.info({ target: identifier }, "Password reset OTP generated");
+    console.log(`\n🔐 RESET OTP for ${identifier}: ${otp}\n`);
+
+    return res.json({
+      success: true,
+      message: "Reset code sent successfully.",
+      ...(process.env.NODE_ENV !== "production" && { devOtp: otp }),
+    });
+  } catch (err: any) {
+    req.log.error({ err }, "forgot-password failed");
+    return res.status(500).json({ message: "Failed to send reset code. Try again." });
+  }
+});
+
+// POST /api/auth/verify-reset-otp — Step 2: verify OTP
+router.post("/verify-reset-otp", async (req, res) => {
+  try {
+    const { identifier, otp } = req.body ?? {};
+    if (!identifier || !otp) {
+      return res.status(400).json({ message: "Identifier and OTP required" });
+    }
+
+    const resetToken = await db.select().from(passwordResetTokensTable)
+      .where(and(
+        eq(passwordResetTokensTable.identifier, String(identifier)),
+        eq(passwordResetTokensTable.token, String(otp)),
+        eq(passwordResetTokensTable.used, false),
+      )).then(r => r[0]);
+
+    if (!resetToken) {
+      return res.status(400).json({ message: "Invalid reset code" });
+    }
+    if (new Date() > resetToken.expiresAt) {
+      return res.status(400).json({ message: "Reset code has expired. Request a new one." });
+    }
+
+    return res.json({ success: true, message: "Code verified successfully" });
+  } catch (err: any) {
+    req.log.error({ err }, "verify-reset-otp failed");
+    return res.status(500).json({ message: "Verification failed. Try again." });
+  }
+});
+
+// POST /api/auth/reset-password — Step 3: set new password
+router.post("/reset-password", async (req, res) => {
+  try {
+    const { identifier, otp, newPassword } = req.body ?? {};
+    if (!identifier || !otp || !newPassword) {
+      return res.status(400).json({ message: "All fields required" });
+    }
+    if (String(newPassword).length < 8) {
+      return res.status(400).json({ message: "Password must be at least 8 characters" });
+    }
+
+    const resetToken = await db.select().from(passwordResetTokensTable)
+      .where(and(
+        eq(passwordResetTokensTable.identifier, String(identifier)),
+        eq(passwordResetTokensTable.token, String(otp)),
+        eq(passwordResetTokensTable.used, false),
+      )).then(r => r[0]);
+
+    if (!resetToken || !resetToken.userId) {
+      return res.status(400).json({ message: "Invalid or expired reset code" });
+    }
+    if (new Date() > resetToken.expiresAt) {
+      return res.status(400).json({ message: "Reset code expired. Request a new one." });
+    }
+
+    const hashedPassword = await bcrypt.hash(String(newPassword), 10);
+
+    await db.update(usersTable)
+      .set({ passwordHash: hashedPassword })
+      .where(eq(usersTable.id, resetToken.userId));
+
+    await db.update(passwordResetTokensTable)
+      .set({ used: true })
+      .where(eq(passwordResetTokensTable.id, resetToken.id));
+
+    // Telegram confirmation (optional)
+    const tgUser = await db.select().from(telegramUsersTable)
+      .where(eq(telegramUsersTable.userId, resetToken.userId)).then(r => r[0]);
+    if (tgUser?.telegramId) {
+      try {
+        const { sendTelegramMessage } = await import("../telegram/bot.js");
+        sendTelegramMessage(
+          tgUser.telegramId,
+          `✅ *Password Reset Successful*\n\nYour Xendrx password has been changed.\nIf this was not you, contact support@xendrx.com immediately.`
+        ).catch(() => {});
+      } catch {
+        // Telegram is optional
+      }
+    }
+
+    return res.json({ success: true, message: "Password reset successfully! You can now login." });
+  } catch (err: any) {
+    req.log.error({ err }, "reset-password failed");
+    return res.status(500).json({ message: "Password reset failed. Try again." });
   }
 });
 

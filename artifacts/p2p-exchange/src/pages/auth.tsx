@@ -505,7 +505,7 @@ export default function AuthPage() {
             <i className="fa-solid fa-lock"></i>
           </div>
 
-          <div className="forgot slide-element"><a href="#">Forgot password?</a></div>
+          <div className="forgot slide-element"><a href="/forgot-password" style={{ color: '#00e5ff', textDecoration: 'none' }}>Forgot password?</a></div>
 
           <div className="slide-element">
             <button className="submit-btn" onClick={doLogin} disabled={loginLoading}>
