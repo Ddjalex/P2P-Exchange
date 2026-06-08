@@ -1,5 +1,5 @@
 import { AppLayout } from "@/components/layout";
-import { Plus, Search, MessageSquare } from "lucide-react";
+import { Search, MessageSquare } from "lucide-react";
 import { useListConversations } from "@workspace/api-client-react";
 import { useState } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -21,9 +21,22 @@ function formatChatTime(date: Date): string {
   }
 }
 
+const STATUS_STYLE: Record<string, { label: string; cls: string }> = {
+  pending:          { label: "Pending",    cls: "bg-yellow-500/20 text-yellow-400" },
+  payment_sent:     { label: "Paid",       cls: "bg-blue-500/20 text-blue-400" },
+  completed:        { label: "Completed",  cls: "bg-green-500/20 text-green-400" },
+  cancelled:        { label: "Cancelled",  cls: "bg-muted/40 text-muted-foreground" },
+  disputed:         { label: "Disputed",   cls: "bg-red-500/20 text-red-400" },
+  appeal:           { label: "Appeal",     cls: "bg-orange-500/20 text-orange-400" },
+};
+
 export default function ChatPage() {
-  const [tab, setTab] = useState<"all" | "for_you">("all");
+  const [search, setSearch] = useState("");
   const { data: conversations, isLoading } = useListConversations();
+
+  const filtered = conversations?.filter(conv =>
+    !search || conv.traderUsername.toLowerCase().includes(search.toLowerCase())
+  );
 
   return (
     <AppLayout>
@@ -32,32 +45,18 @@ export default function ChatPage() {
           <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center text-xs font-bold">ME</div>
           <h1 className="font-bold text-xl">P2P Message</h1>
         </div>
-        <Plus className="w-5 h-5 text-muted-foreground" />
       </header>
 
       <div className="p-4">
         <div className="relative mb-4">
           <Search className="w-4 h-4 absolute left-3 top-3 text-muted-foreground" />
-          <input 
-            type="text" 
-            placeholder="Search by nickname" 
+          <input
+            type="text"
+            placeholder="Search by nickname"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
             className="w-full bg-card border border-border rounded-lg pl-10 pr-4 py-2 text-sm outline-none focus:border-primary"
           />
-        </div>
-
-        <div className="flex space-x-6 border-b border-border mb-4">
-          {["All", "For You"].map((t) => {
-            const val = t.toLowerCase().replace(" ", "_");
-            return (
-              <button
-                key={t}
-                onClick={() => setTab(val as any)}
-                className={`pb-2 text-sm font-medium ${tab === val ? "text-primary border-b-2 border-primary" : "text-muted-foreground"}`}
-              >
-                {t}
-              </button>
-            );
-          })}
         </div>
 
         <div className="space-y-1">
@@ -71,36 +70,56 @@ export default function ChatPage() {
                 </div>
               </div>
             ))
-          ) : conversations?.length === 0 ? (
+          ) : !filtered?.length ? (
             <div className="py-20 flex flex-col items-center text-center text-muted-foreground">
               <MessageSquare className="w-12 h-12 mb-3 opacity-20" />
-              <p>No messages yet</p>
+              <p>{search ? "No results found" : "No messages yet"}</p>
             </div>
           ) : (
-            conversations?.map((conv) => (
-              <Link key={conv.orderId} href={`/chat/${conv.orderId}`} className="flex items-center p-3 hover:bg-secondary/50 rounded-xl transition-colors">
-                <div className="w-12 h-12 rounded-full bg-secondary flex items-center justify-center shrink-0 text-sm font-bold relative">
-                  {conv.traderUsername.slice(0, 2).toUpperCase()}
-                  {conv.isMerchant && <div className="absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full bg-warning flex items-center justify-center text-[8px] text-background border-2 border-background">✓</div>}
-                </div>
-                <div className="flex-1 ml-3 overflow-hidden">
-                  <div className="flex justify-between items-center mb-1">
-                    <span className="font-semibold text-sm truncate">{conv.traderUsername}</span>
-                    <span className="text-xs text-muted-foreground whitespace-nowrap ml-2">
-                      {formatChatTime(new Date(conv.lastMessageAt))}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <p className="text-xs text-muted-foreground truncate mr-2">{conv.lastMessage}</p>
-                    {conv.unreadCount > 0 && (
-                      <span className="w-4 h-4 rounded-full bg-warning text-background flex items-center justify-center text-[10px] font-bold shrink-0">
-                        {conv.unreadCount}
-                      </span>
+            filtered.map((conv) => {
+              const statusInfo = STATUS_STYLE[conv.orderStatus] ?? { label: conv.orderStatus, cls: "bg-muted/40 text-muted-foreground" };
+              const isBuyer = (conv as any).isBuyer;
+              const amount = (conv as any).amount;
+              return (
+                <Link key={conv.orderId} href={`/chat/${conv.orderId}`} className="flex items-center p-3 hover:bg-secondary/50 rounded-xl transition-colors">
+                  <div className="w-12 h-12 rounded-full bg-secondary flex items-center justify-center shrink-0 text-sm font-bold relative">
+                    {conv.traderUsername.slice(0, 2).toUpperCase()}
+                    {conv.isMerchant && (
+                      <div className="absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full bg-warning flex items-center justify-center text-[8px] text-background border-2 border-background">✓</div>
                     )}
                   </div>
-                </div>
-              </Link>
-            ))
+                  <div className="flex-1 ml-3 overflow-hidden">
+                    <div className="flex justify-between items-center mb-0.5">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="font-semibold text-sm truncate">{conv.traderUsername}</span>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium shrink-0 ${isBuyer ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"}`}>
+                          {isBuyer ? "Buy" : "Sell"}
+                        </span>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium shrink-0 ${statusInfo.cls}`}>
+                          {statusInfo.label}
+                        </span>
+                      </div>
+                      <span className="text-xs text-muted-foreground whitespace-nowrap ml-2">
+                        {formatChatTime(new Date(conv.lastMessageAt))}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        {amount && <span className="text-xs text-primary font-medium shrink-0">{parseFloat(amount).toFixed(2)} USDT</span>}
+                        <p className="text-xs text-muted-foreground truncate">
+                          {conv.lastMessage || "No messages yet"}
+                        </p>
+                      </div>
+                      {conv.unreadCount > 0 && (
+                        <span className="min-w-[18px] h-[18px] rounded-full bg-warning text-background flex items-center justify-center text-[10px] font-bold shrink-0 ml-1 px-1">
+                          {conv.unreadCount}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </Link>
+              );
+            })
           )}
         </div>
       </div>
