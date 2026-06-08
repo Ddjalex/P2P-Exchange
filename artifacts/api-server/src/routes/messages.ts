@@ -107,12 +107,33 @@ router.get("/unread-count", async (req, res) => {
 router.get("/:orderId", async (req, res) => {
   try {
     const orderId = parseInt(req.params.orderId);
+
+    // Look up the order so we know both parties
+    const order = await db.select().from(ordersTable).where(eq(ordersTable.id, orderId)).then(r => r[0]);
+
+    let orderIds: number[] = [orderId];
+
+    if (order) {
+      const { buyerId, sellerId } = order;
+      // Find ALL orders between these two traders (in either role)
+      const sharedOrders = await db
+        .select({ id: ordersTable.id })
+        .from(ordersTable)
+        .where(
+          or(
+            and(eq(ordersTable.buyerId, buyerId), eq(ordersTable.sellerId, sellerId)),
+            and(eq(ordersTable.buyerId, sellerId), eq(ordersTable.sellerId, buyerId)),
+          )!
+        );
+      orderIds = sharedOrders.map(o => o.id);
+    }
+
     const msgs = await db.select().from(messagesTable)
-      .where(eq(messagesTable.orderId, orderId))
+      .where(inArray(messagesTable.orderId, orderIds))
       .orderBy(messagesTable.createdAt);
 
     const formatted = await Promise.all(msgs.map(async m => {
-      const sender = m.senderId > 0
+      const sender = m.senderId != null && m.senderId > 0
         ? await db.select().from(usersTable).where(eq(usersTable.id, m.senderId)).then(r => r[0])
         : null;
       return {
