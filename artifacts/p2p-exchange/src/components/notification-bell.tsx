@@ -254,7 +254,11 @@ export function NotificationBell() {
                       if (!notif.isRead) markOneRead(notif.id);
                       setIsOpen(false);
                       if (notif.relatedOrderId) {
-                        navigate(`/trade/${notif.relatedOrderId}`);
+                        if (notif.type === "new_message") {
+                          navigate(`/chat/${notif.relatedOrderId}`);
+                        } else {
+                          navigate(`/trade/${notif.relatedOrderId}`);
+                        }
                       }
                     }}
                     style={{
