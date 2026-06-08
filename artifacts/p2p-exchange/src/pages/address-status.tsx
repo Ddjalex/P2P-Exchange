@@ -18,7 +18,7 @@ export default function AddressStatusPage() {
   return (
     <div style={{ background: "#080d18", minHeight: "100vh", padding: "20px", fontFamily: "Poppins, sans-serif", maxWidth: "480px", margin: "0 auto" }}>
       <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "24px" }}>
-        <button onClick={() => navigate(-1 as any)} style={{ background: "none", border: "none", color: "#fff", fontSize: "22px", cursor: "pointer", lineHeight: 1 }}>←</button>
+        <button onClick={() => navigate("/profile")} style={{ background: "none", border: "none", color: "#fff", fontSize: "22px", cursor: "pointer", lineHeight: 1 }}>←</button>
         <h2 style={{ color: "#fff", fontSize: "18px", fontWeight: 700, margin: 0 }}>Address Verification</h2>
       </div>
 
