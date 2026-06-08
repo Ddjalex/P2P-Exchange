@@ -67,9 +67,12 @@ async function getSetting(key: string): Promise<string | null> {
   return row?.value ?? null;
 }
 
-async function verifyTurnstile(token: string, ip?: string): Promise<boolean> {
+async function verifyTurnstile(token: string | undefined, ip?: string): Promise<boolean> {
+  // In development, always pass — avoids blocking logins without a real Turnstile widget
+  if (process.env.NODE_ENV !== "production") return true;
   const secret = process.env.TURNSTILE_SECRET_KEY;
-  if (!secret || process.env.NODE_ENV !== "production") return true;
+  if (!secret) return true;
+  if (!token) return false;
   const form = new URLSearchParams();
   form.append("secret", secret);
   form.append("response", token);
@@ -138,7 +141,7 @@ router.post("/send-code", sendCodeLimiter, async (req, res) => {
     if (!target || !type || !["phone", "email"].includes(type)) {
       return res.status(400).json({ error: "target and type (phone|email) are required" });
     }
-    if (!turnstileToken || !(await verifyTurnstile(turnstileToken, req.ip))) {
+    if (!(await verifyTurnstile(turnstileToken, req.ip))) {
       return res.status(400).json({ error: "Security check failed. Please try again." });
     }
 
@@ -323,7 +326,7 @@ router.post("/login", loginLimiter, async (req, res) => {
   try {
     const { identifier, password, type, dialCode, turnstileToken } = req.body ?? {};
     if (!identifier || !password) return res.status(400).json({ error: "identifier and password are required" });
-    if (!turnstileToken || !(await verifyTurnstile(turnstileToken, req.ip))) {
+    if (!(await verifyTurnstile(turnstileToken, req.ip))) {
       return res.status(400).json({ error: "Security check failed. Please try again." });
     }
 
