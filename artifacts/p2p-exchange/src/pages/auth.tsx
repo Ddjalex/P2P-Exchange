@@ -4,10 +4,6 @@ import { useAuth } from "@/hooks/use-auth";
 import { useAdminAuth } from "@/hooks/use-admin-auth";
 import "./auth.css";
 
-const TURNSTILE_SITE_KEY = (!import.meta.env.DEV && import.meta.env.VITE_TURNSTILE_SITE_KEY)
-  ? (import.meta.env.VITE_TURNSTILE_SITE_KEY as string)
-  : undefined;
-
 interface Country {
   code: string;
   name: string;
@@ -100,14 +96,6 @@ export default function AuthPage() {
   const [devCodeActive, setDevCodeActive] = useState(false);
   const cooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Turnstile tokens
-  const [loginTurnToken, setLoginTurnToken] = useState("");
-  const [regTurnToken, setRegTurnToken] = useState("");
-  const loginTurnRef = useRef<HTMLDivElement>(null);
-  const regTurnRef = useRef<HTMLDivElement>(null);
-  const loginWidgetId = useRef<string | null>(null);
-  const regWidgetId = useRef<string | null>(null);
-
   // Country modal (top pill)
   const [modalOpen, setModalOpen] = useState(false);
   const [modalCtx, setModalCtx] = useState<"login" | "reg">("login");
@@ -125,41 +113,6 @@ export default function AuthPage() {
   const regPrefixRef = useRef<HTMLDivElement>(null);
   const loginPrefixSearchRef = useRef<HTMLInputElement>(null);
   const regPrefixSearchRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (!TURNSTILE_SITE_KEY) return;
-    function tryRender() {
-      const ts = (window as any).turnstile;
-      if (!ts) { setTimeout(tryRender, 150); return; }
-      if (loginTurnRef.current && !loginWidgetId.current) {
-        loginWidgetId.current = ts.render(loginTurnRef.current, {
-          sitekey: TURNSTILE_SITE_KEY,
-          callback: (t: string) => setLoginTurnToken(t),
-          "expired-callback": () => setLoginTurnToken(""),
-          "error-callback": () => setLoginTurnToken(""),
-          theme: "dark",
-          size: "normal",
-        });
-      }
-      if (regTurnRef.current && !regWidgetId.current) {
-        regWidgetId.current = ts.render(regTurnRef.current, {
-          sitekey: TURNSTILE_SITE_KEY,
-          callback: (t: string) => setRegTurnToken(t),
-          "expired-callback": () => setRegTurnToken(""),
-          "error-callback": () => setRegTurnToken(""),
-          theme: "dark",
-          size: "normal",
-        });
-      }
-    }
-    tryRender();
-    return () => {
-      const ts = (window as any).turnstile;
-      if (!ts) return;
-      if (loginWidgetId.current) { ts.remove(loginWidgetId.current); loginWidgetId.current = null; }
-      if (regWidgetId.current) { ts.remove(regWidgetId.current); regWidgetId.current = null; }
-    };
-  }, []);
 
   useEffect(() => {
     if (!isLoading && user) {
@@ -252,7 +205,6 @@ export default function AuthPage() {
   }
 
   // Auto-detect country from phone number
-  // Ethiopian format: 09XXXXXXXX or 07XXXXXXXX (leading 0 for local dialing)
   function handleLoginPhoneChange(raw: string) {
     let digits = raw.replace(/\D/g, "");
     if (digits.startsWith("0") && digits.length > 1) {
@@ -260,7 +212,7 @@ export default function AuthPage() {
       if (second === "9" || second === "7") {
         setLoginC(ET);
         setLoginType("phone");
-        digits = digits.slice(1); // strip leading 0
+        digits = digits.slice(1);
       } else {
         digits = digits.slice(1);
       }
@@ -301,7 +253,6 @@ export default function AuthPage() {
     setLoginPhoneErr(false);
     const identifier = loginType === "phone" ? loginPhone : loginEmail;
     if (!identifier || !loginPwd) { setLoginErr("Please fill in all fields"); return; }
-    if (TURNSTILE_SITE_KEY && !loginTurnToken) { setLoginErr("Please complete the security check"); return; }
 
     setLoginLoading(true);
     try {
@@ -316,13 +267,11 @@ export default function AuthPage() {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ identifier, password: loginPwd, country: loginC.code, dialCode: loginC.dial, type: loginType, turnstileToken: loginTurnToken }),
+        body: JSON.stringify({ identifier, password: loginPwd, country: loginC.code, dialCode: loginC.dial, type: loginType }),
       });
       const data = await res.json();
       if (!res.ok) {
         setLoginErr(data.error || "Login failed");
-        (window as any).turnstile?.reset(loginWidgetId.current);
-        setLoginTurnToken("");
         return;
       }
       login(data.token, data.user);
@@ -349,20 +298,17 @@ export default function AuthPage() {
     if (!identifier || !regPwd || !regUser) { setRegErr("Please fill in all required fields"); return; }
     if (regPwd.length < 6) { setRegErr("Password must be at least 6 characters"); return; }
     if (regUser.length < 3) { setRegErr("Username must be at least 3 characters"); return; }
-    if (TURNSTILE_SITE_KEY && !regTurnToken) { setRegErr("Please complete the security check"); return; }
 
     setOtpLoading(true);
     try {
       const res = await fetch("/api/auth/send-code", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ target: getOtpTarget(), type: regType, turnstileToken: regTurnToken }),
+        body: JSON.stringify({ target: getOtpTarget(), type: regType }),
       });
       const data = await res.json();
       if (!res.ok) {
         setRegErr(data.error || "Failed to send code");
-        (window as any).turnstile?.reset(regWidgetId.current);
-        setRegTurnToken("");
         return;
       }
       setOtpStep(true);
@@ -493,7 +439,6 @@ export default function AuthPage() {
             <div className="phone-row-wrap slide-element">
               <div className="phone-row-label">Phone Number</div>
               <div className={`phone-row${loginPhoneFocused ? " focused" : ""}`}>
-                {/* Clickable prefix → opens inline dropdown */}
                 <div ref={loginPrefixRef} className="phone-prefix-wrap">
                   <div
                     className={`phone-prefix clickable${loginPrefixOpen ? " prefix-active" : ""}`}
@@ -562,14 +507,8 @@ export default function AuthPage() {
 
           <div className="forgot slide-element"><a href="#">Forgot password?</a></div>
 
-          {TURNSTILE_SITE_KEY && (
-            <div className="slide-element" style={{ display: "flex", justifyContent: "center", margin: "8px 0" }}>
-              <div ref={loginTurnRef} />
-            </div>
-          )}
-
           <div className="slide-element">
-            <button className="submit-btn" onClick={doLogin} disabled={loginLoading || (!!TURNSTILE_SITE_KEY && !loginTurnToken)}>
+            <button className="submit-btn" onClick={doLogin} disabled={loginLoading}>
               {loginLoading ? "Logging in…" : "Login"}
             </button>
             {loginErr && <div className="server-err">{loginErr}</div>}
@@ -607,7 +546,6 @@ export default function AuthPage() {
                 <div className="phone-row-wrap slide-element">
                   <div className="phone-row-label">Phone Number</div>
                   <div className={`phone-row${regPhoneFocused ? " focused" : ""}`}>
-                    {/* Clickable prefix → opens inline dropdown */}
                     <div ref={regPrefixRef} className="phone-prefix-wrap">
                       <div
                         className={`phone-prefix clickable${regPrefixOpen ? " prefix-active" : ""}`}
@@ -686,14 +624,8 @@ export default function AuthPage() {
                 <i className="fa-solid fa-gift"></i>
               </div>
 
-              {TURNSTILE_SITE_KEY && (
-                <div className="slide-element" style={{ display: "flex", justifyContent: "center", margin: "8px 0" }}>
-                  <div ref={regTurnRef} />
-                </div>
-              )}
-
               <div className="slide-element">
-                <button className="submit-btn" onClick={doSendCode} disabled={otpLoading || (!!TURNSTILE_SITE_KEY && !regTurnToken)}>
+                <button className="submit-btn" onClick={doSendCode} disabled={otpLoading}>
                   {otpLoading ? "Sending code…" : (regType === "phone" ? "📱 Send SMS Code" : "✉️ Send Email Code")}
                 </button>
                 {regErr && <div className="server-err">{regErr}</div>}
