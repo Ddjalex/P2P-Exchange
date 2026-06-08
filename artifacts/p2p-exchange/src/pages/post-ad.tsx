@@ -118,9 +118,10 @@ export default function PostAdPage() {
   const adAvailableAmount = isEdit && existingAd ? parseFloat(String((existingAd as any).availableAmount ?? 0)) : 0;
   const availableBalance = rawWalletAvailable === null ? null : rawWalletAvailable + adAvailableAmount;
 
-  // Minimum the seller can set: must cover USDT already locked in active orders
+  // Minimum the seller can set: only USDT locked in currently ACTIVE orders (unpaid/paid/appeal).
+  // Completed/cancelled orders are NOT locked — use the value the API computed from live orders.
   const adLockedInOrders = isEdit && existingAd
-    ? Math.max(0, parseFloat(String(existingAd.totalAmount ?? 0)) - adAvailableAmount)
+    ? ((existingAd as any).activeOrdersLocked ?? 0)
     : 0;
 
   const createAd = useCreateAd();

@@ -27,6 +27,11 @@ async function formatAd(ad: any) {
   const completed = orders.filter(o => o.status === "completed").length;
   const completionRate = orders.length > 0 ? ((completed / orders.length) * 100).toFixed(1) : "100.0";
 
+  // Sum USDT locked in orders that are still active (not yet completed/cancelled)
+  const activeOrdersLocked = orders
+    .filter(o => ["unpaid", "paid", "appeal"].includes(o.status))
+    .reduce((sum, o) => sum + parseFloat(o.amountUsdt ?? "0"), 0);
+
   const safeNum = (val: any) => { const n = Number(val); return isNaN(n) ? 0 : n; };
   return {
     id: ad.id,
@@ -41,6 +46,7 @@ async function formatAd(ad: any) {
     floatingMargin: ad.floatingMargin ?? null,
     totalAmount: safeNum(ad.totalAmount),
     availableAmount: safeNum(ad.availableAmount),
+    activeOrdersLocked,
     minLimit: safeNum(ad.minLimit),
     maxLimit: safeNum(ad.maxLimit),
     paymentMethods: (() => { try { return JSON.parse(ad.paymentMethods); } catch { return []; } })(),
@@ -268,9 +274,15 @@ router.patch("/:id", async (req, res) => {
     if (totalAmount !== undefined) {
       const newTotal = parseFloat(totalAmount);
       const oldAvailable = parseFloat(ad.availableAmount ?? "0");
-      const oldTotal = parseFloat(ad.totalAmount ?? "0");
-      // Amount already committed to active orders — cannot change this portion
-      const lockedInOrders = Math.max(0, oldTotal - oldAvailable);
+
+      // Query actual active orders (unpaid/paid/appeal) — NOT completed/cancelled ones
+      const activeOrders = await db.select({ amountUsdt: ordersTable.amountUsdt })
+        .from(ordersTable)
+        .where(and(
+          eq(ordersTable.adId, id),
+          sql`${ordersTable.status} IN ('unpaid', 'paid', 'appeal')`
+        ));
+      const lockedInOrders = activeOrders.reduce((sum, o) => sum + parseFloat(o.amountUsdt ?? "0"), 0);
       const newAvailable = newTotal - lockedInOrders;
 
       if (newAvailable < 0) {
