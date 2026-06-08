@@ -35,12 +35,13 @@ const router = Router();
 
 router.get("/conversations", async (req, res) => {
   try {
+    const userId = (req as any).userId;
     const myOrders = await db.select().from(ordersTable).where(
-      or(eq(ordersTable.buyerId, (req as any).userId), eq(ordersTable.sellerId, (req as any).userId))!
-    ).orderBy(desc(ordersTable.createdAt));
+      or(eq(ordersTable.buyerId, userId), eq(ordersTable.sellerId, userId))!
+    );
 
-    const conversations = await Promise.all(myOrders.map(async order => {
-      const traderId = order.buyerId === (req as any).userId ? order.sellerId : order.buyerId;
+    const rawConversations = await Promise.all(myOrders.map(async order => {
+      const traderId = order.buyerId === userId ? order.sellerId : order.buyerId;
       const trader = await db.select().from(usersTable).where(eq(usersTable.id, traderId)).then(r => r[0]);
       const lastMsg = await db.select().from(messagesTable)
         .where(eq(messagesTable.orderId, order.id))
@@ -48,11 +49,12 @@ router.get("/conversations", async (req, res) => {
         .limit(1)
         .then(r => r[0]);
       const unreadCount = await db.select().from(messagesTable).where(
-        and(eq(messagesTable.orderId, order.id), eq(messagesTable.receiverId, (req as any).userId), eq(messagesTable.isRead, false))
+        and(eq(messagesTable.orderId, order.id), eq(messagesTable.receiverId, userId), eq(messagesTable.isRead, false))
       ).then(r => r.length);
 
       return {
         orderId: order.id,
+        traderId,
         traderUsername: trader?.username ?? "Unknown",
         isMerchant: trader?.isMerchant ?? false,
         lastMessage: lastMsg?.content ?? "No messages yet",
@@ -61,6 +63,22 @@ router.get("/conversations", async (req, res) => {
         orderStatus: order.status,
       };
     }));
+
+    // Deduplicate by traderId: keep only the entry with the most recent lastMessageAt per trader
+    const seen = new Map<number, typeof rawConversations[0]>();
+    for (const conv of rawConversations) {
+      const existing = seen.get(conv.traderId);
+      if (!existing || new Date(conv.lastMessageAt) > new Date(existing.lastMessageAt)) {
+        seen.set(conv.traderId, conv);
+      } else if (existing) {
+        // Accumulate unread count from all orders with same trader
+        existing.unreadCount += conv.unreadCount;
+      }
+    }
+
+    // Sort by lastMessageAt descending (most recent first, like Telegram)
+    const conversations = Array.from(seen.values())
+      .sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime());
 
     res.json(conversations);
   } catch (err) {

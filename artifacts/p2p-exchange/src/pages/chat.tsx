@@ -5,6 +5,22 @@ import { useState } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Link } from "wouter";
 
+function formatChatTime(date: Date): string {
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+  if (diffDays === 0) {
+    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  } else if (diffDays === 1) {
+    return "Yesterday";
+  } else if (diffDays < 7) {
+    return date.toLocaleDateString([], { weekday: "short" });
+  } else {
+    return date.toLocaleDateString([], { day: "numeric", month: "short" });
+  }
+}
+
 export default function ChatPage() {
   const [tab, setTab] = useState<"all" | "for_you">("all");
   const { data: conversations, isLoading } = useListConversations();
@@ -71,7 +87,7 @@ export default function ChatPage() {
                   <div className="flex justify-between items-center mb-1">
                     <span className="font-semibold text-sm truncate">{conv.traderUsername}</span>
                     <span className="text-xs text-muted-foreground whitespace-nowrap ml-2">
-                      {new Date(conv.lastMessageAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      {formatChatTime(new Date(conv.lastMessageAt))}
                     </span>
                   </div>
                   <div className="flex justify-between items-center">
