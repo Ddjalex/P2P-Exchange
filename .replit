@@ -1,4 +1,4 @@
-modules = ["nodejs-24", "python-3.11", "postgresql-16"]
+modules = ["nodejs-20", "web", "bash"]
 
 [deployment]
 router = "application"
@@ -18,10 +18,10 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "artifacts/p2p-exchange: web"
+args = "Start application"
 
 [[workflows.workflow]]
-name = "artifacts/p2p-exchange: web"
+name = "Start application"
 author = "agent"
 
 [[workflows.workflow.tasks]]
@@ -64,10 +64,6 @@ channel = "stable-25_05"
 [[ports]]
 localPort = 5000
 externalPort = 80
-
-[[ports]]
-localPort = 8080
-externalPort = 8080
 
 [[ports]]
 localPort = 8081
