@@ -7,7 +7,7 @@ import {
   transactionsTable, walletsTable, messagesTable, notificationsTable,
   adminLogsTable, systemSettingsTable, notificationHistoryTable, fraudFlagsTable,
   depositVerificationsTable, cardWaitlistTable, feeSettingsTable, platformWalletTable,
-  feeTransactionsTable,
+  feeTransactionsTable, addressVerificationsTable,
 } from "@workspace/db";
 import { eq, desc, and, or, ilike, sql, ne, count } from "drizzle-orm";
 import { getFeePercents, calculateFees } from "../helpers/fees.js";
@@ -1538,6 +1538,99 @@ router.patch("/fees", adminAuth, async (req, res) => {
   } catch (err) {
     req.log.error({ err }, "Admin fee update failed");
     return res.status(500).json({ error: "Failed to update fee" });
+  }
+});
+
+// ─── Address Verifications Admin ──────────────────────────────────────────────
+
+router.get("/address-verifications", adminAuth, async (req, res) => {
+  try {
+    const status = (req.query as any).status;
+    const rows = await db.select({
+      id: addressVerificationsTable.id,
+      userId: addressVerificationsTable.userId,
+      fullName: addressVerificationsTable.fullName,
+      addressLine1: addressVerificationsTable.addressLine1,
+      addressLine2: addressVerificationsTable.addressLine2,
+      city: addressVerificationsTable.city,
+      state: addressVerificationsTable.state,
+      country: addressVerificationsTable.country,
+      postalCode: addressVerificationsTable.postalCode,
+      documentType: addressVerificationsTable.documentType,
+      documentImageUrl: addressVerificationsTable.documentImageUrl,
+      status: addressVerificationsTable.status,
+      rejectionReason: addressVerificationsTable.rejectionReason,
+      submittedAt: addressVerificationsTable.submittedAt,
+      reviewedAt: addressVerificationsTable.reviewedAt,
+      username: usersTable.username,
+    })
+      .from(addressVerificationsTable)
+      .leftJoin(usersTable, eq(addressVerificationsTable.userId, usersTable.id))
+      .where(status && status !== "all" ? eq(addressVerificationsTable.status, status) : undefined)
+      .orderBy(desc(addressVerificationsTable.submittedAt));
+    return res.json({ submissions: rows });
+  } catch (err) {
+    req.log.error({ err }, "Admin address-verifications list failed");
+    return res.status(500).json({ message: "Failed to fetch" });
+  }
+});
+
+router.patch("/address-verifications/:id/approve", adminAuth, async (req, res) => {
+  try {
+    const id = parseInt((req.params as any).id);
+    const submission = await db.select().from(addressVerificationsTable)
+      .where(eq(addressVerificationsTable.id, id)).then(r => r[0]);
+    if (!submission) return res.status(404).json({ message: "Not found" });
+
+    await db.update(addressVerificationsTable)
+      .set({ status: "verified", reviewedAt: new Date() })
+      .where(eq(addressVerificationsTable.id, id));
+
+    await db.update(usersTable)
+      .set({ addressVerified: true, addressVerifiedAt: new Date() } as any)
+      .where(eq(usersTable.id, submission.userId));
+
+    await db.insert(notificationsTable).values({
+      userId: submission.userId,
+      type: "address_verified",
+      title: "✅ Address Verified!",
+      message: "Your address has been verified successfully.",
+      isRead: false,
+    });
+
+    await log((req as any).adminEmail, "approve_address", "address_verifications", id, `Approved address for user ${submission.userId}`);
+    return res.json({ success: true });
+  } catch (err) {
+    req.log.error({ err }, "Admin address approve failed");
+    return res.status(500).json({ message: "Failed to approve" });
+  }
+});
+
+router.patch("/address-verifications/:id/reject", adminAuth, async (req, res) => {
+  try {
+    const id = parseInt((req.params as any).id);
+    const { reason } = req.body;
+    const submission = await db.select().from(addressVerificationsTable)
+      .where(eq(addressVerificationsTable.id, id)).then(r => r[0]);
+    if (!submission) return res.status(404).json({ message: "Not found" });
+
+    await db.update(addressVerificationsTable)
+      .set({ status: "rejected", rejectionReason: reason || "Not accepted", reviewedAt: new Date() })
+      .where(eq(addressVerificationsTable.id, id));
+
+    await db.insert(notificationsTable).values({
+      userId: submission.userId,
+      type: "address_rejected",
+      title: "❌ Address Verification Rejected",
+      message: `Reason: ${reason || "Not accepted"}. Please resubmit.`,
+      isRead: false,
+    });
+
+    await log((req as any).adminEmail, "reject_address", "address_verifications", id, `Rejected address for user ${submission.userId}: ${reason}`);
+    return res.json({ success: true });
+  } catch (err) {
+    req.log.error({ err }, "Admin address reject failed");
+    return res.status(500).json({ message: "Failed to reject" });
   }
 });
 

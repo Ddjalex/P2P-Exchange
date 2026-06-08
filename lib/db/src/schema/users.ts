@@ -16,6 +16,7 @@ export const usersTable = pgTable("users", {
   emailVerified: boolean("email_verified").notNull().default(false),
   smsVerified: boolean("sms_verified").notNull().default(false),
   addressVerified: boolean("address_verified").notNull().default(false),
+  addressVerifiedAt: timestamp("address_verified_at"),
   notificationSettings: text("notification_settings").notNull().default('{"tradeAlerts":true,"chatMessages":true,"systemNotifications":true,"emailNotifications":true,"smsNotifications":false}'),
   isSuspended: boolean("is_suspended").notNull().default(false),
   suspensionReason: text("suspension_reason"),

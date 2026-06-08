@@ -50,6 +50,10 @@ function formatUser(user: any) {
     country: user.country,
     kycStatus: user.kycStatus,
     isMerchant: user.isMerchant,
+    emailVerified: user.emailVerified ?? false,
+    smsVerified: user.smsVerified ?? false,
+    addressVerified: user.addressVerified ?? false,
+    addressVerifiedAt: user.addressVerifiedAt ?? null,
     createdAt: user.createdAt,
   };
 }

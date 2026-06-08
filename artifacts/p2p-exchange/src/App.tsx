@@ -33,6 +33,8 @@ import SharedAdPage from "@/pages/shared-ad";
 import CardPage from "@/pages/card";
 import TransferHistoryPage from "@/pages/transfer-history";
 import WalletUsdtPage from "@/pages/wallet-usdt";
+import AddressVerifyPage from "@/pages/address-verify";
+import AddressStatusPage from "@/pages/address-status";
 
 // Admin pages
 import AdminLoginPage from "@/pages/admin-login";
@@ -119,6 +121,8 @@ function Router() {
       <Route path="/about"><ProtectedRoute component={AboutPage} /></Route>
       <Route path="/kyc"><ProtectedRoute component={KycPage} /></Route>
       <Route path="/card"><ProtectedRoute component={CardPage} /></Route>
+      <Route path="/settings/address-verify"><ProtectedRoute component={AddressVerifyPage} /></Route>
+      <Route path="/settings/address"><ProtectedRoute component={AddressStatusPage} /></Route>
 
       {/* Admin auth — login now lives inside /auth */}
       <Route path="/admin/login"><Redirect to="/auth" /></Route>

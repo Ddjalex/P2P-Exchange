@@ -583,6 +583,15 @@ export default function TradePage() {
             ⚠ Buyer has marked payment as sent. Please verify you received the payment before releasing.
           </div>
           <div className="bg-card border border-border rounded-xl p-4 space-y-3">
+            <div className="flex justify-between items-center">
+              <span className="text-xs text-muted-foreground">Buyer</span>
+              <div className="flex items-center space-x-2">
+                <div className="w-5 h-5 rounded-full bg-primary/20 flex items-center justify-center text-primary text-[10px] font-bold flex-shrink-0">
+                  {(order.buyerUsername ?? "?").charAt(0).toUpperCase()}
+                </div>
+                <span className="text-sm font-semibold">{order.buyerUsername ?? "—"}</span>
+              </div>
+            </div>
             <OrderDetailRow label="Amount" value={`${Number(order.amountEtb).toLocaleString()} ETB`} />
             <OrderDetailRow label="Quantity" value={`${parseFloat(order.amountUsdt).toFixed(4)} USDT`} />
             <div className="flex justify-between items-center">

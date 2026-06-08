@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { AdminLayout, AdminGuard } from "@/components/admin-layout";
-import { adminGet, adminPost } from "@/lib/admin-api";
+import { adminGet, adminPost, adminFetch } from "@/lib/admin-api";
 import { CheckCircle, XCircle, Clock } from "lucide-react";
 
 const STATUS_COLORS: Record<string, { bg: string; text: string; label: string }> = {
@@ -16,6 +16,9 @@ function KycBadge({ status }: { status: string }) {
 }
 
 export default function AdminKycPage() {
+  const [mainTab, setMainTab] = useState<"kyc" | "address">("kyc");
+
+  // ── KYC tab state ──
   const [subs, setSubs] = useState<any[]>([]);
   const [stats, setStats] = useState<any>(null);
   const [statusFilter, setStatusFilter] = useState("pending");
@@ -27,6 +30,13 @@ export default function AdminKycPage() {
   const [rejectionReason, setRejectionReason] = useState("");
   const [adminMessage, setAdminMessage] = useState("");
   const [imageModal, setImageModal] = useState<string | null>(null);
+
+  // ── Address tab state ──
+  const [addrSubs, setAddrSubs] = useState<any[]>([]);
+  const [addrFilter, setAddrFilter] = useState("pending");
+  const [addrLoading, setAddrLoading] = useState(false);
+  const [rejectId, setRejectId] = useState<number | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
 
   const loadList = async () => {
     setLoading(true);
@@ -44,8 +54,41 @@ export default function AdminKycPage() {
     setLoading(false);
   };
 
+  const loadAddrSubs = async () => {
+    setAddrLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (addrFilter && addrFilter !== "all") params.set("status", addrFilter);
+      const data = await adminGet<any>(`/address-verifications?${params}`);
+      setAddrSubs(data.submissions ?? []);
+    } catch {}
+    setAddrLoading(false);
+  };
+
+  const approveAddress = async (id: number) => {
+    try {
+      const res = await adminFetch(`/address-verifications/${id}/approve`, { method: "PATCH" });
+      if (!res.ok) { alert("Failed to approve"); return; }
+      loadAddrSubs();
+    } catch { alert("Error"); }
+  };
+
+  const rejectAddress = async (id: number, reason: string) => {
+    try {
+      const res = await adminFetch(`/address-verifications/${id}/reject`, {
+        method: "PATCH",
+        body: JSON.stringify({ reason }),
+      });
+      if (!res.ok) { alert("Failed to reject"); return; }
+      setRejectId(null);
+      setRejectReason("");
+      loadAddrSubs();
+    } catch { alert("Error"); }
+  };
+
   useEffect(() => { loadList(); }, [statusFilter]);
   useEffect(() => { const t = setTimeout(loadList, 300); return () => clearTimeout(t); }, [search]);
+  useEffect(() => { if (mainTab === "address") loadAddrSubs(); }, [mainTab, addrFilter]);
 
   const selectItem = async (sub: any) => {
     try {
@@ -71,7 +114,119 @@ export default function AdminKycPage() {
 
   return (
     <AdminGuard>
-      <AdminLayout title="KYC Verification">
+      <AdminLayout title="KYC & Address Verification">
+        {/* Main tabs: KYC | Address */}
+        <div className="flex space-x-1 mb-5 bg-card border border-border rounded-xl p-1 w-fit">
+          {(["kyc", "address"] as const).map(t => (
+            <button key={t} onClick={() => setMainTab(t)}
+              className={`px-5 py-2 rounded-lg text-sm font-semibold transition-colors capitalize ${mainTab === t ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
+              {t === "kyc" ? "KYC" : "📍 Address"}
+            </button>
+          ))}
+        </div>
+
+        {/* ── ADDRESS TAB ─────────────────────────────────────────────────── */}
+        {mainTab === "address" && (
+          <div>
+            {/* Filter tabs */}
+            <div className="flex space-x-2 mb-4">
+              {["all", "pending", "verified", "rejected"].map(f => (
+                <button key={f} onClick={() => setAddrFilter(f)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium capitalize transition-colors border ${addrFilter === f ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:border-primary/50"}`}>
+                  {f}
+                </button>
+              ))}
+              <button onClick={loadAddrSubs} className="ml-auto px-3 py-1.5 rounded-lg text-xs border border-border text-muted-foreground hover:border-primary/50">
+                ↻ Refresh
+              </button>
+            </div>
+
+            {/* Reject modal */}
+            {rejectId !== null && (
+              <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+                <div className="bg-card border border-border rounded-2xl p-6 max-w-sm w-full">
+                  <h3 className="font-bold text-lg mb-3">Reject Address Verification</h3>
+                  <textarea
+                    value={rejectReason}
+                    onChange={e => setRejectReason(e.target.value)}
+                    placeholder="Rejection reason (shown to user)..."
+                    rows={3}
+                    className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm resize-none outline-none focus:border-primary mb-4"
+                  />
+                  <div className="flex space-x-3">
+                    <button onClick={() => { setRejectId(null); setRejectReason(""); }}
+                      className="flex-1 py-2.5 rounded-xl border border-border text-sm font-medium">Cancel</button>
+                    <button onClick={() => rejectAddress(rejectId!, rejectReason)} disabled={!rejectReason}
+                      className="flex-1 py-2.5 rounded-xl bg-destructive text-white text-sm font-bold disabled:opacity-40">
+                      Reject
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {addrLoading ? (
+              <div className="grid gap-3">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <div key={i} className="h-32 bg-card rounded-xl border border-border animate-pulse" />
+                ))}
+              </div>
+            ) : addrSubs.length === 0 ? (
+              <div className="text-center text-muted-foreground py-12 text-sm">No address submissions found</div>
+            ) : (
+              <div className="grid gap-3">
+                {addrSubs.map((s: any) => (
+                  <div key={s.id} className="bg-card border border-border rounded-xl p-4">
+                    <div className="flex items-start justify-between mb-3">
+                      <div>
+                        <div className="font-semibold text-sm">{s.fullName}</div>
+                        <div className="text-xs text-muted-foreground">@{s.username} · User #{s.userId}</div>
+                        <div className="text-xs text-muted-foreground mt-1">
+                          {s.addressLine1}{s.addressLine2 ? `, ${s.addressLine2}` : ""}, {s.city}, {s.country}
+                        </div>
+                        <div className="text-[11px] text-muted-foreground mt-1 flex items-center space-x-2">
+                          <span className="capitalize">{s.documentType?.replace(/_/g, " ")}</span>
+                          <span>·</span>
+                          <span>{s.submittedAt ? new Date(s.submittedAt).toLocaleDateString() : "—"}</span>
+                        </div>
+                      </div>
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${s.status === "verified" ? "bg-success/20 text-success" : s.status === "pending" ? "bg-warning/20 text-warning" : "bg-destructive/20 text-destructive"}`}>
+                        {s.status}
+                      </span>
+                    </div>
+                    {s.rejectionReason && (
+                      <div className="text-xs text-destructive bg-destructive/10 rounded-lg px-3 py-2 mb-3">
+                        Rejection reason: {s.rejectionReason}
+                      </div>
+                    )}
+                    {s.documentImageUrl && (
+                      <img
+                        src={s.documentImageUrl} alt="Address document"
+                        className="w-full max-h-40 object-cover rounded-lg border border-border cursor-pointer mb-3"
+                        onClick={() => window.open(s.documentImageUrl, "_blank")}
+                      />
+                    )}
+                    {s.status === "pending" && (
+                      <div className="flex space-x-2">
+                        <button onClick={() => approveAddress(s.id)}
+                          className="flex-1 py-2 bg-success text-white rounded-lg text-sm font-bold hover:bg-success/90">
+                          ✅ Approve
+                        </button>
+                        <button onClick={() => { setRejectId(s.id); setRejectReason(""); }}
+                          className="flex-1 py-2 border border-destructive text-destructive rounded-lg text-sm font-bold hover:bg-destructive/10">
+                          ❌ Reject
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── KYC TAB ─────────────────────────────────────────────────────── */}
+        {mainTab === "kyc" && <>
         {/* Stats */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-5">
           {[
@@ -238,6 +393,7 @@ export default function AdminKycPage() {
             <img src={imageModal} alt="Document" className="max-w-full max-h-full rounded-xl shadow-2xl" onClick={e => e.stopPropagation()} />
           </div>
         )}
+        </>}
       </AdminLayout>
     </AdminGuard>
   );

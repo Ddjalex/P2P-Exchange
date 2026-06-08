@@ -6,7 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Link, useLocation, useSearch } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 
 const TOKEN_KEY = "p2p_token";
 function getToken() { return localStorage.getItem(TOKEN_KEY); }
@@ -304,6 +304,13 @@ export default function ProfilePage() {
   const [, navigate] = useLocation();
   const search = useSearch();
 
+  const { data: meData } = useQuery({
+    queryKey: ["me"],
+    queryFn: () =>
+      fetch("/api/auth/me", { headers: { Authorization: `Bearer ${getToken()}` } }).then(r => r.json()),
+  });
+  const meUser = meData?.user ?? meData;
+
   const tabFromUrl = new URLSearchParams(search).get("tab");
   const initialTab: "trade" | "notifications" | "others" =
     tabFromUrl === "notifications" || tabFromUrl === "others" ? tabFromUrl : "trade";
@@ -417,19 +424,62 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        <div className="flex space-x-3 mb-6">
+        {/* Verification badges — clickable, show real status */}
+        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "24px" }}>
           {[
-            { label: "Email", verified: profile?.emailVerified },
-            { label: "SMS", verified: profile?.smsVerified },
-            { label: "KYC", verified: profile?.kycStatus === "verified" },
-            { label: "Address", verified: profile?.addressVerified },
-          ].map(({ label, verified }) => (
-            <div key={label} className="flex flex-col items-center space-y-1">
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center border ${verified ? "bg-success/10 border-success/30 text-success" : "bg-secondary border-border text-muted-foreground"}`}>
-                <CheckCircle2 className="w-4 h-4" />
+            {
+              key: "email",
+              label: "Email",
+              verified: !!(meUser?.emailVerified ?? profile?.emailVerified),
+              route: "/settings/email-verify",
+            },
+            {
+              key: "sms",
+              label: "SMS",
+              verified: !!(meUser?.smsVerified ?? profile?.smsVerified),
+              route: "/settings/phone-verify",
+            },
+            {
+              key: "kyc",
+              label: "KYC",
+              verified: (meUser?.kycStatus ?? profile?.kycStatus) === "verified",
+              route: "/kyc",
+            },
+            {
+              key: "address",
+              label: "Address",
+              verified: !!(meUser?.addressVerified ?? profile?.addressVerified),
+              route: (meUser?.addressVerified ?? profile?.addressVerified)
+                ? "/settings/address"
+                : "/settings/address-verify",
+            },
+          ].map(v => (
+            <button
+              key={v.key}
+              onClick={() => navigate(v.route)}
+              style={{
+                display: "flex", alignItems: "center", gap: "5px",
+                background: v.verified ? "rgba(0,229,255,0.08)" : "rgba(255,255,255,0.04)",
+                border: v.verified ? "1px solid rgba(0,229,255,0.35)" : "1px solid #334455",
+                borderRadius: "20px", padding: "5px 12px",
+                cursor: "pointer", transition: "all 0.2s",
+              }}
+            >
+              <div style={{
+                width: "16px", height: "16px", borderRadius: "50%",
+                background: v.verified ? "#00e5ff" : "#334455",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: "10px", flexShrink: 0, color: "#080d18", fontWeight: 700,
+              }}>
+                {v.verified ? "✓" : ""}
               </div>
-              <span className="text-[10px] text-muted-foreground">{label}</span>
-            </div>
+              <span style={{
+                color: v.verified ? "#00e5ff" : "#8899aa",
+                fontSize: "12px", fontWeight: v.verified ? 600 : 400,
+              }}>
+                {v.label}
+              </span>
+            </button>
           ))}
         </div>
 

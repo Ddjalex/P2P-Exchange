@@ -22,3 +22,4 @@ export * from "./fee_transactions";
 export * from "./telegram_users";
 export * from "./push_subscriptions";
 export * from "./internal_transfers";
+export * from "./address_verifications";
