@@ -40,9 +40,8 @@ router.get("/conversations", async (req, res) => {
       or(eq(ordersTable.buyerId, userId), eq(ordersTable.sellerId, userId))!
     );
 
-    const conversations = await Promise.all(myOrders.map(async order => {
+    const rawConversations = await Promise.all(myOrders.map(async order => {
       const traderId = order.buyerId === userId ? order.sellerId : order.buyerId;
-      const isBuyer = order.buyerId === userId;
       const trader = await db.select().from(usersTable).where(eq(usersTable.id, traderId)).then(r => r[0]);
       const lastMsg = await db.select().from(messagesTable)
         .where(eq(messagesTable.orderId, order.id))
@@ -58,8 +57,6 @@ router.get("/conversations", async (req, res) => {
         traderId,
         traderUsername: trader?.username ?? "Unknown",
         isMerchant: trader?.isMerchant ?? false,
-        isBuyer,
-        amount: order.amount,
         lastMessage: lastMsg?.content ?? "",
         lastMessageAt: lastMsg?.createdAt ?? order.createdAt,
         unreadCount,
@@ -67,8 +64,22 @@ router.get("/conversations", async (req, res) => {
       };
     }));
 
-    // Sort by lastMessageAt descending — one row per order, all visible
-    conversations.sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime());
+    // Deduplicate by traderId — keep the most recent message, accumulate unread counts
+    const seen = new Map<number, typeof rawConversations[0]>();
+    for (const conv of rawConversations) {
+      const existing = seen.get(conv.traderId);
+      if (!existing) {
+        seen.set(conv.traderId, { ...conv });
+      } else if (new Date(conv.lastMessageAt) > new Date(existing.lastMessageAt)) {
+        seen.set(conv.traderId, { ...conv, unreadCount: conv.unreadCount + existing.unreadCount });
+      } else {
+        existing.unreadCount += conv.unreadCount;
+      }
+    }
+
+    // Sort by most recent message first
+    const conversations = Array.from(seen.values())
+      .sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime());
 
     res.json(conversations);
   } catch (err) {

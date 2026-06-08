@@ -22,12 +22,12 @@ function formatChatTime(date: Date): string {
 }
 
 const STATUS_STYLE: Record<string, { label: string; cls: string }> = {
-  pending:          { label: "Pending",    cls: "bg-yellow-500/20 text-yellow-400" },
-  payment_sent:     { label: "Paid",       cls: "bg-blue-500/20 text-blue-400" },
-  completed:        { label: "Completed",  cls: "bg-green-500/20 text-green-400" },
-  cancelled:        { label: "Cancelled",  cls: "bg-muted/40 text-muted-foreground" },
-  disputed:         { label: "Disputed",   cls: "bg-red-500/20 text-red-400" },
-  appeal:           { label: "Appeal",     cls: "bg-orange-500/20 text-orange-400" },
+  pending:       { label: "Pending",   cls: "bg-yellow-500/20 text-yellow-400" },
+  payment_sent:  { label: "Paid",      cls: "bg-blue-500/20 text-blue-400" },
+  completed:     { label: "Completed", cls: "bg-green-500/20 text-green-400" },
+  cancelled:     { label: "Cancelled", cls: "bg-muted/40 text-muted-foreground" },
+  disputed:      { label: "Disputed",  cls: "bg-red-500/20 text-red-400" },
+  appeal:        { label: "Appeal",    cls: "bg-orange-500/20 text-orange-400" },
 };
 
 export default function ChatPage() {
@@ -78,8 +78,6 @@ export default function ChatPage() {
           ) : (
             filtered.map((conv) => {
               const statusInfo = STATUS_STYLE[conv.orderStatus] ?? { label: conv.orderStatus, cls: "bg-muted/40 text-muted-foreground" };
-              const isBuyer = (conv as any).isBuyer;
-              const amount = (conv as any).amount;
               return (
                 <Link key={conv.orderId} href={`/chat/${conv.orderId}`} className="flex items-center p-3 hover:bg-secondary/50 rounded-xl transition-colors">
                   <div className="w-12 h-12 rounded-full bg-secondary flex items-center justify-center shrink-0 text-sm font-bold relative">
@@ -92,9 +90,6 @@ export default function ChatPage() {
                     <div className="flex justify-between items-center mb-0.5">
                       <div className="flex items-center gap-1.5 min-w-0">
                         <span className="font-semibold text-sm truncate">{conv.traderUsername}</span>
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium shrink-0 ${isBuyer ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"}`}>
-                          {isBuyer ? "Buy" : "Sell"}
-                        </span>
                         <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium shrink-0 ${statusInfo.cls}`}>
                           {statusInfo.label}
                         </span>
@@ -104,12 +99,9 @@ export default function ChatPage() {
                       </span>
                     </div>
                     <div className="flex justify-between items-center">
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        {amount && <span className="text-xs text-primary font-medium shrink-0">{parseFloat(amount).toFixed(2)} USDT</span>}
-                        <p className="text-xs text-muted-foreground truncate">
-                          {conv.lastMessage || "No messages yet"}
-                        </p>
-                      </div>
+                      <p className="text-xs text-muted-foreground truncate">
+                        {conv.lastMessage || "No messages yet"}
+                      </p>
                       {conv.unreadCount > 0 && (
                         <span className="min-w-[18px] h-[18px] rounded-full bg-warning text-background flex items-center justify-center text-[10px] font-bold shrink-0 ml-1 px-1">
                           {conv.unreadCount}
