@@ -231,11 +231,6 @@ router.post("/", async (req, res) => {
       availableAmount: newAvailable.toFixed(4),
     }).where(eq(adsTable.id, adId));
 
-    // Auto-remove the ad when its available balance is fully depleted
-    if (newAvailable < 0.0001) {
-      await db.delete(adsTable).where(eq(adsTable.id, adId));
-    }
-
     await db.insert(messagesTable).values({
       orderId: order.id,
       senderId: 0,
@@ -503,6 +498,14 @@ router.post("/:id/release", async (req, res) => {
     emitToUser(order.buyerId, "wallet_update", {});
     emitToUser(order.sellerId, "order_update", { orderId: id, status: "completed", type: "order_completed" });
     emitToUser(order.sellerId, "wallet_update", {});
+
+    // Remove the ad only now that the sale is confirmed — and only if balance is truly exhausted
+    if (order.adId) {
+      const completedAd = await db.select().from(adsTable).where(eq(adsTable.id, order.adId)).then(r => r[0]);
+      if (completedAd && parseFloat(completedAd.availableAmount) < 0.0001) {
+        await db.delete(adsTable).where(eq(adsTable.id, order.adId));
+      }
+    }
 
     const updated = await db.select().from(ordersTable).where(eq(ordersTable.id, id)).then(r => r[0]);
     res.json(await formatOrder(updated, userId));
