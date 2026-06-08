@@ -242,6 +242,24 @@ router.post("/", async (req, res) => {
       isRead: false,
     });
 
+    // Send the ad poster's auto-reply (if set) as the first chat message
+    if (ad.autoReply && ad.autoReply.trim()) {
+      const autoReplyReceiverId = userId; // always the order creator
+      await db.insert(messagesTable).values({
+        orderId: order.id,
+        senderId: ad.userId,
+        receiverId: autoReplyReceiverId,
+        content: ad.autoReply.trim(),
+        type: "text",
+        isRead: false,
+      });
+      const adPoster = await db.select().from(usersTable).where(eq(usersTable.id, ad.userId)).then(r => r[0]);
+      emitToUser(autoReplyReceiverId, "new_message", {
+        orderId: order.id,
+        senderUsername: adPoster?.username ?? "Trader",
+      });
+    }
+
     await notify({
       userId: sellerId,
       type: "order_created",
