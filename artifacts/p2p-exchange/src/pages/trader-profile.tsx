@@ -247,6 +247,11 @@ export default function TraderProfilePage() {
             <ThumbsUp className="w-3 h-3 text-success" />
             <span>{positiveRate}% positive · {totalFeedback} reviews</span>
           </div>
+          {(profile.flagCount ?? 0) > 0 && (
+            <span className="text-xs bg-destructive/20 text-destructive px-2 py-0.5 rounded-full font-semibold flex items-center gap-1">
+              ⚑ {profile.flagCount} {profile.flagCount === 1 ? "Report" : "Reports"}
+            </span>
+          )}
         </div>
 
         {!isOwnProfile && (

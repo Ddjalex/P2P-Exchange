@@ -152,6 +152,7 @@ router.get("/:id/profile", async (req, res) => {
       username: user.username,
       kycStatus: user.kycStatus ?? "none",
       isMerchant: user.isMerchant ?? false,
+      flagCount: user.flagCount ?? 0,
       createdAt: user.createdAt,
       lastActiveAt: user.lastActiveAt ?? null,
       registeredDays,

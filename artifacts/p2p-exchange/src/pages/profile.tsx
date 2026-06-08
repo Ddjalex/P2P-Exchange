@@ -404,11 +404,21 @@ export default function ProfilePage() {
                   <Edit2 className="w-4 h-4 text-muted-foreground" />
                 </button>
               </div>
-              <div className="text-sm text-muted-foreground mt-1 flex items-center">
-                {profile?.kycStatus === "verified" ? (
-                  <><ShieldCheck className="w-4 h-4 text-success mr-1" /><span className="text-success font-medium">Verified User</span></>
-                ) : (
-                  <><ShieldCheck className="w-4 h-4 mr-1" />Unverified</>
+              <div className="flex items-center gap-2 flex-wrap mt-1">
+                <div className="text-sm text-muted-foreground flex items-center">
+                  {profile?.kycStatus === "verified" ? (
+                    <><ShieldCheck className="w-4 h-4 text-success mr-1" /><span className="text-success font-medium">Verified User</span></>
+                  ) : (
+                    <><ShieldCheck className="w-4 h-4 mr-1" />Unverified</>
+                  )}
+                </div>
+                {profile?.isMerchant && (
+                  <span className="text-xs bg-warning/20 text-warning px-2 py-0.5 rounded-full font-semibold">Merchant</span>
+                )}
+                {(profile?.flagCount ?? 0) > 0 && (
+                  <span className="text-xs bg-destructive/20 text-destructive px-2 py-0.5 rounded-full font-semibold flex items-center gap-1">
+                    ⚑ {profile?.flagCount} {profile?.flagCount === 1 ? "Flag" : "Flags"}
+                  </span>
                 )}
               </div>
               {user?.uid && (

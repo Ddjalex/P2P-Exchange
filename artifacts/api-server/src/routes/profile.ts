@@ -38,6 +38,7 @@ async function getProfileData(userId: number) {
     phone: user.phone ?? null,
     kycStatus: user.kycStatus,
     isMerchant: user.isMerchant,
+    flagCount: user.flagCount ?? 0,
     emailVerified: user.emailVerified,
     smsVerified: user.smsVerified,
     addressVerified: user.addressVerified,
