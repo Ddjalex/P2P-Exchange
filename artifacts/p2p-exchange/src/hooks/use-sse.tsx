@@ -103,6 +103,8 @@ export function useSse() {
 
           queryClient.invalidateQueries({ queryKey: ["badge-chat"] });
           queryClient.invalidateQueries({ queryKey: ["notif-count"] });
+          // Refresh conversations list so last message + sort order update live
+          queryClient.invalidateQueries({ queryKey: ["/api/messages/conversations"] });
 
           if (data.orderId) {
             queryClient.invalidateQueries({ queryKey: [`/api/messages/${data.orderId}`] });
@@ -115,6 +117,8 @@ export function useSse() {
       // ── Wallet balance changed ─────────────────────────────────────────────
       es.addEventListener("wallet_update", () => {
         queryClient.invalidateQueries({ queryKey: ["/api/wallet"] });
+        queryClient.invalidateQueries({ queryKey: ["wallet-transactions"] });
+        queryClient.invalidateQueries({ queryKey: ["transfer-history"] });
       });
 
       // ── General notification badge ─────────────────────────────────────────

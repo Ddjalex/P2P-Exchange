@@ -5,6 +5,7 @@ import { eq, and, desc, or } from "drizzle-orm";
 import { sendUsdt, privateKeyToTronAddress, getTrc20TxDetails } from "../lib/tron.js";
 import { depositVerificationsTable } from "@workspace/db";
 import { getBscUsdtTx } from "../lib/bsc.js";
+import { emitToUser } from "../lib/sse.js";
 
 const router = Router();
 
@@ -444,6 +445,10 @@ router.post("/internal-transfer", async (req, res) => {
         message: `${transferAmount.toFixed(4)} USDT received from ${sender.username}`,
       });
     });
+
+    // Push real-time wallet balance update to both parties
+    emitToUser(senderId, "wallet_update", {});
+    emitToUser(receiver.id, "wallet_update", {});
 
     const receiverName = (receiver.username || "").length <= 4
       ? (receiver.username || "")[0] + "***"
