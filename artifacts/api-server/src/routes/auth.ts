@@ -407,33 +407,98 @@ router.post("/forgot-password", forgotPasswordLimiter, async (req, res) => {
       return res.status(400).json({ message: "Email or phone number required" });
     }
 
+    const normalized = String(identifier).trim();
+    const isEmail = normalized.includes("@");
+    const isDev = process.env.NODE_ENV !== "production";
+
+    // Find user by email or phone (tolerant phone matching)
     const allUsers = await db.select().from(usersTable);
-    const user = allUsers.find(
-      u => u.email === String(identifier).toLowerCase() ||
-           (u.phone && (u.phone === identifier || u.phone.endsWith(identifier)))
-    );
+    const user = allUsers.find(u => {
+      if (isEmail) return u.email === normalized.toLowerCase();
+      // Phone: match full stored number OR the last N digits
+      const bare = normalized.replace(/\D/g, "");
+      return u.phone && (u.phone === normalized || u.phone.replace(/\D/g, "").endsWith(bare));
+    });
 
     if (!user) {
+      // Don't reveal whether the account exists
       return res.json({ success: true, message: "If this account exists, a reset code has been sent." });
     }
 
     const otp = generateOTP();
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
 
+    // Delete old tokens for this user and save the new one
     await db.delete(passwordResetTokensTable).where(eq(passwordResetTokensTable.userId, user.id));
-
     await db.insert(passwordResetTokensTable).values({
       userId: user.id,
       token: otp,
-      identifier: String(identifier),
+      identifier: normalized,
       expiresAt,
       used: false,
     });
 
-    // Try Telegram notification if user has bot linked
+    req.log.info({ target: normalized }, "Password reset OTP generated");
+    console.log(`\n🔐 RESET OTP for ${normalized}: ${otp}\n`);
+
+    let delivered = false;
+    let deliveryError = "";
+
+    if (isEmail) {
+      // Try Brevo email delivery
+      const apiKey = await getSetting("brevoApiKey");
+      const senderEmail = await getSetting("brevoSenderEmail");
+      const senderName = await getSetting("brevoSenderName");
+      if (apiKey) {
+        try {
+          const emailHtml = `
+            <div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;background:#080d18;color:#fff;border-radius:12px;padding:32px;">
+              <div style="text-align:center;margin-bottom:24px;">
+                <span style="font-size:24px;font-weight:700;">xen</span><span style="font-size:24px;font-weight:700;color:#00e5ff;">drx</span>
+              </div>
+              <h2 style="margin:0 0 8px;font-size:20px;">Password Reset Code</h2>
+              <p style="color:rgba(255,255,255,.6);font-size:14px;margin:0 0 24px;">Use the code below to reset your password. It expires in 15 minutes.</p>
+              <div style="background:#0d0d1a;border:2px solid #00e5ff33;border-radius:8px;padding:20px;text-align:center;letter-spacing:10px;font-size:36px;font-weight:700;color:#00e5ff;">${otp}</div>
+              <p style="color:rgba(255,255,255,.4);font-size:12px;margin-top:24px;text-align:center;">If you did not request this, ignore this email.</p>
+            </div>
+          `;
+          const res2 = await fetch("https://api.brevo.com/v3/smtp/email", {
+            method: "POST",
+            headers: { "api-key": apiKey, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              sender: { name: senderName || "Xendrx", email: senderEmail || "noreply@xendrx.com" },
+              to: [{ email: normalized }],
+              subject: "Your Xendrx Password Reset Code",
+              htmlContent: emailHtml,
+            }),
+          });
+          if (res2.ok) delivered = true;
+          else deliveryError = `Email error ${res2.status}`;
+        } catch (e: any) {
+          deliveryError = e?.message || "Email send failed";
+        }
+      } else {
+        deliveryError = "Email service not configured";
+      }
+    } else {
+      // Try FastSMS delivery
+      const apiKey = await getSetting("fastsmsApiKey");
+      if (apiKey) {
+        try {
+          const phone = user.phone || normalized;
+          await sendSms(phone, `Your Xendrx password reset code is: ${otp}. Valid for 15 minutes. Do not share this code.`, apiKey);
+          delivered = true;
+        } catch (e: any) {
+          deliveryError = e?.message || "SMS send failed";
+        }
+      } else {
+        deliveryError = "SMS service not configured";
+      }
+    }
+
+    // Try Telegram as fallback (or in addition) if user has bot linked
     const tgUser = await db.select().from(telegramUsersTable)
       .where(eq(telegramUsersTable.userId, user.id)).then(r => r[0]);
-
     if (tgUser?.telegramId) {
       try {
         const { sendTelegramMessage } = await import("../telegram/bot.js");
@@ -441,18 +506,23 @@ router.post("/forgot-password", forgotPasswordLimiter, async (req, res) => {
           tgUser.telegramId,
           `🔐 *Xendrx Password Reset*\n\nYour reset code is:\n\n\`${otp}\`\n\nThis code expires in *15 minutes*.\nIf you did not request this, ignore this message.`
         );
+        delivered = true;
       } catch {
-        // Telegram is optional — don't fail the request
+        // Telegram is optional
       }
     }
 
-    req.log.info({ target: identifier }, "Password reset OTP generated");
-    console.log(`\n🔐 RESET OTP for ${identifier}: ${otp}\n`);
+    if (!delivered) {
+      req.log.warn({ deliveryError }, "OTP delivery failed, returning devOtp");
+    }
 
     return res.json({
       success: true,
-      message: "Reset code sent successfully.",
-      ...(process.env.NODE_ENV !== "production" && { devOtp: otp }),
+      message: delivered
+        ? `Reset code sent to your ${isEmail ? "email" : "phone"}.`
+        : "Reset code sent successfully.",
+      // Always expose in dev mode so testing works without configured services
+      ...(isDev && { devOtp: otp }),
     });
   } catch (err: any) {
     req.log.error({ err }, "forgot-password failed");
