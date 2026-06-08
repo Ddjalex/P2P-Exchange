@@ -168,9 +168,12 @@ export default function ChatThreadPage() {
       <header className="flex flex-col border-b border-border bg-background sticky top-0 z-20">
         <div className="flex items-center justify-between p-4">
           <div className="flex items-center space-x-3">
-            <Link href={order ? `/trade/${order.id}` : "/chat"} className="text-muted-foreground">
+            <button
+              onClick={() => window.history.length > 1 ? window.history.back() : (window.location.href = "/chat")}
+              className="text-muted-foreground p-1"
+            >
               <ArrowLeft className="w-5 h-5" />
-            </Link>
+            </button>
             <div>
               <h1 className="font-bold text-sm">{counterpartyName ?? "Loading..."}</h1>
               {counterpartyOnline ? (
