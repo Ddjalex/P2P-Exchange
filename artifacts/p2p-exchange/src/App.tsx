@@ -36,6 +36,8 @@ import TransferHistoryPage from "@/pages/transfer-history";
 import WalletUsdtPage from "@/pages/wallet-usdt";
 import AddressVerifyPage from "@/pages/address-verify";
 import AddressStatusPage from "@/pages/address-status";
+import EmailVerifyPage from "@/pages/email-verify";
+import PhoneVerifyPage from "@/pages/phone-verify";
 
 // Admin pages
 import AdminLoginPage from "@/pages/admin-login";
@@ -127,6 +129,8 @@ function Router() {
       <Route path="/card"><ProtectedRoute component={CardPage} /></Route>
       <Route path="/settings/address-verify"><ProtectedRoute component={AddressVerifyPage} /></Route>
       <Route path="/settings/address"><ProtectedRoute component={AddressStatusPage} /></Route>
+      <Route path="/settings/email-verify"><ProtectedRoute component={EmailVerifyPage} /></Route>
+      <Route path="/settings/phone-verify"><ProtectedRoute component={PhoneVerifyPage} /></Route>
 
       {/* Admin auth — login now lives inside /auth */}
       <Route path="/admin/login"><Redirect to="/auth" /></Route>

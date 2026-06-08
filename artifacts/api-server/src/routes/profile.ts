@@ -151,6 +151,44 @@ router.patch("/email", async (req, res) => {
   }
 });
 
+// PATCH /api/profile/phone — add/update phone for email-registered users
+router.patch("/phone", async (req, res) => {
+  try {
+    const { phone, code } = req.body;
+    const userId = (req as any).userId;
+
+    if (!phone || !code) return res.status(400).json({ error: "phone and code are required" });
+
+    const normalizedPhone = String(phone).trim();
+
+    const now = new Date();
+    const records = await db.select().from(verificationCodesTable)
+      .where(and(
+        eq(verificationCodesTable.target, normalizedPhone),
+        eq(verificationCodesTable.code, String(code)),
+        eq(verificationCodesTable.used, false),
+        gt(verificationCodesTable.expiresAt, now),
+      ));
+    const record = records[records.length - 1];
+    if (!record) return res.status(400).json({ error: "Invalid or expired verification code" });
+
+    await db.update(verificationCodesTable).set({ used: true }).where(eq(verificationCodesTable.id, record.id));
+
+    const existing = await db.select({ id: usersTable.id }).from(usersTable)
+      .where(eq(usersTable.phone, normalizedPhone)).then(r => r[0]);
+    if (existing && existing.id !== userId) return res.status(409).json({ error: "Phone number already in use" });
+
+    await db.update(usersTable)
+      .set({ phone: normalizedPhone, smsVerified: true })
+      .where(eq(usersTable.id, userId));
+
+    res.json({ success: true });
+  } catch (err) {
+    req.log.error({ err }, "Failed to update phone");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // GET /api/profile/feedback — received feedback list
 router.get("/feedback", async (req, res) => {
   try {

@@ -279,6 +279,61 @@ export default function KycPage() {
 
   const userPhone = (me as any)?.phone ?? "";
   const userEmail = (me as any)?.email ?? "";
+  const kycStatus = (me as any)?.kycStatus ?? "";
+
+  if (kycStatus === "verified") {
+    return (
+      <AppLayout showNav={false}>
+        <header className="flex items-center space-x-3 p-4 border-b border-border bg-background z-10 sticky top-0">
+          <Link href="/profile" className="text-muted-foreground">
+            <ArrowLeft className="w-5 h-5" />
+          </Link>
+          <h1 className="font-bold">Identity Verification</h1>
+        </header>
+        <div className="flex flex-col items-center justify-center p-8 space-y-4 text-center min-h-[60vh]">
+          <div className="w-20 h-20 rounded-full bg-green-500/10 flex items-center justify-center">
+            <Check className="w-10 h-10 text-green-500" />
+          </div>
+          <h2 className="text-xl font-bold">Identity Verified</h2>
+          <p className="text-muted-foreground text-sm max-w-xs">
+            Your identity has already been verified. You cannot change your KYC information after verification.
+          </p>
+          <Link href="/profile" className="w-full block">
+            <button className="w-full bg-primary text-background font-bold rounded-xl py-4 mt-2">
+              Back to Profile
+            </button>
+          </Link>
+        </div>
+      </AppLayout>
+    );
+  }
+
+  if (kycStatus === "pending") {
+    return (
+      <AppLayout showNav={false}>
+        <header className="flex items-center space-x-3 p-4 border-b border-border bg-background z-10 sticky top-0">
+          <Link href="/profile" className="text-muted-foreground">
+            <ArrowLeft className="w-5 h-5" />
+          </Link>
+          <h1 className="font-bold">Identity Verification</h1>
+        </header>
+        <div className="flex flex-col items-center justify-center p-8 space-y-4 text-center min-h-[60vh]">
+          <div className="w-20 h-20 rounded-full bg-yellow-500/10 flex items-center justify-center">
+            <Check className="w-10 h-10 text-yellow-500" />
+          </div>
+          <h2 className="text-xl font-bold">Under Review</h2>
+          <p className="text-muted-foreground text-sm max-w-xs">
+            Your KYC documents have been submitted and are currently under review. We'll notify you once the review is complete.
+          </p>
+          <Link href="/profile" className="w-full block">
+            <button className="w-full bg-primary text-background font-bold rounded-xl py-4 mt-2">
+              Back to Profile
+            </button>
+          </Link>
+        </div>
+      </AppLayout>
+    );
+  }
 
   return (
     <AppLayout showNav={false}>
