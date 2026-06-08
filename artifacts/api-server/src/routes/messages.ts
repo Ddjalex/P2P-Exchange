@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { messagesTable, ordersTable, usersTable } from "@workspace/db";
-import { eq, and, or, desc, ne } from "drizzle-orm";
+import { eq, and, or, desc, ne, inArray } from "drizzle-orm";
 import { notify } from "../lib/notify.js";
 import { PushNotify } from "./push.js";
 import { TelegramNotify } from "../telegram/notify.js";
@@ -64,14 +64,17 @@ router.get("/conversations", async (req, res) => {
       };
     }));
 
-    // Deduplicate by traderId: keep only the entry with the most recent lastMessageAt per trader
+    // Deduplicate by traderId: keep the most recent entry per trader, accumulating unread across all orders
     const seen = new Map<number, typeof rawConversations[0]>();
     for (const conv of rawConversations) {
       const existing = seen.get(conv.traderId);
-      if (!existing || new Date(conv.lastMessageAt) > new Date(existing.lastMessageAt)) {
-        seen.set(conv.traderId, conv);
-      } else if (existing) {
-        // Accumulate unread count from all orders with same trader
+      if (!existing) {
+        seen.set(conv.traderId, { ...conv });
+      } else if (new Date(conv.lastMessageAt) > new Date(existing.lastMessageAt)) {
+        // Newer conv takes over display, but carry forward accumulated unread from older entries
+        seen.set(conv.traderId, { ...conv, unreadCount: conv.unreadCount + existing.unreadCount });
+      } else {
+        // Older conv — just add its unread to the existing entry
         existing.unreadCount += conv.unreadCount;
       }
     }
@@ -237,9 +240,29 @@ router.post("/:orderId/image", chatUpload.single("image"), async (req, res) => {
 router.post("/:orderId/read", async (req, res) => {
   try {
     const orderId = parseInt(req.params.orderId);
-    await db.update(messagesTable)
-      .set({ isRead: true })
-      .where(and(eq(messagesTable.orderId, orderId), eq(messagesTable.receiverId, (req as any).userId)));
+    const userId = (req as any).userId;
+
+    // Find counterparty from this order
+    const order = await db.select().from(ordersTable).where(eq(ordersTable.id, orderId)).then(r => r[0]);
+    if (!order) return res.json({ success: true });
+
+    const counterpartyId = order.buyerId === userId ? order.sellerId : order.buyerId;
+
+    // Find ALL orders between these two users (in either role)
+    const sharedOrders = await db.select({ id: ordersTable.id }).from(ordersTable).where(
+      or(
+        and(eq(ordersTable.buyerId, userId), eq(ordersTable.sellerId, counterpartyId)),
+        and(eq(ordersTable.buyerId, counterpartyId), eq(ordersTable.sellerId, userId)),
+      )!
+    );
+
+    const orderIds = sharedOrders.map(o => o.id);
+    if (orderIds.length > 0) {
+      await db.update(messagesTable)
+        .set({ isRead: true })
+        .where(and(inArray(messagesTable.orderId, orderIds), eq(messagesTable.receiverId, userId)));
+    }
+
     res.json({ success: true });
   } catch (err) {
     req.log.error({ err }, "Failed to mark messages read");
