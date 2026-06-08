@@ -4,7 +4,7 @@ import { AppLayout } from "@/components/layout";
 import { ArrowLeft, Loader2, Mail, CheckCircle2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
-import { getGetMeQueryKey } from "@workspace/api-client-react";
+import { getGetMeQueryKey, useGetMe } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 
 const TOKEN_KEY = "p2p_token";
@@ -12,6 +12,10 @@ function getToken() { return localStorage.getItem(TOKEN_KEY) ?? ""; }
 
 export default function EmailVerifyPage() {
   const [, navigate] = useLocation();
+  const { data: me } = useGetMe();
+  const isEmailVerified = !!(me as any)?.emailVerified;
+  const currentEmail = (me as any)?.email ?? "";
+  const isPhoneEmail = currentEmail.endsWith("@phone.xendrx.com");
   const { toast } = useToast();
   const { refreshUser } = useAuth();
   const queryClient = useQueryClient();
@@ -22,6 +26,34 @@ export default function EmailVerifyPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [done, setDone] = useState(false);
+
+  if (isEmailVerified && !isPhoneEmail) {
+    return (
+      <AppLayout showNav={false}>
+        <header className="flex items-center space-x-3 p-4 border-b border-border bg-background sticky top-0">
+          <button onClick={() => navigate("/profile")} className="text-muted-foreground">
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <h1 className="font-bold">Email Verified</h1>
+        </header>
+        <div className="flex flex-col items-center justify-center p-8 space-y-4 text-center min-h-[60vh]">
+          <div className="w-20 h-20 rounded-full bg-green-500/10 flex items-center justify-center">
+            <CheckCircle2 className="w-10 h-10 text-green-500" />
+          </div>
+          <h2 className="text-xl font-bold">Email Already Verified</h2>
+          <p className="text-muted-foreground text-sm max-w-xs">
+            Your email address <span className="text-foreground font-medium">{currentEmail}</span> is already verified.
+          </p>
+          <button
+            onClick={() => navigate("/profile")}
+            className="w-full bg-primary text-background font-bold rounded-xl py-4 mt-2"
+          >
+            Back to Profile
+          </button>
+        </div>
+      </AppLayout>
+    );
+  }
 
   const sendCode = async () => {
     if (!email.includes("@")) { setError("Enter a valid email address"); return; }
