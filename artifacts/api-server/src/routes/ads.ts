@@ -241,16 +241,20 @@ router.get("/:id", async (req, res) => {
 router.patch("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
+    const userId = (req as any).userId;
     const {
       priceType, price, floatingMargin, totalAmount, minLimit, maxLimit,
       paymentMethods, paymentTimeLimit, autoReply, conditions, region, status
     } = req.body;
 
+    const ad = await db.select().from(adsTable).where(eq(adsTable.id, id)).then(r => r[0]);
+    if (!ad) return res.status(404).json({ message: "Ad not found" });
+    if (ad.userId !== userId) return res.status(403).json({ message: "Forbidden" });
+
     const updates: Record<string, any> = {};
     if (priceType !== undefined) updates.priceType = priceType;
     if (price !== undefined) updates.price = price;
     if (floatingMargin !== undefined) updates.floatingMargin = floatingMargin;
-    if (totalAmount !== undefined) { updates.totalAmount = totalAmount; updates.availableAmount = totalAmount; }
     if (minLimit !== undefined) updates.minLimit = minLimit;
     if (maxLimit !== undefined) updates.maxLimit = maxLimit;
     if (paymentMethods !== undefined) updates.paymentMethods = JSON.stringify(paymentMethods);
@@ -259,6 +263,47 @@ router.patch("/:id", async (req, res) => {
     if (conditions !== undefined) updates.conditions = JSON.stringify(conditions);
     if (region !== undefined) updates.region = region;
     if (status !== undefined) updates.status = status;
+
+    // Handle totalAmount change for sell ads — must adjust wallet frozen/available
+    if (totalAmount !== undefined) {
+      const newTotal = parseFloat(totalAmount);
+      const oldAvailable = parseFloat(ad.availableAmount ?? "0");
+      const oldTotal = parseFloat(ad.totalAmount ?? "0");
+      // Amount already committed to active orders — cannot change this portion
+      const lockedInOrders = Math.max(0, oldTotal - oldAvailable);
+      const newAvailable = newTotal - lockedInOrders;
+
+      if (newAvailable < 0) {
+        return res.status(400).json({
+          message: `Cannot set total below ${lockedInOrders.toFixed(4)} USDT — that amount is locked in active orders.`,
+        });
+      }
+
+      updates.totalAmount = String(newTotal);
+      updates.availableAmount = String(newAvailable);
+
+      if (ad.type === "sell") {
+        // diff > 0 means user wants more USDT in the ad (deduct from wallet.available)
+        // diff < 0 means user is reducing (return to wallet.available)
+        const diff = newAvailable - oldAvailable;
+        if (diff !== 0) {
+          const wallet = await getOrCreateWallet(userId);
+          const walletAvailable = parseFloat(wallet.availableBalance);
+          const walletFrozen = parseFloat(wallet.frozenBalance);
+
+          if (diff > 0 && walletAvailable < diff) {
+            return res.status(400).json({
+              message: `Insufficient balance. You only have ${walletAvailable.toFixed(4)} USDT available.`,
+            });
+          }
+
+          await db.update(walletsTable).set({
+            availableBalance: Math.max(0, walletAvailable - diff).toFixed(4),
+            frozenBalance: Math.max(0, walletFrozen + diff).toFixed(4),
+          }).where(eq(walletsTable.userId, userId));
+        }
+      }
+    }
 
     const [updated] = await db.update(adsTable).set(updates).where(eq(adsTable.id, id)).returning();
     if (!updated) return res.status(404).json({ message: "Ad not found" });

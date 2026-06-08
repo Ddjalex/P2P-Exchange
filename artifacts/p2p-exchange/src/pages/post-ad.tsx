@@ -43,7 +43,7 @@ export default function PostAdPage() {
   const [userPaymentMethods, setUserPaymentMethods] = useState<UserPaymentMethod[]>([]);
   const [loadingPaymentMethods, setLoadingPaymentMethods] = useState(true);
   const [step2Error, setStep2Error] = useState("");
-  const [availableBalance, setAvailableBalance] = useState<number | null>(null);
+  const [rawWalletAvailable, setRawWalletAvailable] = useState<number | null>(null);
 
   const { data: existingAd, isLoading: loadingAd } = useGetAd(editId!, {
     query: { enabled: isEdit },
@@ -105,11 +105,23 @@ export default function PostAdPage() {
       .then(r => r.ok ? r.json() : null)
       .then(data => {
         if (data?.availableBalance !== undefined) {
-          setAvailableBalance(parseFloat(data.availableBalance));
+          setRawWalletAvailable(parseFloat(data.availableBalance));
         }
       })
       .catch(() => {});
   }, []);
+
+  // When editing a sell ad, the USDT that backs this ad is already frozen in the
+  // wallet. The amount still available inside the ad (not locked by active orders)
+  // can be re-allocated freely, so add it back to the wallet's free balance to get
+  // the true effective ceiling for the "Total Amount" field.
+  const adAvailableAmount = isEdit && existingAd ? parseFloat(String((existingAd as any).availableAmount ?? 0)) : 0;
+  const availableBalance = rawWalletAvailable === null ? null : rawWalletAvailable + adAvailableAmount;
+
+  // Minimum the seller can set: must cover USDT already locked in active orders
+  const adLockedInOrders = isEdit && existingAd
+    ? Math.max(0, parseFloat(String(existingAd.totalAmount ?? 0)) - adAvailableAmount)
+    : 0;
 
   const createAd = useCreateAd();
   const updateAd = useUpdateAd();
@@ -134,8 +146,12 @@ export default function PostAdPage() {
         setStep2Error("Please enter a valid total amount");
         return;
       }
-      if (ad.type === "sell" && availableBalance !== null) {
-        if (Number(ad.totalAmount) > availableBalance) {
+      if (ad.type === "sell") {
+        if (isEdit && adLockedInOrders > 0 && Number(ad.totalAmount) < adLockedInOrders) {
+          setStep2Error(`Total cannot be less than ${adLockedInOrders.toFixed(4)} USDT (locked in active orders).`);
+          return;
+        }
+        if (availableBalance !== null && Number(ad.totalAmount) > availableBalance) {
           setStep2Error(`Insufficient balance. You only have ${availableBalance.toFixed(4)} USDT available.`);
           return;
         }

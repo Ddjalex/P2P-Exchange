@@ -48,11 +48,11 @@ function txLabel(type: string) {
 function txColors(type: string): { bg: string; text: string } {
   switch (type) {
     case "deposit":
-    case "p2p_sell":
+    case "p2p_buy":
     case "internal_receive":
       return { bg: "rgba(0,212,255,0.12)", text: "#00d4ff" };
     case "withdraw":
-    case "p2p_buy":
+    case "p2p_sell":
     case "internal_send":
       return { bg: "rgba(255,107,107,0.12)", text: "#ff6b6b" };
     default:
@@ -61,7 +61,7 @@ function txColors(type: string): { bg: string; text: string } {
 }
 
 function isCredit(type: string) {
-  return ["deposit", "p2p_sell", "internal_receive"].includes(type);
+  return ["deposit", "p2p_buy", "internal_receive"].includes(type);
 }
 
 function statusBadge(status: string) {
