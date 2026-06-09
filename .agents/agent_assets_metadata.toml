@@ -6,3 +6,9 @@ id = "fstNBmE_7d3QqXFzDqtiq"
 uri = "file://xendrx-deploy.zip"
 type = "unspecified"
 title = "xendrx-deploy.zip — VPS Deployment Package"
+
+[[outputs]]
+id = "HIi-DP2vtTRK-biqgIPkO"
+uri = "file://xendrx-deploy.tar.gz"
+type = "unspecified"
+title = "xendrx-deploy.tar.gz — Production build for Contabo VPS"
