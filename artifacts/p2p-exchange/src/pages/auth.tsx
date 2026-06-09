@@ -5,7 +5,15 @@ import { useAdminAuth } from "@/hooks/use-admin-auth";
 import { Turnstile, type TurnstileInstance } from "@marsidev/react-turnstile";
 import "./auth.css";
 
-const TURNSTILE_SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY;
+// Only activate Turnstile on production (xendrx.com). On Replit dev domains the
+// widget returns error 400020 (domain not whitelisted) and the backend already
+// skips verification when NODE_ENV !== "production".
+const IS_PRODUCTION_DOMAIN = !window.location.hostname.includes("replit") &&
+  !window.location.hostname.includes("localhost") &&
+  !window.location.hostname.includes("127.0.0.1");
+const TURNSTILE_SITE_KEY = IS_PRODUCTION_DOMAIN
+  ? import.meta.env.VITE_TURNSTILE_SITE_KEY
+  : undefined;
 
 interface Country {
   code: string;
