@@ -5,15 +5,18 @@ import { useAdminAuth } from "@/hooks/use-admin-auth";
 import { Turnstile, type TurnstileInstance } from "@marsidev/react-turnstile";
 import "./auth.css";
 
-// Only activate Turnstile on production (xendrx.com). On Replit dev domains the
-// widget returns error 400020 (domain not whitelisted) and the backend already
-// skips verification when NODE_ENV !== "production".
-const IS_PRODUCTION_DOMAIN = !window.location.hostname.includes("replit") &&
+// Cloudflare's official always-pass test key — works on any domain.
+// Used on Replit/localhost so the widget renders visually without a 400020 error.
+// On xendrx.com the real site key is used and the backend enforces verification.
+const IS_PRODUCTION_DOMAIN =
+  typeof window !== "undefined" &&
+  !window.location.hostname.includes("replit") &&
   !window.location.hostname.includes("localhost") &&
   !window.location.hostname.includes("127.0.0.1");
-const TURNSTILE_SITE_KEY = IS_PRODUCTION_DOMAIN
-  ? import.meta.env.VITE_TURNSTILE_SITE_KEY
-  : undefined;
+
+const CF_TEST_KEY = "1x00000000000000000000AA"; // Always passes, any domain
+const REAL_SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY;
+const TURNSTILE_SITE_KEY = IS_PRODUCTION_DOMAIN ? (REAL_SITE_KEY || CF_TEST_KEY) : CF_TEST_KEY;
 
 interface Country {
   code: string;
@@ -101,6 +104,8 @@ export default function AuthPage() {
   // Turnstile state
   const [loginTurnstileToken, setLoginTurnstileToken] = useState("");
   const [regTurnstileToken, setRegTurnstileToken] = useState("");
+  const [loginTurnstileError, setLoginTurnstileError] = useState(false);
+  const [regTurnstileError, setRegTurnstileError] = useState(false);
   const loginTurnstileRef = useRef<TurnstileInstance>(null);
   const regTurnstileRef = useRef<TurnstileInstance>(null);
 
@@ -533,9 +538,9 @@ export default function AuthPage() {
               <Turnstile
                 ref={loginTurnstileRef}
                 siteKey={TURNSTILE_SITE_KEY}
-                onSuccess={setLoginTurnstileToken}
-                onExpire={() => setLoginTurnstileToken("")}
-                onError={() => setLoginTurnstileToken("")}
+                onSuccess={(token) => { setLoginTurnstileToken(token); setLoginTurnstileError(false); }}
+                onExpire={() => { setLoginTurnstileToken(""); setLoginTurnstileError(false); }}
+                onError={() => { setLoginTurnstileToken(""); setLoginTurnstileError(true); }}
                 options={{ theme: "dark", size: "normal" }}
               />
             </div>
@@ -545,7 +550,7 @@ export default function AuthPage() {
             <button
               className="submit-btn"
               onClick={doLogin}
-              disabled={loginLoading || (!!TURNSTILE_SITE_KEY && !loginTurnstileToken)}
+              disabled={loginLoading || (!!TURNSTILE_SITE_KEY && !loginTurnstileToken && !loginTurnstileError)}
             >
               {loginLoading ? "Logging in…" : "Login"}
             </button>
@@ -667,9 +672,9 @@ export default function AuthPage() {
                   <Turnstile
                     ref={regTurnstileRef}
                     siteKey={TURNSTILE_SITE_KEY}
-                    onSuccess={setRegTurnstileToken}
-                    onExpire={() => setRegTurnstileToken("")}
-                    onError={() => setRegTurnstileToken("")}
+                    onSuccess={(token) => { setRegTurnstileToken(token); setRegTurnstileError(false); }}
+                    onExpire={() => { setRegTurnstileToken(""); setRegTurnstileError(false); }}
+                    onError={() => { setRegTurnstileToken(""); setRegTurnstileError(true); }}
                     options={{ theme: "dark", size: "normal" }}
                   />
                 </div>
@@ -679,7 +684,7 @@ export default function AuthPage() {
                 <button
                   className="submit-btn"
                   onClick={doSendCode}
-                  disabled={otpLoading || (!!TURNSTILE_SITE_KEY && !regTurnstileToken)}
+                  disabled={otpLoading || (!!TURNSTILE_SITE_KEY && !regTurnstileToken && !regTurnstileError)}
                 >
                   {otpLoading ? "Sending code…" : (regType === "phone" ? "📱 Send SMS Code" : "✉️ Send Email Code")}
                 </button>
