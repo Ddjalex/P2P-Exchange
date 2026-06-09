@@ -1,0 +1,52 @@
+Here's a complete summary of everything in the package:
+
+📦 What's inside xendrx-deploy.tar.gz
+Extract on your VPS with:
+
+tar -xzf xendrx-deploy.tar.gz
+cd xendrx-deploy
+
+File/Folder	What it is
+api/dist/	Self-contained Node.js API server (no node_modules needed — bundled by esbuild)
+public/	React frontend static files — serve via Nginx
+uploads/	Empty folder for KYC document uploads (must be writable)
+.env.example	Template for all environment variables
+nginx.conf	Full Nginx reverse-proxy + SSL config
+ecosystem.config.js	PM2 process manager config
+start.sh	Quick manual start script for testing
+DEPLOY.md	Full step-by-step deployment guide
+🗄️ Database Integration
+Provider: Neon PostgreSQL (cloud) — always TLS, never a local DB.
+
+Set NEON_DATABASE_URL in your .env:
+
+NEON_DATABASE_URL=postgresql://USER:PASS@HOST/DBNAME?sslmode=verify-full
+
+The schema is already pushed to Neon (done from the Replit workspace). No migration needed on the VPS.
+
+🔌 API Connection Flow
+Browser → Nginx (yourdomain.com) → /api/* → Node.js :8080 → Neon DB
+
+The React frontend uses relative URLs (/api/…) — Nginx proxies them to port 8080
+Real-time (chat + order updates): SSE at /api/sse/events — Nginx must have proxy_buffering off (already set in nginx.conf)
+Uploads: files land in ./uploads/, served by Nginx at /uploads/
+🔑 All Environment Variables (.env.example)
+Variable	Required	Purpose
+NEON_DATABASE_URL	✅ Yes	Neon PostgreSQL connection string
+PORT	✅ Yes	API server port (use 8080)
+NODE_ENV	✅ Yes	Set to production
+JWT_SECRET	✅ Yes	Signs user session tokens
+ADMIN_JWT_SECRET	✅ Yes	Signs admin panel tokens
+ADMIN_EMAIL	✅ Yes	Admin login email
+ADMIN_PASSWORD	✅ Yes	Admin login password
+APP_URL	✅ Yes	Your public domain (e.g. https://xendrx.com)
+TELEGRAM_BOT_TOKEN	Optional	Telegram order/KYC notifications
+TELEGRAM_BOT_USERNAME	Optional	Required if bot token is set
+VAPID_PUBLIC_KEY	Optional	Web push notifications
+VAPID_PRIVATE_KEY	Optional	Web push notifications
+VAPID_EMAIL	Optional	Web push sender email
+TURNSTILE_SECRET_KEY	Optional	Cloudflare bot protection on login
+LOG_LEVEL	Optional	info (default), debug, error
+Generate JWT secrets with:
+
+node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"

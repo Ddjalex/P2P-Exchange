@@ -60,23 +60,3 @@ VITE_TURNSTILE_SITE_KEY = "0x4AAAAAADfuSYe1Ks9-MMzT"
 
 [nix]
 channel = "stable-25_05"
-
-[[ports]]
-localPort = 5000
-externalPort = 80
-
-[[ports]]
-localPort = 8080
-externalPort = 8080
-
-[[ports]]
-localPort = 8081
-externalPort = 8081
-
-[[ports]]
-localPort = 8082
-externalPort = 3003
-
-[[ports]]
-localPort = 21832
-externalPort = 3000

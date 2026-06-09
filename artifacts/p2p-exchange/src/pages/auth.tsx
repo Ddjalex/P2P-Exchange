@@ -2,7 +2,10 @@ import { useState, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { useAdminAuth } from "@/hooks/use-admin-auth";
+import { Turnstile, type TurnstileInstance } from "@marsidev/react-turnstile";
 import "./auth.css";
+
+const TURNSTILE_SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY;
 
 interface Country {
   code: string;
@@ -86,6 +89,12 @@ export default function AuthPage() {
   const [regErr, setRegErr] = useState("");
   const [regLoading, setRegLoading] = useState(false);
   const [regPhoneFocused, setRegPhoneFocused] = useState(false);
+
+  // Turnstile state
+  const [loginTurnstileToken, setLoginTurnstileToken] = useState("");
+  const [regTurnstileToken, setRegTurnstileToken] = useState("");
+  const loginTurnstileRef = useRef<TurnstileInstance>(null);
+  const regTurnstileRef = useRef<TurnstileInstance>(null);
 
   // OTP state
   const [otpStep, setOtpStep] = useState(false);
@@ -267,11 +276,13 @@ export default function AuthPage() {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ identifier, password: loginPwd, country: loginC.code, dialCode: loginC.dial, type: loginType }),
+        body: JSON.stringify({ identifier, password: loginPwd, country: loginC.code, dialCode: loginC.dial, type: loginType, turnstileToken: loginTurnstileToken || undefined }),
       });
       const data = await res.json();
       if (!res.ok) {
         setLoginErr(data.error || "Login failed");
+        loginTurnstileRef.current?.reset();
+        setLoginTurnstileToken("");
         return;
       }
       login(data.token, data.user);
@@ -304,11 +315,13 @@ export default function AuthPage() {
       const res = await fetch("/api/auth/send-code", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ target: getOtpTarget(), type: regType }),
+        body: JSON.stringify({ target: getOtpTarget(), type: regType, turnstileToken: regTurnstileToken || undefined }),
       });
       const data = await res.json();
       if (!res.ok) {
         setRegErr(data.error || "Failed to send code");
+        regTurnstileRef.current?.reset();
+        setRegTurnstileToken("");
         return;
       }
       setOtpStep(true);
@@ -507,8 +520,25 @@ export default function AuthPage() {
 
           <div className="forgot slide-element"><a href="/forgot-password" style={{ color: '#00e5ff', textDecoration: 'none' }}>Forgot password?</a></div>
 
+          {TURNSTILE_SITE_KEY && (
+            <div className="slide-element" style={{ display: "flex", justifyContent: "center", margin: "6px 0 2px" }}>
+              <Turnstile
+                ref={loginTurnstileRef}
+                siteKey={TURNSTILE_SITE_KEY}
+                onSuccess={setLoginTurnstileToken}
+                onExpire={() => setLoginTurnstileToken("")}
+                onError={() => setLoginTurnstileToken("")}
+                options={{ theme: "dark", size: "normal" }}
+              />
+            </div>
+          )}
+
           <div className="slide-element">
-            <button className="submit-btn" onClick={doLogin} disabled={loginLoading}>
+            <button
+              className="submit-btn"
+              onClick={doLogin}
+              disabled={loginLoading || (!!TURNSTILE_SITE_KEY && !loginTurnstileToken)}
+            >
               {loginLoading ? "Logging in…" : "Login"}
             </button>
             {loginErr && <div className="server-err">{loginErr}</div>}
@@ -624,8 +654,25 @@ export default function AuthPage() {
                 <i className="fa-solid fa-gift"></i>
               </div>
 
+              {TURNSTILE_SITE_KEY && (
+                <div className="slide-element" style={{ display: "flex", justifyContent: "center", margin: "6px 0 2px" }}>
+                  <Turnstile
+                    ref={regTurnstileRef}
+                    siteKey={TURNSTILE_SITE_KEY}
+                    onSuccess={setRegTurnstileToken}
+                    onExpire={() => setRegTurnstileToken("")}
+                    onError={() => setRegTurnstileToken("")}
+                    options={{ theme: "dark", size: "normal" }}
+                  />
+                </div>
+              )}
+
               <div className="slide-element">
-                <button className="submit-btn" onClick={doSendCode} disabled={otpLoading}>
+                <button
+                  className="submit-btn"
+                  onClick={doSendCode}
+                  disabled={otpLoading || (!!TURNSTILE_SITE_KEY && !regTurnstileToken)}
+                >
                   {otpLoading ? "Sending code…" : (regType === "phone" ? "📱 Send SMS Code" : "✉️ Send Email Code")}
                 </button>
                 {regErr && <div className="server-err">{regErr}</div>}
