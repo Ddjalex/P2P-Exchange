@@ -56,7 +56,7 @@ VITE_VAPID_PUBLIC_KEY = "BLmNvrREYIu57En84KBWFimJDMQdHUvOgaZokih-8N0gEFeZ54G5wXQ
 APP_URL = "https://8db130e3-07e6-4177-93af-a0d277236085-00-389x3b5dubda1.spock.replit.dev"
 VAPID_PUBLIC_KEY = "BLmNvrREYIu57En84KBWFimJDMQdHUvOgaZokih-8N0gEFeZ54G5wXQyDg0T6eL8-b1CmQDEiWHH_f7RtFuN6G0"
 VAPID_PRIVATE_KEY = "LQeljwDbd_p9BjFJufByQftP_nUghHm3-X0udBqgxUc"
-VITE_TURNSTILE_SITE_KEY = "0x4AAAAAADfuSYe1Ks9-MMzT"
+VITE_TURNSTILE_SITE_KEY = "0x4AAAAAADfw5Ve1Ks9-MMzT"
 
 [nix]
 channel = "stable-25_05"
@@ -72,6 +72,10 @@ externalPort = 8080
 [[ports]]
 localPort = 8081
 externalPort = 80
+
+[[ports]]
+localPort = 8082
+externalPort = 3001
 
 [[ports]]
 localPort = 21832
