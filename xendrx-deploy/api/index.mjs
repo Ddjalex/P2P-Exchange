@@ -88052,7 +88052,7 @@ async function sendBrevoEmail(to, code, senderEmail, senderName, apiKey) {
       htmlContent: `
         <div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;background:#080d18;color:#fff;border-radius:12px;padding:32px;">
           <div style="text-align:center;margin-bottom:24px;">
-            <span style="font-size:24px;font-weight:700;">Swap</span><span style="font-size:24px;font-weight:700;color:#00e5ff;">Birr</span>
+            <span style="font-size:24px;font-weight:700;color:#00e5ff;">Xendrx</span>
           </div>
           <h2 style="margin:0 0 8px;font-size:20px;">Verification Code</h2>
           <p style="color:rgba(255,255,255,.6);font-size:14px;margin:0 0 24px;">Use the code below to verify your account. It expires in 10 minutes.</p>
@@ -91953,14 +91953,32 @@ router13.post("/auth/login", async (req, res) => {
   try {
     const { email: email3, password } = req.body ?? {};
     const adminEmail = process.env.ADMIN_EMAIL;
-    const adminPassword = process.env.ADMIN_PASSWORD;
+    const adminPasswordEnv = process.env.ADMIN_PASSWORD;
     if (!email3 || !password) return res.status(400).json({ error: "Email and password required" });
+    const pwRows = await db.select().from(systemSettingsTable).where(eq(systemSettingsTable.key, "adminPassword")).catch(() => []);
+    const adminPassword = pwRows[0]?.value ?? adminPasswordEnv;
     if (email3 !== adminEmail || password !== adminPassword)
       return res.status(401).json({ error: "Invalid credentials" });
     const token = sign2({ email: email3, iat: Date.now() }, getSecret());
     res.json({ token, admin: { email: email3 } });
   } catch (err2) {
     req.log.error({ err: err2 }, "Admin login failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+router13.patch("/change-password", adminAuth, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body ?? {};
+    if (!currentPassword || !newPassword) return res.status(400).json({ error: "Both fields required" });
+    if (newPassword.length < 8) return res.status(400).json({ error: "New password must be at least 8 characters" });
+    const pwRows = await db.select().from(systemSettingsTable).where(eq(systemSettingsTable.key, "adminPassword")).catch(() => []);
+    const currentStored = pwRows[0]?.value ?? process.env.ADMIN_PASSWORD;
+    if (currentPassword !== currentStored) return res.status(401).json({ error: "Current password is incorrect" });
+    await db.insert(systemSettingsTable).values({ key: "adminPassword", value: newPassword, updatedAt: /* @__PURE__ */ new Date() }).onConflictDoUpdate({ target: systemSettingsTable.key, set: { value: newPassword, updatedAt: /* @__PURE__ */ new Date() } });
+    await log(req.adminEmail, "change_password", "admin", void 0, "Admin password changed");
+    res.json({ success: true });
+  } catch (err2) {
+    req.log.error({ err: err2 }, "Admin change password failed");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -92799,7 +92817,50 @@ ${message}`;
       );
       telegramCount = tgFiltered.length;
     }
-    const recipientCount = channel === "telegram" ? telegramCount : users.length;
+    if (channel === "telegram-channel") {
+      const chRows = await db.select().from(systemSettingsTable).where(eq(systemSettingsTable.key, "telegramChannelId")).catch(() => []);
+      const channelId = chRows[0]?.value;
+      if (channelId) {
+        const broadcastText = `\u{1F4E2} *${title}*
+
+${message}`;
+        await sendTelegramMessage(channelId, broadcastText, process.env.APP_URL || void 0).catch(() => {
+        });
+      }
+    }
+    let emailCount = 0;
+    if (channel === "email") {
+      const emailUsers = users.filter((u) => u.email && u.emailVerified);
+      const settingRows = await db.select().from(systemSettingsTable).where(
+        or(
+          eq(systemSettingsTable.key, "brevoApiKey"),
+          eq(systemSettingsTable.key, "brevoSenderEmail"),
+          eq(systemSettingsTable.key, "brevoSenderName")
+        )
+      ).catch(() => []);
+      const sm = {};
+      for (const r of settingRows) sm[r.key] = r.value;
+      if (sm.brevoApiKey && emailUsers.length > 0) {
+        const senderEmail = sm.brevoSenderEmail || "noreply@xendrx.com";
+        const senderName = sm.brevoSenderName || "Xendrx";
+        const htmlContent = `<div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;background:#080d18;color:#fff;border-radius:12px;padding:32px;"><div style="text-align:center;margin-bottom:24px;"><span style="font-size:24px;font-weight:700;color:#00e5ff;">Xendrx</span></div><h2 style="margin:0 0 8px;font-size:20px;">${title}</h2><p style="color:rgba(255,255,255,.7);font-size:14px;line-height:1.6;white-space:pre-wrap;">${message}</p><p style="color:rgba(255,255,255,.4);font-size:12px;margin-top:24px;text-align:center;">Xendrx P2P Exchange</p></div>`;
+        await Promise.allSettled(emailUsers.map(
+          (u) => fetch("https://api.brevo.com/v3/smtp/email", {
+            method: "POST",
+            headers: { "api-key": sm.brevoApiKey, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              sender: { name: senderName, email: senderEmail },
+              to: [{ email: u.email }],
+              subject: title,
+              htmlContent
+            })
+          }).catch(() => {
+          })
+        ));
+        emailCount = emailUsers.length;
+      }
+    }
+    const recipientCount = channel === "telegram" ? telegramCount : channel === "email" ? emailCount : channel === "telegram-channel" ? 1 : users.length;
     const [history] = await db.insert(notificationHistoryTable).values({
       title,
       message,
@@ -92809,7 +92870,7 @@ ${message}`;
       status: "sent"
     }).returning();
     await log(req.adminEmail, "send_notification", "notification", history.id, `${target} via ${channel}`);
-    res.json({ success: true, recipientCount, telegramCount });
+    res.json({ success: true, recipientCount, telegramCount, emailCount });
   } catch (err2) {
     req.log.error({ err: err2 }, "Admin send notification failed");
     res.status(500).json({ error: "Internal server error" });
@@ -92838,7 +92899,8 @@ var DEFAULT_SETTINGS = {
   trongridApiKey: "",
   bscscanApiKey: "",
   telegramBotToken: "",
-  telegramBotUsername: process.env.TELEGRAM_BOT_USERNAME ?? "XendrxBot"
+  telegramBotUsername: process.env.TELEGRAM_BOT_USERNAME ?? "XendrxBot",
+  telegramChannelId: ""
 };
 router13.get("/settings", adminAuth, async (req, res) => {
   try {
