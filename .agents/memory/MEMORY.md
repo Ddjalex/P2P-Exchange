@@ -4,3 +4,5 @@
 - [Amount fields are text](db-amount-text.md) — all monetary amounts (transactions.amount, etc.) are stored as `text`; must cast to numeric for SQL aggregates: `sql\`sum(${field}::numeric)\`
 - [User auth system](user-auth.md) — JWT via jsonwebtoken + bcryptjs; token stored in localStorage as p2p_token; setAuthTokenGetter wired from @workspace/api-client-react index
 - [Push + Telegram notifications](push-telegram-notifications.md) — web-push + telegraf installed; PushNotify in routes/push.ts, TelegramNotify in telegram/notify.ts; both fire-and-forget from orders/messages/admin routes
+- [KycGate overlay z-index](kyc-gate-overlay.md) — overlay at z-40 (below bottom nav's z-50) lets nav stay clickable; modal uses z-[9999]; banner uses z-[51]
+- [Admin password DB override](admin-password-override.md) — login checks systemSettings key 'adminPassword' first, falls back to ADMIN_PASSWORD env var; PATCH /api/admin/change-password stores new value

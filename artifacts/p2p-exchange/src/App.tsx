@@ -58,6 +58,7 @@ import AdminFeesPage from "@/pages/admin-fees-page";
 import AdminLogsPage from "@/pages/admin-logs-page";
 import AdminFraudPage from "@/pages/admin-fraud-page";
 import AdminDepositsPage from "@/pages/admin-deposits-page";
+import AdminBroadcastPage from "@/pages/admin-broadcast";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -154,6 +155,7 @@ function Router() {
       <Route path="/admin/fees" component={AdminFeesPage} />
       <Route path="/admin/logs" component={AdminLogsPage} />
       <Route path="/admin/deposits" component={AdminDepositsPage} />
+      <Route path="/admin/broadcast" component={AdminBroadcastPage} />
 
       <Route component={NotFound} />
     </Switch>

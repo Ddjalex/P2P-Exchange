@@ -1,66 +1,52 @@
+import { useState } from "react";
 import { Link } from "wouter";
-import { ShieldCheck, Clock, ShieldX, AlertTriangle, ChevronRight } from "lucide-react";
+import { ShieldCheck, Clock, ShieldX, AlertTriangle } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
-import { AppLayout } from "@/components/layout";
 
 const GATE_CONFIG = {
   none: {
     icon: ShieldCheck,
-    iconClass: "text-primary",
-    bgClass: "bg-primary/10 border-primary/20",
     title: "Identity Verification Required",
-    description: "Complete KYC verification to access your wallet, trade on the P2P market, post ads, and manage orders.",
+    description: "Complete your KYC to access the wallet, P2P market, ads, and orders.",
     ctaLabel: "Start Verification",
     ctaHref: "/kyc",
-    ctaClass: "bg-primary text-black",
-    steps: [
-      { label: "Personal Info", done: false },
-      { label: "Document Upload", done: false },
-      { label: "Liveness Check", done: false },
-    ],
+    bannerText: "⚠️ Complete KYC to unlock trading",
+    bannerColor: "#00d4ff",
   },
   pending: {
     icon: Clock,
-    iconClass: "text-warning",
-    bgClass: "bg-warning/10 border-warning/20",
     title: "Verification Under Review",
-    description: "Your documents have been submitted and are being reviewed by our team. This usually takes 1–2 business days.",
-    ctaLabel: "View Status",
+    description: "Your documents have been submitted and are being reviewed by our team. Usually takes 1–2 business days.",
+    ctaLabel: "View KYC Status",
     ctaHref: "/kyc",
-    ctaClass: "bg-warning/20 text-warning border border-warning/40",
-    steps: [
-      { label: "Personal Info", done: true },
-      { label: "Document Upload", done: true },
-      { label: "Liveness Check", done: true },
-    ],
+    bannerText: "⏳ Your KYC is under review",
+    bannerColor: "#f0c040",
   },
   rejected: {
     icon: ShieldX,
-    iconClass: "text-destructive",
-    bgClass: "bg-destructive/10 border-destructive/20",
     title: "Verification Rejected",
     description: "Your KYC submission was rejected. Please resubmit with clear, valid documents. Contact support if you need help.",
     ctaLabel: "Resubmit Documents",
     ctaHref: "/kyc",
-    ctaClass: "bg-destructive text-white",
-    steps: null,
+    bannerText: "❌ KYC rejected — resubmit to continue",
+    bannerColor: "#ff5555",
   },
   more_info_required: {
     icon: AlertTriangle,
-    iconClass: "text-orange-400",
-    bgClass: "bg-orange-400/10 border-orange-400/20",
     title: "Additional Information Required",
     description: "Our team needs more information to complete your verification. Please update your submission.",
     ctaLabel: "Update Submission",
     ctaHref: "/kyc",
-    ctaClass: "bg-orange-400 text-black",
-    steps: null,
+    bannerText: "⚠️ KYC update required to trade",
+    bannerColor: "#f07020",
   },
 } as const;
 
 export function KycGate({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
+  const [showModal, setShowModal] = useState(false);
 
+  // Verified (or no user) — render normally
   if (!user || user.kycStatus === "verified") {
     return <>{children}</>;
   }
@@ -70,56 +56,143 @@ export function KycGate({ children }: { children: React.ReactNode }) {
   const Icon = cfg.icon;
 
   return (
-    <AppLayout>
-      <div className="flex flex-col items-center justify-center min-h-[calc(100vh-64px)] px-5 py-10">
-        <div className={`w-full max-w-sm border rounded-2xl p-6 space-y-5 ${cfg.bgClass}`}>
-          {/* Icon */}
-          <div className="flex justify-center">
-            <div className="w-16 h-16 rounded-full bg-background/60 flex items-center justify-center">
-              <Icon className={`w-8 h-8 ${cfg.iconClass}`} />
-            </div>
-          </div>
+    <>
+      {/* Page content renders fully visible — users can browse freely */}
+      {children}
 
-          {/* Title + description */}
-          <div className="text-center space-y-2">
-            <h2 className="text-lg font-bold">{cfg.title}</h2>
-            <p className="text-sm text-muted-foreground leading-relaxed">{cfg.description}</p>
-          </div>
+      {/* Transparent overlay at z-40: intercepts any click on page content and shows the KYC modal.
+          The bottom nav is rendered at z-50 so it remains clickable above this overlay —
+          users can freely navigate between pages using the bottom nav. */}
+      <div
+        style={{ position: "fixed", inset: 0, zIndex: 40, cursor: "pointer" }}
+        onClick={() => setShowModal(true)}
+        aria-hidden="true"
+      />
 
-          {/* Progress steps (none / pending only) */}
-          {cfg.steps && (
-            <div className="space-y-2">
-              {cfg.steps.map((step, i) => (
-                <div key={i} className="flex items-center gap-3">
-                  <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] font-bold
-                    ${step.done ? "bg-primary text-black" : "bg-border text-muted-foreground"}`}>
-                    {step.done ? "✓" : i + 1}
-                  </div>
-                  <span className={`text-sm ${step.done ? "text-foreground" : "text-muted-foreground"}`}>
-                    {step.label}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* CTA */}
-          <Link href={cfg.ctaHref}>
-            <button className={`w-full py-3 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-opacity hover:opacity-90 ${cfg.ctaClass}`}>
-              {cfg.ctaLabel}
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </Link>
-
-          {/* Help link */}
-          <p className="text-center text-xs text-muted-foreground/70">
-            Questions?{" "}
-            <Link href="/help-center" className="text-primary hover:underline">
-              Visit Help Center
-            </Link>
-          </p>
-        </div>
+      {/* KYC status banner — sits just above the bottom nav (nav height = 64px) */}
+      <div
+        className="fixed left-0 right-0 sm:max-w-[480px] sm:mx-auto"
+        style={{
+          bottom: 64,
+          zIndex: 51,
+          background: "rgba(8,13,24,0.97)",
+          borderTop: `1px solid ${cfg.bannerColor}55`,
+          padding: "9px 16px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          backdropFilter: "blur(8px)",
+        }}
+      >
+        <span style={{ color: cfg.bannerColor, fontSize: 12, fontWeight: 600, fontFamily: "Poppins,sans-serif" }}>
+          {cfg.bannerText}
+        </span>
+        <Link href={cfg.ctaHref}>
+          <button
+            style={{
+              color: "#00d4ff",
+              fontSize: 11,
+              background: "none",
+              border: "1px solid rgba(0,212,255,0.35)",
+              borderRadius: 8,
+              padding: "4px 10px",
+              cursor: "pointer",
+              fontWeight: 700,
+              fontFamily: "Poppins,sans-serif",
+            }}
+          >
+            {cfg.ctaLabel}
+          </button>
+        </Link>
       </div>
-    </AppLayout>
+
+      {/* KYC action modal — z-[9999] appears on top of everything */}
+      {showModal && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 9999,
+            background: "rgba(0,0,0,0.78)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 20,
+          }}
+          onClick={() => setShowModal(false)}
+        >
+          <div
+            style={{
+              background: "#0c1420",
+              border: "1.5px solid rgba(0,212,255,0.18)",
+              borderRadius: 22,
+              padding: 28,
+              maxWidth: 340,
+              width: "100%",
+              fontFamily: "Poppins,sans-serif",
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ textAlign: "center", marginBottom: 20 }}>
+              <div style={{
+                width: 62,
+                height: 62,
+                borderRadius: "50%",
+                background: `${cfg.bannerColor}15`,
+                border: `1.5px solid ${cfg.bannerColor}40`,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                margin: "0 auto 14px",
+              }}>
+                <Icon style={{ width: 28, height: 28, color: cfg.bannerColor }} />
+              </div>
+              <h3 style={{ color: "#fff", fontWeight: 700, fontSize: 17, margin: "0 0 8px" }}>
+                {cfg.title}
+              </h3>
+              <p style={{ color: "#8899aa", fontSize: 13, lineHeight: 1.55, margin: 0 }}>
+                {cfg.description}
+              </p>
+            </div>
+
+            <Link href={cfg.ctaHref}>
+              <button
+                onClick={() => setShowModal(false)}
+                style={{
+                  width: "100%",
+                  padding: "13px",
+                  background: "#00d4ff",
+                  color: "#0a0e1a",
+                  fontWeight: 700,
+                  borderRadius: 12,
+                  border: "none",
+                  cursor: "pointer",
+                  fontSize: 14,
+                  marginBottom: 8,
+                  display: "block",
+                }}
+              >
+                {cfg.ctaLabel}
+              </button>
+            </Link>
+            <button
+              onClick={() => setShowModal(false)}
+              style={{
+                width: "100%",
+                padding: "11px",
+                background: "none",
+                color: "#8899aa",
+                border: "1px solid #1e2d40",
+                borderRadius: 12,
+                cursor: "pointer",
+                fontSize: 13,
+              }}
+            >
+              Maybe Later
+            </button>
+          </div>
+        </div>
+      )}
+    </>
   );
 }

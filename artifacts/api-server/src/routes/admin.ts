@@ -69,14 +69,37 @@ router.post("/auth/login", async (req, res) => {
   try {
     const { email, password } = req.body ?? {};
     const adminEmail = process.env.ADMIN_EMAIL;
-    const adminPassword = process.env.ADMIN_PASSWORD;
+    const adminPasswordEnv = process.env.ADMIN_PASSWORD;
     if (!email || !password) return res.status(400).json({ error: "Email and password required" });
+    // Check DB-stored password override first (set via change-password endpoint)
+    const pwRows = await db.select().from(systemSettingsTable).where(eq(systemSettingsTable.key, "adminPassword")).catch(() => [] as any[]);
+    const adminPassword = pwRows[0]?.value ?? adminPasswordEnv;
     if (email !== adminEmail || password !== adminPassword)
       return res.status(401).json({ error: "Invalid credentials" });
     const token = sign({ email, iat: Date.now() }, getSecret());
     res.json({ token, admin: { email } });
   } catch (err) {
     req.log.error({ err }, "Admin login failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.patch("/change-password", adminAuth, async (req: any, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body ?? {};
+    if (!currentPassword || !newPassword) return res.status(400).json({ error: "Both fields required" });
+    if (newPassword.length < 8) return res.status(400).json({ error: "New password must be at least 8 characters" });
+    // Verify current password
+    const pwRows = await db.select().from(systemSettingsTable).where(eq(systemSettingsTable.key, "adminPassword")).catch(() => [] as any[]);
+    const currentStored = pwRows[0]?.value ?? process.env.ADMIN_PASSWORD;
+    if (currentPassword !== currentStored) return res.status(401).json({ error: "Current password is incorrect" });
+    // Store new password
+    await db.insert(systemSettingsTable).values({ key: "adminPassword", value: newPassword, updatedAt: new Date() })
+      .onConflictDoUpdate({ target: systemSettingsTable.key, set: { value: newPassword, updatedAt: new Date() } });
+    await log(req.adminEmail, "change_password", "admin", undefined, "Admin password changed");
+    res.json({ success: true });
+  } catch (err) {
+    req.log.error({ err }, "Admin change password failed");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -1022,7 +1045,7 @@ router.post("/notifications/send", adminAuth, async (req: any, res) => {
       await db.insert(notificationsTable).values(users.map(u => ({ userId: u.id, type: "system", title, message }))).catch(() => {});
     }
 
-    // Send Telegram broadcast
+    // Send Telegram broadcast (individual users via bot)
     let telegramCount = 0;
     if (channel === "telegram" || channel === "in-app+telegram") {
       const tgUsers = await db.select().from(telegramUsersTable);
@@ -1039,12 +1062,56 @@ router.post("/notifications/send", adminAuth, async (req: any, res) => {
       telegramCount = tgFiltered.length;
     }
 
-    const recipientCount = channel === "telegram" ? telegramCount : users.length;
+    // Send to Telegram Channel
+    if (channel === "telegram-channel") {
+      const chRows = await db.select().from(systemSettingsTable).where(eq(systemSettingsTable.key, "telegramChannelId")).catch(() => [] as any[]);
+      const channelId = chRows[0]?.value;
+      if (channelId) {
+        const broadcastText = `📢 *${title}*\n\n${message}`;
+        await sendTelegramMessage(channelId, broadcastText, process.env.APP_URL || undefined).catch(() => {});
+      }
+    }
+
+    // Send Email broadcast via Brevo
+    let emailCount = 0;
+    if (channel === "email") {
+      const emailUsers = users.filter((u: any) => u.email && u.emailVerified);
+      const settingRows = await db.select().from(systemSettingsTable).where(
+        or(
+          eq(systemSettingsTable.key, "brevoApiKey"),
+          eq(systemSettingsTable.key, "brevoSenderEmail"),
+          eq(systemSettingsTable.key, "brevoSenderName")
+        )
+      ).catch(() => [] as any[]);
+      const sm: Record<string, string> = {};
+      for (const r of settingRows) sm[r.key] = r.value;
+
+      if (sm.brevoApiKey && emailUsers.length > 0) {
+        const senderEmail = sm.brevoSenderEmail || "noreply@xendrx.com";
+        const senderName = sm.brevoSenderName || "Xendrx";
+        const htmlContent = `<div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;background:#080d18;color:#fff;border-radius:12px;padding:32px;"><div style="text-align:center;margin-bottom:24px;"><span style="font-size:24px;font-weight:700;color:#00e5ff;">Xendrx</span></div><h2 style="margin:0 0 8px;font-size:20px;">${title}</h2><p style="color:rgba(255,255,255,.7);font-size:14px;line-height:1.6;white-space:pre-wrap;">${message}</p><p style="color:rgba(255,255,255,.4);font-size:12px;margin-top:24px;text-align:center;">Xendrx P2P Exchange</p></div>`;
+        await Promise.allSettled(emailUsers.map((u: any) =>
+          fetch("https://api.brevo.com/v3/smtp/email", {
+            method: "POST",
+            headers: { "api-key": sm.brevoApiKey, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              sender: { name: senderName, email: senderEmail },
+              to: [{ email: u.email }],
+              subject: title,
+              htmlContent,
+            }),
+          }).catch(() => {})
+        ));
+        emailCount = emailUsers.length;
+      }
+    }
+
+    const recipientCount = channel === "telegram" ? telegramCount : channel === "email" ? emailCount : channel === "telegram-channel" ? 1 : users.length;
     const [history] = await db.insert(notificationHistoryTable).values({
       title, message, target, channel, recipientCount, status: "sent",
     }).returning();
     await log(req.adminEmail, "send_notification", "notification", history.id, `${target} via ${channel}`);
-    res.json({ success: true, recipientCount, telegramCount });
+    res.json({ success: true, recipientCount, telegramCount, emailCount });
   } catch (err) {
     req.log.error({ err }, "Admin send notification failed");
     res.status(500).json({ error: "Internal server error" });
@@ -1077,6 +1144,7 @@ const DEFAULT_SETTINGS: Record<string, string> = {
   bscscanApiKey: "",
   telegramBotToken: "",
   telegramBotUsername: process.env.TELEGRAM_BOT_USERNAME ?? "XendrxBot",
+  telegramChannelId: "",
 };
 
 router.get("/settings", adminAuth, async (req, res) => {

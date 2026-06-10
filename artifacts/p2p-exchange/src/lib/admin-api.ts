@@ -51,6 +51,15 @@ export async function adminPut<T>(path: string, body?: unknown): Promise<T> {
   return res.json();
 }
 
+export async function adminPatch<T>(path: string, body?: unknown): Promise<T> {
+  const res = await adminFetch(path, { method: 'PATCH', body: body ? JSON.stringify(body) : undefined });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Unknown error' }));
+    throw new Error(err.error || `API error ${res.status}`);
+  }
+  return res.json();
+}
+
 export async function adminDelete<T>(path: string): Promise<T> {
   const res = await adminFetch(path, { method: 'DELETE' });
   if (!res.ok) throw new Error(`API error ${res.status}`);

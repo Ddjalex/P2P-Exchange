@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { AdminLayout, AdminGuard } from "@/components/admin-layout";
-import { adminGet, adminPut, adminPost } from "@/lib/admin-api";
+import { adminGet, adminPut, adminPost, adminPatch } from "@/lib/admin-api";
 
 const TG_ICON = (
   <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
@@ -34,10 +34,30 @@ export default function AdminSettingsPage() {
   const [tgApplying, setTgApplying] = useState(false);
   const [tgApplyStatus, setTgApplyStatus] = useState<{ ok: boolean; msg: string } | null>(null);
 
+  const [pwCurrent, setPwCurrent] = useState("");
+  const [pwNew, setPwNew] = useState("");
+  const [pwConfirm, setPwConfirm] = useState("");
+  const [pwSaving, setPwSaving] = useState(false);
+  const [pwStatus, setPwStatus] = useState<{ ok: boolean; msg: string } | null>(null);
+
   useEffect(() => {
     adminGet<Record<string, string>>("/settings").then(setSettings).catch(() => {}).finally(() => setLoading(false));
     adminGet<{ running: boolean; username: string | null }>("/telegram/bot-status").then(setBotStatus).catch(() => {});
   }, []);
+
+  const changePassword = async () => {
+    if (pwNew !== pwConfirm) { setPwStatus({ ok: false, msg: "Passwords do not match" }); return; }
+    if (pwNew.length < 8) { setPwStatus({ ok: false, msg: "New password must be at least 8 characters" }); return; }
+    setPwSaving(true); setPwStatus(null);
+    try {
+      await adminPatch("/change-password", { currentPassword: pwCurrent, newPassword: pwNew });
+      setPwStatus({ ok: true, msg: "Password changed successfully. Use the new password on next login." });
+      setPwCurrent(""); setPwNew(""); setPwConfirm("");
+    } catch (e: any) {
+      setPwStatus({ ok: false, msg: e.message ?? "Failed to change password" });
+    }
+    setPwSaving(false);
+  };
 
   const applyTgToken = async () => {
     const token = settings["telegramBotToken"]?.trim();
@@ -406,6 +426,18 @@ export default function AdminSettingsPage() {
                 />
               </div>
 
+              <div className="flex items-center justify-between gap-4">
+                <label className="text-sm text-muted-foreground flex-shrink-0 w-28">Channel ID</label>
+                <input
+                  type="text"
+                  value={settings["telegramChannelId"] ?? ""}
+                  onChange={e => update("telegramChannelId", e.target.value)}
+                  placeholder="-1001234567890"
+                  className="flex-1 px-3 py-1.5 bg-background border border-border rounded-lg text-sm font-mono outline-none focus:border-primary"
+                />
+              </div>
+              <p className="text-xs text-muted-foreground/50">Channel ID is used for broadcast messages. Forward a channel post to @userinfobot to get the ID (starts with -100).</p>
+
               <div className="text-xs text-muted-foreground/60 space-y-0.5">
                 <p>1. Open Telegram and start a chat with <a href="https://t.me/BotFather" target="_blank" rel="noreferrer" className="text-primary hover:underline">@BotFather</a></p>
                 <p>2. Send <code className="text-primary/80">/newbot</code> and follow the prompts</p>
@@ -500,6 +532,44 @@ export default function AdminSettingsPage() {
                     className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm font-mono outline-none focus:border-primary placeholder:text-muted-foreground/50" />
                 </div>
               ))}
+            </div>
+          </div>
+
+          {/* Change Admin Password */}
+          <div className="bg-card border border-border rounded-xl p-5">
+            <h3 className="font-semibold mb-1">Change Admin Password</h3>
+            <p className="text-xs text-muted-foreground mb-4">
+              Update your admin panel login password. Must be at least 8 characters. The new password is stored in the database and overrides the environment variable.
+            </p>
+            <div className="space-y-3">
+              {[
+                { label: "Current Password", value: pwCurrent, setter: setPwCurrent, placeholder: "Your current password" },
+                { label: "New Password", value: pwNew, setter: setPwNew, placeholder: "At least 8 characters" },
+                { label: "Confirm New", value: pwConfirm, setter: setPwConfirm, placeholder: "Repeat new password" },
+              ].map(f => (
+                <div key={f.label} className="flex items-center justify-between gap-4">
+                  <label className="text-sm text-muted-foreground flex-shrink-0 w-32">{f.label}</label>
+                  <input
+                    type="password"
+                    value={f.value}
+                    onChange={e => { f.setter(e.target.value); setPwStatus(null); }}
+                    placeholder={f.placeholder}
+                    className="flex-1 px-3 py-1.5 bg-background border border-border rounded-lg text-sm outline-none focus:border-primary"
+                  />
+                </div>
+              ))}
+              {pwStatus && (
+                <div className={`text-xs px-3 py-2 rounded-lg ${pwStatus.ok ? "bg-success/10 text-success" : "bg-destructive/10 text-destructive"}`}>
+                  {pwStatus.ok ? "✅ " : "❌ "}{pwStatus.msg}
+                </div>
+              )}
+              <button
+                onClick={changePassword}
+                disabled={pwSaving || !pwCurrent || !pwNew || !pwConfirm}
+                className="px-4 py-2 bg-destructive/10 text-destructive border border-destructive/30 rounded-lg text-sm font-medium hover:bg-destructive/20 transition-colors disabled:opacity-40"
+              >
+                {pwSaving ? "Changing…" : "Change Password"}
+              </button>
             </div>
           </div>
 

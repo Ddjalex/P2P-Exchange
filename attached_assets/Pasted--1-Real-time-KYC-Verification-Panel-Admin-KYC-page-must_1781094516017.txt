@@ -1,0 +1,57 @@
+#1 — Real-time KYC Verification Panel
+
+Admin KYC page must use SSE or WebSocket to receive live updates without page reload
+When a new KYC submission arrives, show a notification badge and update the list instantly
+Currently requires page reload to see new submissions — fix this
+
+#2 — Rename EthioP2P → Xendrx
+
+Search entire codebase for any string containing EthioP2P, Ethiop2p, ethiop2p, EthioP2P (case insensitive)
+Replace all occurrences with Xendrx or xendrx accordingly
+Check: email templates, SMS codes, verification messages, footer text, meta tags
+
+#3 — Broadcast Panel in Admin
+
+Add new admin page: /admin/broadcast
+Email broadcast: send to all users who registered with email AND have verified email
+Telegram broadcast: admin enters their Telegram channel link or username in System Settings, then can send message to that channel via bot
+UI: textarea for message, checkboxes to select channels (Email / Telegram), Send button with preview
+
+#4 — KYC Gate (show pages but block actions)
+
+After registration/login, do NOT redirect to a "KYC required" wall page
+Instead: show all pages normally (marketplace, wallet, profile, etc.)
+BUT: when unverified user tries to create ad, place order, send message, or access wallet actions → show a modal/toast: "KYC verification required to perform this action" with a button linking to the KYC submission page
+Navigation and browsing should work freely
+
+#5 — Real-time Push Notifications (most critical)
+
+Implement Web Push Notifications using VAPID keys (already in .env)
+Trigger push notifications for these events:
+
+New order request on user's ad
+New chat message in an order
+Order status change (paid, released, cancelled)
+New KYC status update (approved/rejected)
+Admin broadcast message
+
+
+Notifications must work even when user has closed the browser tab
+Use Service Worker (sw.js already exists) to handle background push events
+Show notification with title, body, and click action (opens relevant page)
+
+#6 — PWA App Icon
+
+Current icon in manifest.json is missing or pointing to wrong path
+Add proper icon files: 192x192 and 512x512 PNG versions of the Xendrx logo
+Update manifest.json with correct icon paths
+Add apple-touch-icon meta tag in index.html for iOS
+The install banner should show the correct Xendrx logo
+
+#7 — Admin Change Password
+
+Add "Change Password" option in admin panel (under profile/settings)
+Form: Current password, New password, Confirm new password
+API endpoint: PATCH /api/admin/change-password
+Validate current password before allowing change
+Return success/error message

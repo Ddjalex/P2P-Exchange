@@ -122,7 +122,7 @@ async function sendBrevoEmail(to: string, code: string, senderEmail: string, sen
       htmlContent: `
         <div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;background:#080d18;color:#fff;border-radius:12px;padding:32px;">
           <div style="text-align:center;margin-bottom:24px;">
-            <span style="font-size:24px;font-weight:700;">Swap</span><span style="font-size:24px;font-weight:700;color:#00e5ff;">Birr</span>
+            <span style="font-size:24px;font-weight:700;color:#00e5ff;">Xendrx</span>
           </div>
           <h2 style="margin:0 0 8px;font-size:20px;">Verification Code</h2>
           <p style="color:rgba(255,255,255,.6);font-size:14px;margin:0 0 24px;">Use the code below to verify your account. It expires in 10 minutes.</p>

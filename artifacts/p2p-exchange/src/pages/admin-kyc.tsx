@@ -90,6 +90,12 @@ export default function AdminKycPage() {
   useEffect(() => { const t = setTimeout(loadList, 300); return () => clearTimeout(t); }, [search]);
   useEffect(() => { if (mainTab === "address") loadAddrSubs(); }, [mainTab, addrFilter]);
 
+  // Auto-refresh KYC list every 15 seconds
+  useEffect(() => {
+    const t = setInterval(() => { if (mainTab === "kyc") loadList(); }, 15000);
+    return () => clearInterval(t);
+  }, [mainTab, statusFilter]);
+
   const selectItem = async (sub: any) => {
     try {
       const detail = await adminGet<any>(`/kyc/${sub.userId}`);

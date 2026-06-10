@@ -6,7 +6,7 @@ export function NotificationPermissionBanner({ userId }: { userId: number }) {
 
   useEffect(() => {
     if ('Notification' in window && Notification.permission === 'default') {
-      const timer = setTimeout(() => setShow(true), 10000);
+      const timer = setTimeout(() => setShow(true), 4000);
       return () => clearTimeout(timer);
     }
   }, []);
