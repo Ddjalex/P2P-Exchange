@@ -1,5 +1,5 @@
 import { AppLayout } from "@/components/layout";
-import { Edit2, ShieldCheck, HelpCircle, Info, LogOut, ChevronRight, CheckCircle2, X, Loader2, ExternalLink, Headphones } from "lucide-react";
+import { Edit2, ShieldCheck, HelpCircle, Info, LogOut, ChevronRight, CheckCircle2, X, Loader2, ExternalLink, Headphones } from "lucide-react"; // ExternalLink used by TelegramJoinButton
 import { useGetProfile, getGetProfileQueryKey } from "@workspace/api-client-react";
 import { useState, useEffect } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -586,18 +586,16 @@ export default function ProfilePage() {
               <ChevronRight className="w-4 h-4 text-muted-foreground" />
             </Link>
             <TelegramJoinButton />
-            <a
-              href="https://t.me/XendrxSupport"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center justify-between p-4 border-b border-border hover:bg-secondary/50 transition-colors"
+            <button
+              onClick={() => { (window as any).Tawk_API?.toggle?.(); }}
+              className="w-full flex items-center justify-between p-4 border-b border-border hover:bg-secondary/50 transition-colors"
             >
               <span className="text-sm font-medium flex items-center space-x-2">
                 <Headphones className="w-4 h-4 text-[#00d4ff]" />
                 <span>Contact Support</span>
               </span>
-              <ExternalLink className="w-4 h-4 text-muted-foreground" />
-            </a>
+              <ChevronRight className="w-4 h-4 text-muted-foreground" />
+            </button>
             <button onClick={handleLogout} className="w-full flex items-center p-4 hover:bg-secondary/50 transition-colors text-destructive">
               <LogOut className="w-4 h-4 mr-2" />
               <span className="text-sm font-bold">Logout</span>
