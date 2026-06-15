@@ -3,6 +3,7 @@ import { Link, useLocation } from "wouter";
 import { Users, Clock, Megaphone, MessageSquare, User } from "lucide-react";
 import { useBadges } from "@/hooks/use-badges";
 import { Badge } from "@/components/badge";
+import { NotificationBlockedBanner } from "@/components/notification-blocked-banner";
 
 export function BottomNav() {
   const [location] = useLocation();
@@ -53,6 +54,7 @@ export function AppLayout({
   return (
     <div className="min-h-screen bg-background text-foreground sm:bg-black/90">
       <div className="min-h-screen bg-background sm:max-w-[480px] sm:mx-auto sm:border-x sm:border-border relative pb-[64px]">
+        <NotificationBlockedBanner />
         {children}
         {showNav && <BottomNav />}
       </div>
