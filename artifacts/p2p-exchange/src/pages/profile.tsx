@@ -268,20 +268,9 @@ const TelegramIcon = () => (
 );
 
 function TelegramJoinButton() {
-  const [botUsername, setBotUsername] = useState<string | null>(null);
-
-  useEffect(() => {
-    fetch("/api/config/telegram")
-      .then(r => r.json())
-      .then(d => setBotUsername(d.botUsername || "XendrxBot"))
-      .catch(() => setBotUsername("XendrxBot"));
-  }, []);
-
-  const href = `https://t.me/${botUsername ?? "XendrxBot"}`;
-
   return (
     <a
-      href={href}
+      href="https://t.me/+qTIgV51sqC02YzM0"
       target="_blank"
       rel="noopener noreferrer"
       className="flex items-center justify-between p-4 border-b border-border hover:bg-secondary/50 transition-colors"
