@@ -5,7 +5,18 @@ import { useAdminAuth } from "@/hooks/use-admin-auth";
 import { Turnstile, type TurnstileInstance } from "@marsidev/react-turnstile";
 import "./auth.css";
 
-const TURNSTILE_SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY || "0x4AAAAAADfw5Ve1Ks9-MMzT";
+// On Replit/localhost the real site key is domain-locked and always fails (error 110200).
+// Use Cloudflare's official always-pass test key so login works in dev.
+// On the production domain the real site key is used and the backend enforces verification.
+const IS_PRODUCTION_DOMAIN =
+  typeof window !== "undefined" &&
+  !window.location.hostname.includes("replit") &&
+  !window.location.hostname.includes("localhost") &&
+  !window.location.hostname.includes("127.0.0.1");
+
+const CF_TEST_KEY = "1x00000000000000000000AA"; // Always passes, any domain
+const REAL_SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY || "0x4AAAAAADfw5Ve1Ks9-MMzT";
+const TURNSTILE_SITE_KEY = IS_PRODUCTION_DOMAIN ? REAL_SITE_KEY : CF_TEST_KEY;
 
 interface Country {
   code: string;
