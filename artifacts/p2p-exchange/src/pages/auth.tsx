@@ -534,14 +534,15 @@ export default function AuthPage() {
           <div className="forgot slide-element"><a href="/forgot-password" style={{ color: '#00e5ff', textDecoration: 'none' }}>Forgot password?</a></div>
 
           {TURNSTILE_SITE_KEY && (
-            <div className="slide-element" style={{ display: "flex", justifyContent: "center", margin: "6px 0 2px" }}>
+            <div className="slide-element" style={{ width: "100%", margin: "6px 0 2px" }}>
               <Turnstile
                 ref={loginTurnstileRef}
                 siteKey={TURNSTILE_SITE_KEY}
                 onSuccess={(token) => { setLoginTurnstileToken(token); setLoginTurnstileError(false); }}
                 onExpire={() => { setLoginTurnstileToken(""); loginTurnstileRef.current?.reset(); }}
                 onError={() => { setLoginTurnstileToken(""); loginTurnstileRef.current?.reset(); }}
-                options={{ theme: "dark", size: "normal", appearance: "interaction-only", retry: "auto", retryInterval: 500 }}
+                options={{ theme: "dark", size: "flexible", appearance: "always", retry: "auto", retryInterval: 500 }}
+                style={{ width: "100%" }}
               />
             </div>
           )}
@@ -668,14 +669,15 @@ export default function AuthPage() {
               </div>
 
               {TURNSTILE_SITE_KEY && (
-                <div className="slide-element" style={{ display: "flex", justifyContent: "center", margin: "6px 0 2px" }}>
+                <div className="slide-element" style={{ width: "100%", margin: "6px 0 2px" }}>
                   <Turnstile
                     ref={regTurnstileRef}
                     siteKey={TURNSTILE_SITE_KEY}
                     onSuccess={(token) => { setRegTurnstileToken(token); setRegTurnstileError(false); }}
                     onExpire={() => { setRegTurnstileToken(""); regTurnstileRef.current?.reset(); }}
                     onError={() => { setRegTurnstileToken(""); regTurnstileRef.current?.reset(); }}
-                    options={{ theme: "dark", size: "normal", appearance: "interaction-only", retry: "auto", retryInterval: 500 }}
+                    options={{ theme: "dark", size: "flexible", appearance: "always", retry: "auto", retryInterval: 500 }}
+                    style={{ width: "100%" }}
                   />
                 </div>
               )}
