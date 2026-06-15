@@ -592,6 +592,7 @@ export default function ProfilePage() {
                 if (!tawk) return;
                 if (tawk.isChatMaximized?.()) {
                   tawk.minimize?.();
+                  tawk.hideWidget?.();
                 } else {
                   tawk.showWidget?.();
                   tawk.maximize?.();
