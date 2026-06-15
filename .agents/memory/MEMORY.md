@@ -6,3 +6,4 @@
 - [Push + Telegram notifications](push-telegram-notifications.md) — web-push + telegraf installed; PushNotify in routes/push.ts, TelegramNotify in telegram/notify.ts; both fire-and-forget from orders/messages/admin routes
 - [KycGate overlay z-index](kyc-gate-overlay.md) — overlay at z-40 (below bottom nav's z-50) lets nav stay clickable; modal uses z-[9999]; banner uses z-[51]
 - [Admin password DB override](admin-password-override.md) — login checks systemSettings key 'adminPassword' first, falls back to ADMIN_PASSWORD env var; PATCH /api/admin/change-password stores new value
+- [Build and package steps](build-package.md) — after frontend build, always copy logo SVGs before packaging
