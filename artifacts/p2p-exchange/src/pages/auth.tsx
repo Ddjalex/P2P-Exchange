@@ -5,18 +5,7 @@ import { useAdminAuth } from "@/hooks/use-admin-auth";
 import { Turnstile, type TurnstileInstance } from "@marsidev/react-turnstile";
 import "./auth.css";
 
-// Cloudflare's official always-pass test key — works on any domain.
-// Used on Replit/localhost so the widget renders visually without a 400020 error.
-// On xendrx.com the real site key is used and the backend enforces verification.
-const IS_PRODUCTION_DOMAIN =
-  typeof window !== "undefined" &&
-  !window.location.hostname.includes("replit") &&
-  !window.location.hostname.includes("localhost") &&
-  !window.location.hostname.includes("127.0.0.1");
-
-const CF_TEST_KEY = "1x00000000000000000000AA"; // Always passes, any domain
-const REAL_SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY;
-const TURNSTILE_SITE_KEY = IS_PRODUCTION_DOMAIN ? (REAL_SITE_KEY || CF_TEST_KEY) : CF_TEST_KEY;
+const TURNSTILE_SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY || "0x4AAAAAADfw5Ve1Ks9-MMzT";
 
 interface Country {
   code: string;
@@ -539,9 +528,9 @@ export default function AuthPage() {
                 ref={loginTurnstileRef}
                 siteKey={TURNSTILE_SITE_KEY}
                 onSuccess={(token) => { setLoginTurnstileToken(token); setLoginTurnstileError(false); }}
-                onExpire={() => { setLoginTurnstileToken(""); setLoginTurnstileError(false); }}
-                onError={() => { setLoginTurnstileToken(""); setLoginTurnstileError(true); }}
-                options={{ theme: "dark", size: "normal" }}
+                onExpire={() => { setLoginTurnstileToken(""); loginTurnstileRef.current?.reset(); }}
+                onError={() => { setLoginTurnstileToken(""); loginTurnstileRef.current?.reset(); }}
+                options={{ theme: "dark", size: "normal", appearance: "interaction-only", retry: "auto", retryInterval: 500 }}
               />
             </div>
           )}
@@ -673,9 +662,9 @@ export default function AuthPage() {
                     ref={regTurnstileRef}
                     siteKey={TURNSTILE_SITE_KEY}
                     onSuccess={(token) => { setRegTurnstileToken(token); setRegTurnstileError(false); }}
-                    onExpire={() => { setRegTurnstileToken(""); setRegTurnstileError(false); }}
-                    onError={() => { setRegTurnstileToken(""); setRegTurnstileError(true); }}
-                    options={{ theme: "dark", size: "normal" }}
+                    onExpire={() => { setRegTurnstileToken(""); regTurnstileRef.current?.reset(); }}
+                    onError={() => { setRegTurnstileToken(""); regTurnstileRef.current?.reset(); }}
+                    options={{ theme: "dark", size: "normal", appearance: "interaction-only", retry: "auto", retryInterval: 500 }}
                   />
                 </div>
               )}
