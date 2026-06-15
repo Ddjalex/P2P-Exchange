@@ -3,6 +3,7 @@ import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { useAdminAuth } from "@/hooks/use-admin-auth";
 import { Turnstile, type TurnstileInstance } from "@marsidev/react-turnstile";
+import { Eye, EyeOff } from "lucide-react";
 import "./auth.css";
 
 // On Replit/localhost the real site key is domain-locked and always fails (error 110200).
@@ -83,6 +84,7 @@ export default function AuthPage() {
   const [loginPhone, setLoginPhone] = useState("");
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPwd, setLoginPwd] = useState("");
+  const [showLoginPwd, setShowLoginPwd] = useState(false);
   const [loginPhoneErr, setLoginPhoneErr] = useState(false);
   const [loginErr, setLoginErr] = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
@@ -95,6 +97,7 @@ export default function AuthPage() {
   const [regEmail, setRegEmail] = useState("");
   const [regUser, setRegUser] = useState("");
   const [regPwd, setRegPwd] = useState("");
+  const [showRegPwd, setShowRegPwd] = useState(false);
   const [regRef, setRegRef] = useState("");
   const [regPhoneErr, setRegPhoneErr] = useState(false);
   const [regErr, setRegErr] = useState("");
@@ -526,9 +529,11 @@ export default function AuthPage() {
           )}
 
           <div className="field-wrapper slide-element">
-            <input type="password" value={loginPwd} onChange={e => setLoginPwd(e.target.value)} onKeyDown={e => e.key === "Enter" && doLogin()} required />
+            <input type={showLoginPwd ? "text" : "password"} value={loginPwd} onChange={e => setLoginPwd(e.target.value)} onKeyDown={e => e.key === "Enter" && doLogin()} required />
             <label>Password</label>
-            <i className="fa-solid fa-lock"></i>
+            <button type="button" onClick={() => setShowLoginPwd(v => !v)} style={{ position: "absolute", top: "50%", right: 0, transform: "translateY(-50%)", background: "none", border: "none", padding: 0, cursor: "pointer", color: "rgba(255,255,255,0.4)", display: "flex", alignItems: "center" }}>
+              {showLoginPwd ? <EyeOff size={16} /> : <Eye size={16} />}
+            </button>
           </div>
 
           <div className="forgot slide-element"><a href="/forgot-password" style={{ color: '#00e5ff', textDecoration: 'none' }}>Forgot password?</a></div>
@@ -657,9 +662,11 @@ export default function AuthPage() {
               </div>
 
               <div className="field-wrapper slide-element">
-                <input type="password" value={regPwd} onChange={e => setRegPwd(e.target.value)} required />
+                <input type={showRegPwd ? "text" : "password"} value={regPwd} onChange={e => setRegPwd(e.target.value)} required />
                 <label>Password</label>
-                <i className="fa-solid fa-lock"></i>
+                <button type="button" onClick={() => setShowRegPwd(v => !v)} style={{ position: "absolute", top: "50%", right: 0, transform: "translateY(-50%)", background: "none", border: "none", padding: 0, cursor: "pointer", color: "rgba(255,255,255,0.4)", display: "flex", alignItems: "center" }}>
+                  {showRegPwd ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
               </div>
 
               <div className="field-wrapper slide-element">
