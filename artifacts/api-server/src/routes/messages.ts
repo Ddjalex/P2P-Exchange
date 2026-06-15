@@ -236,6 +236,8 @@ router.post("/:orderId/image", chatUpload.single("image"), async (req, res) => {
       message: `${sender?.username ?? "Someone"} sent an image`,
       relatedOrderId: orderId,
     });
+    PushNotify.newMessage(receiverId, orderId, sender?.username ?? "Someone", "📷 Image").catch(console.error);
+    TelegramNotify.newMessage(receiverId, orderId, sender?.username ?? "Someone", "📷 Image").catch(console.error);
     emitToUser(receiverId, "new_message", { orderId, senderId: (req as any).userId, senderUsername: sender?.username ?? "Someone" });
 
     res.status(201).json({

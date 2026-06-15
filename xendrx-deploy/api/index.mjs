@@ -90324,8 +90324,50 @@ var PushNotify = {
       url: "/wallet",
       tag: "withdrawal-rejected"
     });
+  },
+  async appealAdmin(orderId) {
+    await sendPush(1, {
+      title: "\u{1F6A8} New Appeal Filed",
+      body: `An appeal has been raised on order #${orderId}. Review now.`,
+      type: "appeal_raised",
+      url: `/admin/disputes`,
+      orderId,
+      tag: `admin-appeal-${orderId}`
+    });
   }
 };
+async function sendPushBroadcast(userIds, title, body) {
+  if (!ensureVapid()) return;
+  if (!userIds.length) return;
+  try {
+    const allSubs = await db.select().from(pushSubscriptions);
+    const filtered = allSubs.filter((s) => userIds.includes(s.userId));
+    await Promise.allSettled(
+      filtered.map(async (sub) => {
+        try {
+          const subscriptionObj = JSON.parse(sub.subscription);
+          await import_web_push.default.sendNotification(
+            subscriptionObj,
+            JSON.stringify({
+              title,
+              body,
+              type: "broadcast",
+              url: "/",
+              tag: `broadcast-${Date.now()}`
+            }),
+            { urgency: "normal", TTL: 86400 }
+          );
+        } catch (err2) {
+          if (err2?.statusCode === 410 || err2?.statusCode === 404) {
+            await db.delete(pushSubscriptions).where(eq(pushSubscriptions.id, sub.id));
+          }
+        }
+      })
+    );
+  } catch (error40) {
+    console.error("Broadcast push failed:", error40);
+  }
+}
 
 // src/telegram/notify.ts
 init_bot();
@@ -90982,6 +91024,7 @@ router7.post("/:id/appeal", async (req, res) => {
       relatedOrderId: id
     });
     PushNotify.appealRaised(appealCounterpartyId, id).catch(console.error);
+    PushNotify.appealAdmin(id).catch(console.error);
     TelegramNotify.appealRaised(appealCounterpartyId, id).catch(console.error);
     emitToUser(appealCounterpartyId, "order_update", { orderId: id, status: "appeal", type: "appeal_raised" });
     emitToUser(userId, "order_update", { orderId: id, status: "appeal", type: "appeal_raised" });
@@ -91227,6 +91270,8 @@ router8.post("/:orderId/image", chatUpload.single("image"), async (req, res) => 
       message: `${sender?.username ?? "Someone"} sent an image`,
       relatedOrderId: orderId
     });
+    PushNotify.newMessage(receiverId, orderId, sender?.username ?? "Someone", "\u{1F4F7} Image").catch(console.error);
+    TelegramNotify.newMessage(receiverId, orderId, sender?.username ?? "Someone", "\u{1F4F7} Image").catch(console.error);
     emitToUser(receiverId, "new_message", { orderId, senderId: req.userId, senderUsername: sender?.username ?? "Someone" });
     res.status(201).json({
       id: msg.id,
@@ -92762,7 +92807,7 @@ router13.post("/disputes/:id/message", adminAuth, async (req, res) => {
       relatedOrderId: order.id,
       isRead: false
     });
-    emitToUser(receiverId, { type: "admin_message", orderId: order.id });
+    emitToUser(receiverId, "admin_message", { orderId: order.id });
     return res.json({ success: true });
   } catch (err2) {
     req.log.error({ err: err2 }, "Admin send message failed");
@@ -92859,6 +92904,9 @@ ${message}`;
         ));
         emailCount = emailUsers.length;
       }
+    }
+    if (channel === "in-app" || channel === "in-app+telegram" || channel === "push") {
+      sendPushBroadcast(userIds, `\u{1F4E2} ${title}`, message).catch(console.error);
     }
     const recipientCount = channel === "telegram" ? telegramCount : channel === "email" ? emailCount : channel === "telegram-channel" ? 1 : users.length;
     const [history] = await db.insert(notificationHistoryTable).values({

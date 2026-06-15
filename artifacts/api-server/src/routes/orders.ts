@@ -635,6 +635,7 @@ router.post("/:id/appeal", async (req, res) => {
       relatedOrderId: id,
     });
     PushNotify.appealRaised(appealCounterpartyId, id).catch(console.error);
+    PushNotify.appealAdmin(id).catch(console.error);
     TelegramNotify.appealRaised(appealCounterpartyId, id).catch(console.error);
     emitToUser(appealCounterpartyId, "order_update", { orderId: id, status: "appeal", type: "appeal_raised" });
     emitToUser(userId, "order_update", { orderId: id, status: "appeal", type: "appeal_raised" });

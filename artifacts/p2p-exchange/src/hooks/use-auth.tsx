@@ -120,6 +120,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = useCallback((token: string, userData: AuthUser) => {
     localStorage.setItem(TOKEN_KEY, token);
+    sessionStorage.removeItem('notif_modal_deferred');
+    sessionStorage.removeItem('notif_denied_dismissed');
     setUser(userData);
   }, []);
 

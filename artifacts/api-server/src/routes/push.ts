@@ -229,4 +229,52 @@ export const PushNotify = {
       tag: "withdrawal-rejected",
     });
   },
+
+  async appealAdmin(orderId: number) {
+    await sendPush(1, {
+      title: "🚨 New Appeal Filed",
+      body: `An appeal has been raised on order #${orderId}. Review now.`,
+      type: "appeal_raised",
+      url: `/admin/disputes`,
+      orderId,
+      tag: `admin-appeal-${orderId}`,
+    });
+  },
 };
+
+export async function sendPushBroadcast(
+  userIds: number[],
+  title: string,
+  body: string
+): Promise<void> {
+  if (!ensureVapid()) return;
+  if (!userIds.length) return;
+  try {
+    const allSubs = await db.select().from(pushSubscriptions);
+    const filtered = allSubs.filter(s => userIds.includes(s.userId));
+    await Promise.allSettled(
+      filtered.map(async (sub) => {
+        try {
+          const subscriptionObj = JSON.parse(sub.subscription);
+          await webpush.sendNotification(
+            subscriptionObj,
+            JSON.stringify({
+              title,
+              body,
+              type: "broadcast",
+              url: "/",
+              tag: `broadcast-${Date.now()}`,
+            }),
+            { urgency: "normal", TTL: 86400 }
+          );
+        } catch (err: any) {
+          if (err?.statusCode === 410 || err?.statusCode === 404) {
+            await db.delete(pushSubscriptions).where(eq(pushSubscriptions.id, sub.id));
+          }
+        }
+      })
+    );
+  } catch (error) {
+    console.error("Broadcast push failed:", error);
+  }
+}

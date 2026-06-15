@@ -11,7 +11,7 @@ import {
 } from "@workspace/db";
 import { eq, desc, and, or, ilike, sql, ne, count } from "drizzle-orm";
 import { getFeePercents, calculateFees } from "../helpers/fees.js";
-import { PushNotify } from "./push.js";
+import { PushNotify, sendPushBroadcast } from "./push.js";
 import { TelegramNotify } from "../telegram/notify.js";
 import { telegramUsersTable } from "@workspace/db";
 import { sendTelegramMessage, restartBotWithToken, getBotStatus } from "../telegram/bot.js";
@@ -993,7 +993,7 @@ router.post("/disputes/:id/message", adminAuth, async (req, res) => {
       isRead: false,
     });
 
-    emitToUser(receiverId, { type: "admin_message", orderId: order.id });
+    emitToUser(receiverId, "admin_message", { orderId: order.id });
 
     return res.json({ success: true });
   } catch (err) {
@@ -1104,6 +1104,11 @@ router.post("/notifications/send", adminAuth, async (req: any, res) => {
         ));
         emailCount = emailUsers.length;
       }
+    }
+
+    // Send Web Push broadcast to subscribed users
+    if (channel === "in-app" || channel === "in-app+telegram" || channel === "push") {
+      sendPushBroadcast(userIds, `📢 ${title}`, message).catch(console.error);
     }
 
     const recipientCount = channel === "telegram" ? telegramCount : channel === "email" ? emailCount : channel === "telegram-channel" ? 1 : users.length;
