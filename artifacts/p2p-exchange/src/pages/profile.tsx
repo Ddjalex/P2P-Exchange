@@ -590,8 +590,12 @@ export default function ProfilePage() {
               onClick={() => {
                 const tawk = (window as any).Tawk_API;
                 if (!tawk) return;
-                tawk.showWidget?.();
-                tawk.maximize?.();
+                if (tawk.isChatMaximized?.()) {
+                  tawk.minimize?.();
+                } else {
+                  tawk.showWidget?.();
+                  tawk.maximize?.();
+                }
               }}
               className="w-full flex items-center justify-between p-4 border-b border-border hover:bg-secondary/50 transition-colors"
             >
