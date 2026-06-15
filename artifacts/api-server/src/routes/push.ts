@@ -63,6 +63,61 @@ router.post("/subscribe", async (req, res) => {
   }
 });
 
+// GET /api/push/send-test — send a test push to the current user (auth required)
+router.get("/send-test", async (req, res) => {
+  const userId = (req as any).userId;
+  if (!userId) return res.status(401).json({ error: "Not authenticated" });
+
+  const vapidOk = ensureVapid();
+  if (!vapidOk) {
+    return res.status(500).json({ error: "VAPID keys not configured on server" });
+  }
+
+  try {
+    const subs = await db.select().from(pushSubscriptions)
+      .where(eq(pushSubscriptions.userId, userId));
+
+    if (!subs.length) {
+      return res.json({ success: false, subscriptions: 0, message: "No push subscriptions found for this user" });
+    }
+
+    let sent = 0;
+    let failed = 0;
+    const errors: string[] = [];
+
+    await Promise.all(
+      subs.map(async (sub) => {
+        try {
+          const subscriptionObj = JSON.parse(sub.subscription);
+          await webpush.sendNotification(
+            subscriptionObj,
+            JSON.stringify({
+              title: "🔔 Test Notification",
+              body: "Push notifications are working correctly on Xendrx!",
+              type: "test",
+              url: "/",
+              tag: `test-${Date.now()}`,
+            }),
+            { urgency: "high", TTL: 60 }
+          );
+          sent++;
+        } catch (err: any) {
+          failed++;
+          errors.push(String(err?.message ?? err));
+          if (err?.statusCode === 410 || err?.statusCode === 404) {
+            await db.delete(pushSubscriptions).where(eq(pushSubscriptions.id, sub.id));
+          }
+        }
+      })
+    );
+
+    return res.json({ success: sent > 0, subscriptions: subs.length, sent, failed, errors });
+  } catch (err) {
+    console.error("Push send-test error:", err);
+    return res.status(500).json({ error: String(err) });
+  }
+});
+
 // DELETE /api/push/unsubscribe — remove subscription
 router.delete("/unsubscribe", async (req, res) => {
   try {

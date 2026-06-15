@@ -29,24 +29,33 @@ export async function requestNotificationPermission(): Promise<boolean> {
 export async function subscribeToPush(userId: number): Promise<PushSubscription | null> {
   try {
     const granted = await requestNotificationPermission();
+    console.log('[Push] Permission granted:', granted);
     if (!granted) return null;
 
-    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return null;
-
-    const reg = await navigator.serviceWorker.ready;
-
-    const vapidKey = (import.meta as any).env?.VITE_VAPID_PUBLIC_KEY as string | undefined;
-    if (!vapidKey) {
-      console.log('No VAPID key — push disabled');
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      console.warn('[Push] ServiceWorker or PushManager not available');
       return null;
     }
 
+    const reg = await navigator.serviceWorker.ready;
+    console.log('[Push] ServiceWorker ready, scope:', reg.scope);
+
+    const vapidKey = (import.meta as any).env?.VITE_VAPID_PUBLIC_KEY as string | undefined;
+    if (!vapidKey) {
+      console.warn('[Push] No VAPID key (VITE_VAPID_PUBLIC_KEY not set) — push disabled');
+      return null;
+    }
+    console.log('[Push] VAPID key present, length:', vapidKey.length);
+
+    console.log('[Push] Calling pushManager.subscribe()...');
     const subscription = await reg.pushManager.subscribe({
       userVisibleOnly: true,
       applicationServerKey: urlBase64ToUint8Array(vapidKey),
     });
+    console.log('[Push] Subscription created:', JSON.stringify(subscription));
 
-    await fetch('/api/push/subscribe', {
+    console.log('[Push] Saving subscription to /api/push/subscribe...');
+    const res = await fetch('/api/push/subscribe', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -55,10 +64,33 @@ export async function subscribeToPush(userId: number): Promise<PushSubscription 
       body: JSON.stringify({ subscription, userId }),
     });
 
-    console.log('Push subscription active');
+    const responseBody = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      console.error('[Push] API save failed:', res.status, responseBody);
+      showPushErrorToast(`Push save failed (${res.status}): ${JSON.stringify(responseBody)}`);
+    } else {
+      console.log('[Push] Subscription saved successfully:', responseBody);
+    }
+
     return subscription;
   } catch (error) {
-    console.error('Push subscription failed:', error);
+    console.error('[Push] subscribeToPush error:', error);
+    showPushErrorToast(String(error));
     return null;
   }
+}
+
+function showPushErrorToast(message: string) {
+  try {
+    const div = document.createElement('div');
+    div.style.cssText = [
+      'position:fixed', 'bottom:80px', 'left:50%', 'transform:translateX(-50%)',
+      'background:#7f1d1d', 'color:#fecaca', 'padding:10px 16px', 'border-radius:8px',
+      'font-size:12px', 'max-width:320px', 'z-index:99999', 'text-align:center',
+      'font-family:Poppins,sans-serif', 'line-height:1.4',
+    ].join(';');
+    div.textContent = `Push error: ${message}`;
+    document.body.appendChild(div);
+    setTimeout(() => div.remove(), 6000);
+  } catch (_) { /* ignore */ }
 }

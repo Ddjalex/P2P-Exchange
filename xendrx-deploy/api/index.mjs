@@ -90192,6 +90192,52 @@ router6.post("/subscribe", async (req, res) => {
     res.status(500).json({ error: "Failed to save subscription" });
   }
 });
+router6.get("/send-test", async (req, res) => {
+  const userId = req.userId;
+  if (!userId) return res.status(401).json({ error: "Not authenticated" });
+  const vapidOk = ensureVapid();
+  if (!vapidOk) {
+    return res.status(500).json({ error: "VAPID keys not configured on server" });
+  }
+  try {
+    const subs = await db.select().from(pushSubscriptions).where(eq(pushSubscriptions.userId, userId));
+    if (!subs.length) {
+      return res.json({ success: false, subscriptions: 0, message: "No push subscriptions found for this user" });
+    }
+    let sent = 0;
+    let failed = 0;
+    const errors = [];
+    await Promise.all(
+      subs.map(async (sub) => {
+        try {
+          const subscriptionObj = JSON.parse(sub.subscription);
+          await import_web_push.default.sendNotification(
+            subscriptionObj,
+            JSON.stringify({
+              title: "\u{1F514} Test Notification",
+              body: "Push notifications are working correctly on Xendrx!",
+              type: "test",
+              url: "/",
+              tag: `test-${Date.now()}`
+            }),
+            { urgency: "high", TTL: 60 }
+          );
+          sent++;
+        } catch (err2) {
+          failed++;
+          errors.push(String(err2?.message ?? err2));
+          if (err2?.statusCode === 410 || err2?.statusCode === 404) {
+            await db.delete(pushSubscriptions).where(eq(pushSubscriptions.id, sub.id));
+          }
+        }
+      })
+    );
+    return res.json({ success: sent > 0, subscriptions: subs.length, sent, failed, errors });
+  } catch (err2) {
+    console.error("Push send-test error:", err2);
+    return res.status(500).json({ error: String(err2) });
+  }
+});
 router6.delete("/unsubscribe", async (req, res) => {
   try {
     const { endpoint } = req.body;
@@ -93824,6 +93870,11 @@ app_default.listen(port, (err2) => {
   logger.info({ port }, "Server listening");
   startDepositMonitor();
   startBot();
+  db.select({ count: sql`count(*)` }).from(pushSubscriptions).then(([row]) => {
+    logger.info({ count: Number(row?.count ?? 0) }, "[Push] push_subscriptions table OK");
+  }).catch((err3) => {
+    logger.error({ err: String(err3) }, "[Push] ERROR: push_subscriptions table missing or inaccessible \u2014 push notifications will not work");
+  });
 });
 process.once("SIGTERM", stopBot);
 process.once("SIGINT", stopBot);
