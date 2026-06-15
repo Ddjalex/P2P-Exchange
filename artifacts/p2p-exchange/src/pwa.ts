@@ -1,3 +1,5 @@
+import { toast } from "sonner";
+
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
@@ -37,39 +39,46 @@ export async function subscribeToPush(userId: number): Promise<PushSubscription 
       return null;
     }
 
-    const reg = await navigator.serviceWorker.ready;
-    console.log('[Push] ServiceWorker ready, scope:', reg.scope);
+    const registration = await navigator.serviceWorker.ready;
+    console.log('[Push] SW ready, subscribing...');
 
-    const vapidKey = (import.meta as any).env?.VITE_VAPID_PUBLIC_KEY as string | undefined;
+    const vapidKey = import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undefined;
     if (!vapidKey) {
       console.warn('[Push] No VAPID key (VITE_VAPID_PUBLIC_KEY not set) — push disabled');
       return null;
     }
     console.log('[Push] VAPID key present, length:', vapidKey.length);
 
-    console.log('[Push] Calling pushManager.subscribe()...');
-    const subscription = await reg.pushManager.subscribe({
+    const subscription = await registration.pushManager.subscribe({
       userVisibleOnly: true,
       applicationServerKey: urlBase64ToUint8Array(vapidKey),
     });
     console.log('[Push] Subscription created:', JSON.stringify(subscription));
 
+    const token = localStorage.getItem('p2p_token');
     console.log('[Push] Saving subscription to /api/push/subscribe...');
-    const res = await fetch('/api/push/subscribe', {
+
+    const response = await fetch('/api/push/subscribe', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${localStorage.getItem('p2p_token')}`,
+        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({ subscription, userId }),
     });
 
-    const responseBody = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      console.error('[Push] API save failed:', res.status, responseBody);
-      showPushErrorToast(`Push save failed (${res.status}): ${JSON.stringify(responseBody)}`);
+    const result = await response.json().catch(() => ({}));
+    console.log('[Push] Server response:', result);
+
+    if (!response.ok) {
+      console.error('[Push] API save failed:', response.status, result);
+      showPushErrorToast(`Push save failed (${response.status}): ${JSON.stringify(result)}`);
     } else {
-      console.log('[Push] Subscription saved successfully:', responseBody);
+      console.log('[Push] Subscription saved successfully:', result);
+      toast.success('✅ Push notifications enabled!', {
+        description: "You'll receive trade and payment alerts even when the app is closed.",
+        duration: 4000,
+      });
     }
 
     return subscription;

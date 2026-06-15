@@ -12,7 +12,15 @@ export function NotificationPermissionModal({ userId }: Props) {
   useEffect(() => {
     if (!('Notification' in window)) return;
 
-    if (Notification.permission === 'granted') return;
+    if (Notification.permission === 'granted') {
+      // Permission already granted — silently attempt subscription in case it
+      // was never saved to the server (e.g. fresh install, token refresh, etc.)
+      if (!sessionStorage.getItem('push_subscribed')) {
+        sessionStorage.setItem('push_subscribed', '1');
+        subscribeToPush(userId).catch(() => {});
+      }
+      return;
+    }
 
     if (Notification.permission === 'denied') {
       if (!sessionStorage.getItem('notif_denied_dismissed')) {
@@ -25,7 +33,7 @@ export function NotificationPermissionModal({ userId }: Props) {
     if (!sessionStorage.getItem('notif_modal_deferred')) {
       setVisible(true);
     }
-  }, []);
+  }, [userId]);
 
   const handleEnable = async () => {
     setVisible(false);
