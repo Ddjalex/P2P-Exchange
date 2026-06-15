@@ -89858,7 +89858,8 @@ router5.get("/", async (req, res) => {
     if (type && ["buy", "sell"].includes(type)) {
       conditions.push(eq(adsTable.type, type));
     }
-    const sortOrder = mine === "true" ? desc(adsTable.createdAt) : type === "sell" ? desc(adsTable.price) : asc(adsTable.price);
+    const numericPrice = sql`CAST(NULLIF(${adsTable.price}, '') AS NUMERIC)`;
+    const sortOrder = mine === "true" ? desc(adsTable.createdAt) : type === "sell" ? asc(numericPrice) : desc(numericPrice);
     const ads = await db.select().from(adsTable).where(conditions.length > 0 ? and(...conditions) : void 0).orderBy(sortOrder);
     const formatted = await Promise.all(ads.map(formatAd));
     let filtered = formatted;

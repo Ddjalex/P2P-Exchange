@@ -86,13 +86,15 @@ router.get("/", async (req, res) => {
       conditions.push(eq(adsTable.type, type as any));
     }
 
-    // Sort: marketplace buy ads → price asc (cheapest first), sell ads → price desc
-    // For "mine", sort by createdAt desc
+    // Buy tab sends type=sell (sellers offering USDT) → buyers want cheapest → asc
+    // Sell tab sends type=buy (buyers wanting USDT) → sellers want highest → desc
+    // Cast to NUMERIC because price is stored as TEXT (avoids lexicographic mis-sort)
+    const numericPrice = sql`CAST(NULLIF(${adsTable.price}, '') AS NUMERIC)`;
     const sortOrder = mine === "true"
       ? desc(adsTable.createdAt)
       : type === "sell"
-        ? desc(adsTable.price)
-        : asc(adsTable.price);
+        ? asc(numericPrice)
+        : desc(numericPrice);
 
     const ads = await db.select().from(adsTable)
       .where(conditions.length > 0 ? and(...conditions) : undefined)
