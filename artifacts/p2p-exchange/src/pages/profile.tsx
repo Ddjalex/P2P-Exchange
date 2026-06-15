@@ -587,7 +587,11 @@ export default function ProfilePage() {
             </Link>
             <TelegramJoinButton />
             <button
-              onClick={() => { (window as any).Tawk_API?.toggle?.(); }}
+              onClick={() => {
+                const tawk = (window as any).Tawk_API;
+                if (tawk?.maximize) { tawk.maximize(); }
+                else if (tawk?.toggle) { tawk.toggle(); }
+              }}
               className="w-full flex items-center justify-between p-4 border-b border-border hover:bg-secondary/50 transition-colors"
             >
               <span className="text-sm font-medium flex items-center space-x-2">
