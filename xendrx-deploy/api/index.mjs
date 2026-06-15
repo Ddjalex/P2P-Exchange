@@ -90251,9 +90251,13 @@ router6.delete("/unsubscribe", async (req, res) => {
 });
 var push_default = router6;
 async function sendPush(userId, payload) {
-  if (!ensureVapid()) return;
+  if (!ensureVapid()) {
+    console.warn("[Push] VAPID not ready \u2014 skipping push for userId=%d", userId);
+    return;
+  }
   try {
     const subs = await db.select().from(pushSubscriptions).where(eq(pushSubscriptions.userId, userId));
+    console.log("[Push] Sending to userId:", userId, "subscriptions found:", subs.length);
     if (!subs.length) return;
     await Promise.all(
       subs.map(async (sub) => {
@@ -90781,7 +90785,11 @@ router7.post("/", async (req, res) => {
       message: `New order received for ${parseFloat(order.amountUsdt).toFixed(4)} USDT (Br ${Number(order.amountEtb).toLocaleString()})`,
       relatedOrderId: order.id
     });
-    PushNotify.newOrder(sellerId, order.id, parseFloat(order.amountUsdt).toFixed(4), Number(order.amountEtb).toLocaleString()).catch(console.error);
+    PushNotify.newOrder(sellerId, order.id, parseFloat(order.amountUsdt).toFixed(4), Number(order.amountEtb).toLocaleString()).then(() => {
+      console.log("[Push] newOrder sent: userId=%d orderId=%d", sellerId, order.id);
+    }).catch((err2) => {
+      console.error("[Push] newOrder FAILED:", err2.message, err2.stack);
+    });
     TelegramNotify.newOrder(sellerId, order.id, parseFloat(order.amountUsdt).toFixed(4), Number(order.amountEtb).toLocaleString()).catch(console.error);
     emitToUser(sellerId, "order_update", { orderId: order.id, status: "unpaid", type: "order_created" });
     emitToUser(buyerId, "order_update", { orderId: order.id, status: "unpaid", type: "order_created" });
@@ -90845,7 +90853,11 @@ router7.post("/:id/mark-paid", async (req, res) => {
       message: `Buyer has marked payment as sent for order #${id}. Please verify and release crypto.`,
       relatedOrderId: id
     });
-    PushNotify.paymentSent(order.sellerId, id, Number(updated.amountEtb).toLocaleString()).catch(console.error);
+    PushNotify.paymentSent(order.sellerId, id, Number(updated.amountEtb).toLocaleString()).then(() => {
+      console.log("[Push] paymentSent sent: userId=%d orderId=%d", order.sellerId, id);
+    }).catch((err2) => {
+      console.error("[Push] paymentSent FAILED:", err2.message, err2.stack);
+    });
     TelegramNotify.paymentSent(order.sellerId, id, Number(updated.amountEtb).toLocaleString()).catch(console.error);
     emitToUser(order.sellerId, "order_update", { orderId: id, status: "paid", type: "payment_sent" });
     emitToUser(order.buyerId, "order_update", { orderId: id, status: "paid", type: "payment_sent" });
@@ -90974,7 +90986,11 @@ router7.post("/:id/release", async (req, res) => {
       message: `Order #${id} completed. Br ${Number(order.amountEtb).toLocaleString()} received.`,
       relatedOrderId: id
     });
-    PushNotify.orderCompleted(order.buyerId, id, buyerReceives.toFixed(4)).catch(console.error);
+    PushNotify.orderCompleted(order.buyerId, id, buyerReceives.toFixed(4)).then(() => {
+      console.log("[Push] orderCompleted sent: userId=%d orderId=%d", order.buyerId, id);
+    }).catch((err2) => {
+      console.error("[Push] orderCompleted FAILED:", err2.message, err2.stack);
+    });
     TelegramNotify.orderCompleted(order.buyerId, id, buyerReceives.toFixed(4)).catch(console.error);
     emitToUser(order.buyerId, "order_update", { orderId: id, status: "completed", type: "order_completed" });
     emitToUser(order.buyerId, "wallet_update", {});
@@ -91020,7 +91036,11 @@ router7.post("/:id/cancel", async (req, res) => {
       message: `Order #${id} has been cancelled by the ${cancelledByRole}.`,
       relatedOrderId: id
     });
-    PushNotify.orderCancelled(counterpartyId, id).catch(console.error);
+    PushNotify.orderCancelled(counterpartyId, id).then(() => {
+      console.log("[Push] orderCancelled sent: userId=%d orderId=%d", counterpartyId, id);
+    }).catch((err2) => {
+      console.error("[Push] orderCancelled FAILED:", err2.message, err2.stack);
+    });
     TelegramNotify.orderCancelled(counterpartyId, id).catch(console.error);
     emitToUser(counterpartyId, "order_update", { orderId: id, status: "cancelled", type: "order_cancelled" });
     emitToUser(userId, "order_update", { orderId: id, status: "cancelled", type: "order_cancelled" });
@@ -91070,8 +91090,16 @@ router7.post("/:id/appeal", async (req, res) => {
       message: `Appeal filed on order #${id}.`,
       relatedOrderId: id
     });
-    PushNotify.appealRaised(appealCounterpartyId, id).catch(console.error);
-    PushNotify.appealAdmin(id).catch(console.error);
+    PushNotify.appealRaised(appealCounterpartyId, id).then(() => {
+      console.log("[Push] appealRaised sent: userId=%d orderId=%d", appealCounterpartyId, id);
+    }).catch((err2) => {
+      console.error("[Push] appealRaised FAILED:", err2.message, err2.stack);
+    });
+    PushNotify.appealAdmin(id).then(() => {
+      console.log("[Push] appealAdmin sent: orderId=%d", id);
+    }).catch((err2) => {
+      console.error("[Push] appealAdmin FAILED:", err2.message, err2.stack);
+    });
     TelegramNotify.appealRaised(appealCounterpartyId, id).catch(console.error);
     emitToUser(appealCounterpartyId, "order_update", { orderId: id, status: "appeal", type: "appeal_raised" });
     emitToUser(userId, "order_update", { orderId: id, status: "appeal", type: "appeal_raised" });
@@ -91274,7 +91302,11 @@ router8.post("/:orderId", async (req, res) => {
       message: `${sender?.username ?? "Someone"}: ${content.slice(0, 50)}${content.length > 50 ? "..." : ""}`,
       relatedOrderId: orderId
     });
-    PushNotify.newMessage(receiverId, orderId, sender?.username ?? "Someone", content).catch(console.error);
+    PushNotify.newMessage(receiverId, orderId, sender?.username ?? "Someone", content).then(() => {
+      console.log("[Push] newMessage sent: userId=%d orderId=%d", receiverId, orderId);
+    }).catch((err2) => {
+      console.error("[Push] newMessage FAILED:", err2.message, err2.stack);
+    });
     TelegramNotify.newMessage(receiverId, orderId, sender?.username ?? "Someone", content).catch(console.error);
     emitToUser(receiverId, "new_message", { orderId, senderId: req.userId, senderUsername: sender?.username ?? "Someone" });
     res.status(201).json({
@@ -91317,7 +91349,11 @@ router8.post("/:orderId/image", chatUpload.single("image"), async (req, res) => 
       message: `${sender?.username ?? "Someone"} sent an image`,
       relatedOrderId: orderId
     });
-    PushNotify.newMessage(receiverId, orderId, sender?.username ?? "Someone", "\u{1F4F7} Image").catch(console.error);
+    PushNotify.newMessage(receiverId, orderId, sender?.username ?? "Someone", "\u{1F4F7} Image").then(() => {
+      console.log("[Push] newMessage(image) sent: userId=%d orderId=%d", receiverId, orderId);
+    }).catch((err2) => {
+      console.error("[Push] newMessage(image) FAILED:", err2.message, err2.stack);
+    });
     TelegramNotify.newMessage(receiverId, orderId, sender?.username ?? "Someone", "\u{1F4F7} Image").catch(console.error);
     emitToUser(receiverId, "new_message", { orderId, senderId: req.userId, senderUsername: sender?.username ?? "Someone" });
     res.status(201).json({

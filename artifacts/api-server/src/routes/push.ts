@@ -147,12 +147,16 @@ async function sendPush(
     image?: string;
   }
 ): Promise<void> {
-  if (!ensureVapid()) return;
+  if (!ensureVapid()) {
+    console.warn('[Push] VAPID not ready — skipping push for userId=%d', userId);
+    return;
+  }
 
   try {
     const subs = await db.select().from(pushSubscriptions)
       .where(eq(pushSubscriptions.userId, userId));
 
+    console.log('[Push] Sending to userId:', userId, 'subscriptions found:', subs.length);
     if (!subs.length) return;
 
     await Promise.all(

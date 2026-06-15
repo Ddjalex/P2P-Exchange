@@ -267,7 +267,11 @@ router.post("/", async (req, res) => {
       message: `New order received for ${parseFloat(order.amountUsdt).toFixed(4)} USDT (Br ${Number(order.amountEtb).toLocaleString()})`,
       relatedOrderId: order.id,
     });
-    PushNotify.newOrder(sellerId, order.id, parseFloat(order.amountUsdt).toFixed(4), Number(order.amountEtb).toLocaleString()).catch(console.error);
+    PushNotify.newOrder(sellerId, order.id, parseFloat(order.amountUsdt).toFixed(4), Number(order.amountEtb).toLocaleString()).then(() => {
+      console.log('[Push] newOrder sent: userId=%d orderId=%d', sellerId, order.id);
+    }).catch(err => {
+      console.error('[Push] newOrder FAILED:', err.message, err.stack);
+    });
     TelegramNotify.newOrder(sellerId, order.id, parseFloat(order.amountUsdt).toFixed(4), Number(order.amountEtb).toLocaleString()).catch(console.error);
     emitToUser(sellerId, "order_update", { orderId: order.id, status: "unpaid", type: "order_created" });
     emitToUser(buyerId, "order_update", { orderId: order.id, status: "unpaid", type: "order_created" });
@@ -346,7 +350,11 @@ router.post("/:id/mark-paid", async (req, res) => {
       message: `Buyer has marked payment as sent for order #${id}. Please verify and release crypto.`,
       relatedOrderId: id,
     });
-    PushNotify.paymentSent(order.sellerId, id, Number(updated.amountEtb).toLocaleString()).catch(console.error);
+    PushNotify.paymentSent(order.sellerId, id, Number(updated.amountEtb).toLocaleString()).then(() => {
+      console.log('[Push] paymentSent sent: userId=%d orderId=%d', order.sellerId, id);
+    }).catch(err => {
+      console.error('[Push] paymentSent FAILED:', err.message, err.stack);
+    });
     TelegramNotify.paymentSent(order.sellerId, id, Number(updated.amountEtb).toLocaleString()).catch(console.error);
     emitToUser(order.sellerId, "order_update", { orderId: id, status: "paid", type: "payment_sent" });
     emitToUser(order.buyerId, "order_update", { orderId: id, status: "paid", type: "payment_sent" });
@@ -512,7 +520,11 @@ router.post("/:id/release", async (req, res) => {
       message: `Order #${id} completed. Br ${Number(order.amountEtb).toLocaleString()} received.`,
       relatedOrderId: id,
     });
-    PushNotify.orderCompleted(order.buyerId, id, buyerReceives.toFixed(4)).catch(console.error);
+    PushNotify.orderCompleted(order.buyerId, id, buyerReceives.toFixed(4)).then(() => {
+      console.log('[Push] orderCompleted sent: userId=%d orderId=%d', order.buyerId, id);
+    }).catch(err => {
+      console.error('[Push] orderCompleted FAILED:', err.message, err.stack);
+    });
     TelegramNotify.orderCompleted(order.buyerId, id, buyerReceives.toFixed(4)).catch(console.error);
     emitToUser(order.buyerId, "order_update", { orderId: id, status: "completed", type: "order_completed" });
     emitToUser(order.buyerId, "wallet_update", {});
@@ -575,7 +587,11 @@ router.post("/:id/cancel", async (req, res) => {
       message: `Order #${id} has been cancelled by the ${cancelledByRole}.`,
       relatedOrderId: id,
     });
-    PushNotify.orderCancelled(counterpartyId, id).catch(console.error);
+    PushNotify.orderCancelled(counterpartyId, id).then(() => {
+      console.log('[Push] orderCancelled sent: userId=%d orderId=%d', counterpartyId, id);
+    }).catch(err => {
+      console.error('[Push] orderCancelled FAILED:', err.message, err.stack);
+    });
     TelegramNotify.orderCancelled(counterpartyId, id).catch(console.error);
     emitToUser(counterpartyId, "order_update", { orderId: id, status: "cancelled", type: "order_cancelled" });
     emitToUser(userId, "order_update", { orderId: id, status: "cancelled", type: "order_cancelled" });
@@ -634,8 +650,16 @@ router.post("/:id/appeal", async (req, res) => {
       message: `Appeal filed on order #${id}.`,
       relatedOrderId: id,
     });
-    PushNotify.appealRaised(appealCounterpartyId, id).catch(console.error);
-    PushNotify.appealAdmin(id).catch(console.error);
+    PushNotify.appealRaised(appealCounterpartyId, id).then(() => {
+      console.log('[Push] appealRaised sent: userId=%d orderId=%d', appealCounterpartyId, id);
+    }).catch(err => {
+      console.error('[Push] appealRaised FAILED:', err.message, err.stack);
+    });
+    PushNotify.appealAdmin(id).then(() => {
+      console.log('[Push] appealAdmin sent: orderId=%d', id);
+    }).catch(err => {
+      console.error('[Push] appealAdmin FAILED:', err.message, err.stack);
+    });
     TelegramNotify.appealRaised(appealCounterpartyId, id).catch(console.error);
     emitToUser(appealCounterpartyId, "order_update", { orderId: id, status: "appeal", type: "appeal_raised" });
     emitToUser(userId, "order_update", { orderId: id, status: "appeal", type: "appeal_raised" });

@@ -185,7 +185,11 @@ router.post("/:orderId", async (req, res) => {
       message: `${sender?.username ?? "Someone"}: ${content.slice(0, 50)}${content.length > 50 ? "..." : ""}`,
       relatedOrderId: orderId,
     });
-    PushNotify.newMessage(receiverId, orderId, sender?.username ?? "Someone", content).catch(console.error);
+    PushNotify.newMessage(receiverId, orderId, sender?.username ?? "Someone", content).then(() => {
+      console.log('[Push] newMessage sent: userId=%d orderId=%d', receiverId, orderId);
+    }).catch(err => {
+      console.error('[Push] newMessage FAILED:', err.message, err.stack);
+    });
     TelegramNotify.newMessage(receiverId, orderId, sender?.username ?? "Someone", content).catch(console.error);
     emitToUser(receiverId, "new_message", { orderId, senderId: (req as any).userId, senderUsername: sender?.username ?? "Someone" });
 
@@ -236,7 +240,11 @@ router.post("/:orderId/image", chatUpload.single("image"), async (req, res) => {
       message: `${sender?.username ?? "Someone"} sent an image`,
       relatedOrderId: orderId,
     });
-    PushNotify.newMessage(receiverId, orderId, sender?.username ?? "Someone", "📷 Image").catch(console.error);
+    PushNotify.newMessage(receiverId, orderId, sender?.username ?? "Someone", "📷 Image").then(() => {
+      console.log('[Push] newMessage(image) sent: userId=%d orderId=%d', receiverId, orderId);
+    }).catch(err => {
+      console.error('[Push] newMessage(image) FAILED:', err.message, err.stack);
+    });
     TelegramNotify.newMessage(receiverId, orderId, sender?.username ?? "Someone", "📷 Image").catch(console.error);
     emitToUser(receiverId, "new_message", { orderId, senderId: (req as any).userId, senderUsername: sender?.username ?? "Someone" });
 
