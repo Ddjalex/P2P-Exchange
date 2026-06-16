@@ -92591,13 +92591,32 @@ router13.put("/wallet/transactions/:id/approve", adminAuth, async (req, res) => 
   try {
     const id = parseInt(req.params.id);
     const approvedTx = await db.select().from(transactionsTable).where(eq(transactionsTable.id, id)).then((r) => r[0]);
-    await db.update(transactionsTable).set({ status: "completed" }).where(eq(transactionsTable.id, id));
-    await log(req.adminEmail, "approve_withdrawal", "transaction", id);
-    if (approvedTx) {
+    if (!approvedTx) return res.status(404).json({ error: "Withdrawal not found" });
+    if (approvedTx.status === "completed") return res.status(400).json({ error: "Withdrawal already completed" });
+    if (approvedTx.type !== "withdraw") return res.status(400).json({ error: "Transaction is not a withdrawal" });
+    const address = approvedTx.address;
+    if (!address) return res.status(400).json({ error: "Withdrawal has no destination address" });
+    const privateKey = process.env["HOT_WALLET_PRIVATE_KEY"];
+    if (!privateKey) return res.status(503).json({ error: "HOT_WALLET_PRIVATE_KEY not configured" });
+    const totalAmt = parseFloat(approvedTx.amount);
+    const fee = parseFloat(approvedTx.fee ?? "0");
+    const netAmount = totalAmt - fee;
+    console.log("[Withdraw] Admin approved txId:", id, "sending to:", address, "net:", netAmount, "USDT");
+    try {
+      const txid = await sendUsdt(privateKey, address, netAmount);
+      await db.update(transactionsTable).set({ status: "completed", txid }).where(eq(transactionsTable.id, id));
+      await log(req.adminEmail, "approve_withdrawal", "transaction", id, `Broadcast OK \u2014 txid: ${txid}`);
+      console.log("[Withdraw] Broadcast successful, txid:", txid);
       PushNotify.withdrawalApproved(approvedTx.userId, approvedTx.amount).catch(console.error);
       TelegramNotify.withdrawalApproved(approvedTx.userId, approvedTx.amount).catch(console.error);
+      return res.json({ success: true, txid });
+    } catch (broadcastErr) {
+      req.log.error({ broadcastErr, id, address }, "Admin approve \u2014 broadcast failed, keeping pending");
+      console.log("[Withdraw] Broadcast failed for txId:", id, broadcastErr?.message);
+      await db.update(transactionsTable).set({ status: "pending" }).where(eq(transactionsTable.id, id));
+      await log(req.adminEmail, "approve_withdrawal_failed", "transaction", id, broadcastErr?.message ?? "Broadcast error");
+      return res.status(502).json({ error: "Blockchain broadcast failed \u2014 withdrawal kept as pending", detail: broadcastErr?.message });
     }
-    res.json({ success: true });
   } catch (err2) {
     req.log.error({ err: err2 }, "Admin approve withdrawal failed");
     res.status(500).json({ error: "Internal server error" });
