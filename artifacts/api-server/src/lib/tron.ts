@@ -1,11 +1,12 @@
 /**
  * Minimal TRON / TRC20 USDT utilities using TronGrid REST API.
- * No tronweb dependency — pure fetch + @noble/secp256k1 for signing.
+ * Uses TronWeb for transaction signing (handles SHA256 internally).
  *
  * USDT TRC20 contract on mainnet: TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t
  */
-import { getPublicKey, sign as secp256k1Sign } from "@noble/secp256k1";
+import { getPublicKey } from "@noble/secp256k1";
 import { createHash, createHmac } from "node:crypto";
+import TronWeb from "tronweb";
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 
@@ -286,16 +287,12 @@ export async function sendUsdt(
   const unsignedTx = buildData.transaction;
   if (!unsignedTx) throw new Error("No transaction returned from TronGrid");
 
-  // 2. Sign
-  const rawDataHex: string = unsignedTx.raw_data_hex;
-  const msgBytes = Buffer.from(rawDataHex, "hex");
-  const msgHash = sha256(sha256(msgBytes));
-  const privBytes = Buffer.from(privateKey, "hex");
-  const { signature, recovery } = secp256k1Sign(msgHash, privBytes, { recovered: true });
-  const sigBytes = signature.toCompactRawBytes();
-  const sigHex = Buffer.from(sigBytes).toString("hex") + recovery.toString(16).padStart(2, "0");
-
-  const signedTx = { ...unsignedTx, signature: [sigHex] };
+  // 2. Sign using TronWeb — handles SHA256 hashing internally
+  const tronWeb = new TronWeb({
+    fullHost: TRON_GRID,
+    headers: apiHeaders(),
+  });
+  const signedTx = await tronWeb.trx.sign(unsignedTx, privateKey);
 
   // 3. Broadcast
   const broadcastRes = await fetch(`${TRON_GRID}/wallet/broadcasttransaction`, {

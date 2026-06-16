@@ -30,6 +30,7 @@ async function buildAll() {
     external: [
       "*.node",
       "grammy",
+      "tronweb",
       "sharp",
       "better-sqlite3",
       "sqlite3",
