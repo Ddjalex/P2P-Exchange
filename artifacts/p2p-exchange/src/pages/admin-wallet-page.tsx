@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
+import { useLocation } from "wouter";
 import { AdminLayout, AdminGuard } from "@/components/admin-layout";
 import { adminGet, adminPut, adminPost } from "@/lib/admin-api";
 
 export default function AdminWalletPage() {
+  const [, navigate] = useLocation();
   const [overview, setOverview] = useState<any>(null);
   const [txs, setTxs] = useState<any[]>([]);
   const [total, setTotal] = useState(0);
@@ -125,7 +127,11 @@ export default function AdminWalletPage() {
                 ) : txs.length === 0 ? (
                   <tr><td colSpan={9} className="px-4 py-12 text-center text-muted-foreground">No transactions found</td></tr>
                 ) : txs.map(tx => (
-                  <tr key={tx.id} className="border-b border-border/50 hover:bg-secondary/30 transition-colors">
+                  <tr
+                    key={tx.id}
+                    onClick={() => tx.type === 'withdraw' ? navigate(`/admin/wallet/withdrawals/${tx.id}`) : undefined}
+                    className={`border-b border-border/50 transition-colors ${tx.type === 'withdraw' ? 'hover:bg-secondary/50 cursor-pointer' : 'hover:bg-secondary/30'}`}
+                  >
                     <td className="px-4 py-3 font-mono text-xs">#{tx.id}</td>
                     <td className="px-4 py-3 font-medium">{tx.username}</td>
                     <td className="px-4 py-3">
@@ -138,7 +144,7 @@ export default function AdminWalletPage() {
                     </td>
                     <td className="px-4 py-3 text-xs text-muted-foreground max-w-[120px] truncate">{tx.address ?? "—"}</td>
                     <td className="px-4 py-3 text-xs text-muted-foreground">{new Date(tx.createdAt).toLocaleDateString()}</td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                       {tx.status === 'pending' && tx.type === 'withdraw' && (
                         <div className="flex space-x-2">
                           <button onClick={() => approve(tx.id)} className="text-xs text-success hover:underline">Approve</button>

@@ -52,6 +52,7 @@ import AdminOrderDetailPage from "@/pages/admin-order-detail";
 import AdminDisputesPage from "@/pages/admin-disputes-page";
 import AdminDisputeDetailPage from "@/pages/admin-dispute-detail";
 import AdminWalletPage from "@/pages/admin-wallet-page";
+import AdminWithdrawalDetailPage from "@/pages/admin-withdrawal-detail";
 import AdminMessagesPage from "@/pages/admin-messages-page";
 import AdminNotificationsPage from "@/pages/admin-notifications-page";
 import AdminSettingsPage from "@/pages/admin-settings-page";
@@ -149,6 +150,7 @@ function Router() {
       <Route path="/admin/disputes/:id" component={AdminDisputeDetailPage} />
       <Route path="/admin/disputes" component={AdminDisputesPage} />
       <Route path="/admin/fraud" component={AdminFraudPage} />
+      <Route path="/admin/wallet/withdrawals/:id" component={AdminWithdrawalDetailPage} />
       <Route path="/admin/wallet" component={AdminWalletPage} />
       <Route path="/admin/messages" component={AdminMessagesPage} />
       <Route path="/admin/notifications" component={AdminNotificationsPage} />

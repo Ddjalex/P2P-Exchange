@@ -830,6 +830,19 @@ router.get("/wallet/overview", adminAuth, async (req, res) => {
   }
 });
 
+router.get("/wallet/transactions/:id", adminAuth, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const tx = await db.select().from(transactionsTable).where(eq(transactionsTable.id, id)).then(r => r[0]);
+    if (!tx) return res.status(404).json({ error: "Transaction not found" });
+    const user = await db.select({ username: usersTable.username, email: usersTable.email, phone: usersTable.phone }).from(usersTable).where(eq(usersTable.id, tx.userId)).then(r => r[0]);
+    res.json({ ...tx, username: user?.username ?? "Unknown", email: user?.email ?? "", phone: user?.phone ?? "" });
+  } catch (err) {
+    req.log.error({ err }, "Admin transaction detail failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 router.get("/wallet/transactions", adminAuth, async (req, res) => {
   try {
     const { type, status, page = "1" } = req.query as Record<string, string>;
@@ -901,18 +914,20 @@ router.put("/wallet/transactions/:id/approve", adminAuth, async (req: any, res) 
 router.put("/wallet/transactions/:id/reject", adminAuth, async (req: any, res) => {
   try {
     const id = parseInt(req.params.id);
+    const { reason } = req.body ?? {};
+    const rejectReason = reason?.trim() || "Rejected by admin";
     const tx = await db.select().from(transactionsTable).where(eq(transactionsTable.id, id)).then(r => r[0]);
     if (tx) {
       await db.update(transactionsTable).set({ status: "failed" }).where(eq(transactionsTable.id, id));
-      const wallet = await db.select().from(walletsTable).where(eq(walletsTable.userId, tx.userId)).then(r => r[0]);
+      const wallet = await db.select().from(walletsTable).where(and(eq(walletsTable.userId, tx.userId), eq(walletsTable.asset, "USDT"))).then(r => r[0]);
       if (wallet) {
-        const newBalance = (parseFloat(wallet.availableBalance) + parseFloat(tx.amount)).toFixed(2);
-        await db.update(walletsTable).set({ availableBalance: newBalance }).where(eq(walletsTable.userId, tx.userId));
+        const newBalance = (parseFloat(wallet.availableBalance) + parseFloat(tx.amount)).toFixed(6);
+        await db.update(walletsTable).set({ availableBalance: newBalance }).where(eq(walletsTable.id, wallet.id));
       }
-      PushNotify.withdrawalRejected(tx.userId, tx.amount, "Rejected by admin").catch(console.error);
-      TelegramNotify.withdrawalRejected(tx.userId, tx.amount, "Rejected by admin").catch(console.error);
+      PushNotify.withdrawalRejected(tx.userId, tx.amount, rejectReason).catch(console.error);
+      TelegramNotify.withdrawalRejected(tx.userId, tx.amount, rejectReason).catch(console.error);
     }
-    await log(req.adminEmail, "reject_withdrawal", "transaction", id);
+    await log(req.adminEmail, "reject_withdrawal", "transaction", id, rejectReason);
     res.json({ success: true });
   } catch (err) {
     req.log.error({ err }, "Admin reject withdrawal failed");

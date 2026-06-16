@@ -257,11 +257,21 @@ export async function sendUsdt(
   amountUsdt: number,
 ): Promise<string> {
   const privateKey = fromPrivKeyHex.replace(/^0x/, "");
-  const fromAddress = privateKeyToTronAddress(privateKey);
+
+  // Derive fromAddress using TronWeb to guarantee consistency with signing
+  const tronWeb = new TronWeb({
+    fullHost: TRON_GRID,
+    headers: apiHeaders(),
+    privateKey,
+  });
+  const fromAddress = tronWeb.address.fromPrivateKey(privateKey);
+  console.log("[Withdraw] fromAddress derived from private key:", fromAddress);
+
+  if (!fromAddress) throw new Error("Could not derive TRON address from private key");
+
   const amountSun = Math.round(amountUsdt * 10 ** USDT_DECIMALS); // sun = 1e-6 USDT
 
   // ABI-encode transfer(address,uint256)
-  const funcSelector = "a9059cbb"; // keccak256("transfer(address,uint256)").slice(0,4) hex
   const toHex = tronAddressToHex(toAddress).slice(2); // remove 41 prefix, pad to 32 bytes
   const toHexPadded = toHex.padStart(64, "0");
   const amountHex = amountSun.toString(16).padStart(64, "0");
@@ -288,10 +298,6 @@ export async function sendUsdt(
   if (!unsignedTx) throw new Error("No transaction returned from TronGrid");
 
   // 2. Sign using TronWeb — handles SHA256 hashing internally
-  const tronWeb = new TronWeb({
-    fullHost: TRON_GRID,
-    headers: apiHeaders(),
-  });
   const signedTx = await tronWeb.trx.sign(unsignedTx, privateKey);
 
   // 3. Broadcast
