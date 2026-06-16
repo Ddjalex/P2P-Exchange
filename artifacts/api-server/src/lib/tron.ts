@@ -6,7 +6,7 @@
  */
 import { getPublicKey } from "@noble/secp256k1";
 import { createHash, createHmac } from "node:crypto";
-import TronWeb from "tronweb";
+import { TronWeb } from "tronweb";
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 

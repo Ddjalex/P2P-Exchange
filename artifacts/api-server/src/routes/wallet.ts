@@ -261,7 +261,9 @@ router.post("/withdraw", async (req, res) => {
       fee: fee.toFixed(6),
     }).returning();
 
-    // Broadcast to blockchain
+    // Broadcast to blockchain — fire and forget.
+    // On success: mark completed. On failure: leave as "pending" for admin review.
+    // Never auto-refund — admin manually approves or rejects via the admin panel.
     sendUsdt(privateKey, address, netAmount)
       .then(async (txid) => {
         await db.update(transactionsTable)
@@ -270,14 +272,9 @@ router.post("/withdraw", async (req, res) => {
         req.log.info({ txid, userId, amount: netAmount }, "Withdrawal broadcast successful");
       })
       .catch(async (err) => {
-        req.log.error({ err, txId: tx.id }, "Withdrawal broadcast failed — refunding");
-        const currentWallet = await getOrCreateWallet(userId);
-        const refunded = (parseFloat(currentWallet.availableBalance) + amt).toFixed(6);
-        await db.update(walletsTable)
-          .set({ availableBalance: refunded, updatedAt: new Date() })
-          .where(eq(walletsTable.id, wallet.id));
+        req.log.error({ err, txId: tx.id }, "Withdrawal broadcast failed — leaving pending for admin review");
         await db.update(transactionsTable)
-          .set({ status: "failed" })
+          .set({ status: "pending" })
           .where(eq(transactionsTable.id, tx.id));
       });
 

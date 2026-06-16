@@ -88854,7 +88854,7 @@ var wNAF = (n) => {
 
 // src/lib/tron.ts
 import { createHash as createHash2, createHmac } from "node:crypto";
-import TronWeb from "tronweb";
+import { TronWeb } from "tronweb";
 var TRON_GRID = "https://api.trongrid.io";
 var USDT_CONTRACT = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t";
 var USDT_DECIMALS = 6;
@@ -89369,11 +89369,8 @@ router3.post("/withdraw", async (req, res) => {
       await db.update(transactionsTable).set({ status: "completed", txid }).where(eq(transactionsTable.id, tx.id));
       req.log.info({ txid, userId, amount: netAmount }, "Withdrawal broadcast successful");
     }).catch(async (err2) => {
-      req.log.error({ err: err2, txId: tx.id }, "Withdrawal broadcast failed \u2014 refunding");
-      const currentWallet = await getOrCreateWallet(userId);
-      const refunded = (parseFloat(currentWallet.availableBalance) + amt).toFixed(6);
-      await db.update(walletsTable).set({ availableBalance: refunded, updatedAt: /* @__PURE__ */ new Date() }).where(eq(walletsTable.id, wallet.id));
-      await db.update(transactionsTable).set({ status: "failed" }).where(eq(transactionsTable.id, tx.id));
+      req.log.error({ err: err2, txId: tx.id }, "Withdrawal broadcast failed \u2014 leaving pending for admin review");
+      await db.update(transactionsTable).set({ status: "pending" }).where(eq(transactionsTable.id, tx.id));
     });
     res.json({
       id: tx.id,
