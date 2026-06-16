@@ -344,6 +344,37 @@ export async function getTrc20TxDetails(txid: string, apiKey?: string): Promise<
   }
 }
 
+/** Get native TRX balance of an address in TRX (not SUN) */
+export async function getTrxBalance(address: string): Promise<number> {
+  try {
+    const res = await fetch(`${TRON_GRID}/v1/accounts/${address}`, { headers: apiHeaders() });
+    if (!res.ok) return 0;
+    const data = await res.json() as any;
+    const sun: number = data?.data?.[0]?.balance ?? 0;
+    return sun / 1_000_000;
+  } catch {
+    return 0;
+  }
+}
+
+/** Send native TRX from one address to another. Returns txid. */
+export async function sendTrx(
+  privateKey: string,
+  toAddress: string,
+  trxAmount: number,
+): Promise<string> {
+  const tronWeb = new TronWeb({
+    fullHost: TRON_GRID,
+    headers: { "TRON-PRO-API-KEY": process.env["TRONGRID_API_KEY"] || "" },
+    privateKey,
+  });
+  const sunAmount = Math.floor(trxAmount * 1_000_000);
+  const result = await tronWeb.trx.sendTransaction(toAddress, sunAmount) as any;
+  const txid = result?.txid ?? result?.transaction?.txID ?? result?.result?.txid;
+  if (!txid) throw new Error(`TRX transfer failed: ${JSON.stringify(result)}`);
+  return txid as string;
+}
+
 /** Check if a txid is confirmed on-chain */
 export async function getTxInfo(txid: string): Promise<{ confirmed: boolean; amount: string; to: string; from: string } | null> {
   const res = await fetch(`${TRON_GRID}/v1/transactions/${txid}`, { headers: apiHeaders() });

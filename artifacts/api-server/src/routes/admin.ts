@@ -1752,4 +1752,77 @@ router.patch("/address-verifications/:id/reject", adminAuth, async (req, res) =>
   }
 });
 
+// POST /api/admin/deposits/credit-missed — manually credit a missed on-chain deposit
+// Body: { depositAddress, txid, amount, userId? }
+// If userId is omitted, looks up the user by wallets.deposit_address
+router.post("/deposits/credit-missed", adminAuth, async (req: any, res) => {
+  try {
+    const { depositAddress, txid, amount, userId: bodyUserId } = req.body ?? {};
+    if (!depositAddress || !txid || !amount) {
+      return res.status(400).json({ error: "depositAddress, txid, and amount are required" });
+    }
+    const amountFloat = parseFloat(amount);
+    if (isNaN(amountFloat) || amountFloat <= 0) {
+      return res.status(400).json({ error: "amount must be a positive number" });
+    }
+
+    // Check TX not already credited
+    const existing = await db
+      .select()
+      .from(transactionsTable)
+      .where(and(eq(transactionsTable.txid, txid), eq(transactionsTable.type, "deposit")));
+    if (existing.length > 0) {
+      return res.status(409).json({ error: "This TX hash has already been credited." });
+    }
+
+    // Find wallet — by userId if provided, otherwise by deposit address
+    let walletRow: any;
+    if (bodyUserId) {
+      const rows = await db.select().from(walletsTable).where(eq(walletsTable.userId, Number(bodyUserId)));
+      walletRow = rows[0];
+    } else {
+      const rows = await db.select().from(walletsTable).where(eq(walletsTable.depositAddress, depositAddress));
+      if (rows.length === 0) {
+        return res.status(404).json({ error: `No wallet found with deposit address ${depositAddress}. The user may need to visit their wallet page first to have their address assigned.` });
+      }
+      if (rows.length > 1) {
+        return res.status(409).json({ error: "Multiple wallets share that deposit address — provide userId explicitly." });
+      }
+      walletRow = rows[0];
+    }
+
+    if (!walletRow) {
+      return res.status(404).json({ error: "Wallet not found for that user." });
+    }
+
+    const userId = walletRow.userId;
+    const amountStr = amountFloat.toFixed(6);
+
+    // Credit the wallet
+    const { creditUserDeposit } = await import("../lib/deposit-monitor.js");
+    await creditUserDeposit(
+      userId,
+      walletRow.id,
+      walletRow.availableBalance,
+      amountStr,
+      { txid, from: "manual-credit", to: depositAddress },
+      false // no sweep for manual credits
+    );
+
+    await log(
+      req.adminEmail,
+      "manual_deposit_credit",
+      "wallet",
+      userId,
+      `Manually credited ${amountStr} USDT for TX ${txid} at ${depositAddress}`
+    );
+
+    console.log(`[Admin] Manual credit: user ${userId} +${amountStr} USDT txid ${txid}`);
+    return res.json({ success: true, userId, amount: amountStr, txid });
+  } catch (err: any) {
+    req.log.error({ err }, "Admin manual deposit credit failed");
+    return res.status(500).json({ error: err?.message || "Internal server error" });
+  }
+});
+
 export default router;
