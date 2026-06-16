@@ -25031,7 +25031,7 @@ var require_atomic_sleep = __commonJS({
   "../../node_modules/.pnpm/atomic-sleep@1.0.0/node_modules/atomic-sleep/index.js"(exports, module) {
     "use strict";
     if (typeof SharedArrayBuffer !== "undefined" && typeof Atomics !== "undefined") {
-      let sleep = function(ms) {
+      let sleep2 = function(ms) {
         const valid = ms > 0 && ms < Infinity;
         if (valid === false) {
           if (typeof ms !== "number" && typeof ms !== "bigint") {
@@ -25042,9 +25042,9 @@ var require_atomic_sleep = __commonJS({
         Atomics.wait(nil, 0, 0, Number(ms));
       };
       const nil = new Int32Array(new SharedArrayBuffer(4));
-      module.exports = sleep;
+      module.exports = sleep2;
     } else {
-      let sleep = function(ms) {
+      let sleep2 = function(ms) {
         const valid = ms > 0 && ms < Infinity;
         if (valid === false) {
           if (typeof ms !== "number" && typeof ms !== "bigint") {
@@ -25056,7 +25056,7 @@ var require_atomic_sleep = __commonJS({
         while (target > Date.now()) {
         }
       };
-      module.exports = sleep;
+      module.exports = sleep2;
     }
   }
 });
@@ -25069,7 +25069,7 @@ var require_sonic_boom = __commonJS({
     var EventEmitter = __require("events");
     var inherits = __require("util").inherits;
     var path4 = __require("path");
-    var sleep = require_atomic_sleep();
+    var sleep2 = require_atomic_sleep();
     var assert2 = __require("assert");
     var BUSY_WRITE_TIMEOUT = 100;
     var kEmptyBuffer = Buffer.allocUnsafe(0);
@@ -25215,7 +25215,7 @@ var require_sonic_boom = __commonJS({
           if ((err2.code === "EAGAIN" || err2.code === "EBUSY") && this.retryEAGAIN(err2, this._writingBuf.length, this._len - this._writingBuf.length)) {
             if (this.sync) {
               try {
-                sleep(BUSY_WRITE_TIMEOUT);
+                sleep2(BUSY_WRITE_TIMEOUT);
                 this.release(void 0, 0);
               } catch (err3) {
                 this.release(err3);
@@ -25528,7 +25528,7 @@ var require_sonic_boom = __commonJS({
           if (shouldRetry && !this.retryEAGAIN(err2, buf.length, this._len - buf.length)) {
             throw err2;
           }
-          sleep(BUSY_WRITE_TIMEOUT);
+          sleep2(BUSY_WRITE_TIMEOUT);
         }
       }
       try {
@@ -25565,7 +25565,7 @@ var require_sonic_boom = __commonJS({
           if (shouldRetry && !this.retryEAGAIN(err2, buf.length, this._len - buf.length)) {
             throw err2;
           }
-          sleep(BUSY_WRITE_TIMEOUT);
+          sleep2(BUSY_WRITE_TIMEOUT);
         }
       }
     }
@@ -26306,7 +26306,7 @@ var require_transport = __commonJS({
     var { createRequire } = __require("module");
     var getCallers = require_caller();
     var { join, isAbsolute, sep } = __require("node:path");
-    var sleep = require_atomic_sleep();
+    var sleep2 = require_atomic_sleep();
     var onExit = require_on_exit_leak_free();
     var ThreadStream = require_thread_stream();
     function setupOnExit(stream) {
@@ -26340,7 +26340,7 @@ var require_transport = __commonJS({
           return;
         }
         stream.flushSync();
-        sleep(100);
+        sleep2(100);
         stream.end();
       }
       return stream;
@@ -39267,6 +39267,696 @@ var require_ip_address = __commonJS({
     } });
     var helpers = __importStar(require_helpers());
     exports.v6 = { helpers };
+  }
+});
+
+// ../../node_modules/.pnpm/@noble+secp256k1@3.1.0/node_modules/@noble/secp256k1/index.js
+var secp256k1_CURVE, P, N, Gx, Gy, _b, L, L2, lengths, err, isBytes, abytes, u8n, padh, bytesToHex, C, _ch, hexToBytes2, concatBytes, big, arange, M, invert, apoint, koblitz, FpIsValid, FpIsValidNot0, FnIsValidNot0, isEven, u8of, getPrefix, lift_x, Point, G, I, bytesToNumBE, sliceBytesNumBE, B256, numTo32b, secretKeyToScalar, getPublicKey, W, scalarBits, pwindows, pwindowSize, precompute, Gpows, ctneg, wNAF;
+var init_secp256k1 = __esm({
+  "../../node_modules/.pnpm/@noble+secp256k1@3.1.0/node_modules/@noble/secp256k1/index.js"() {
+    secp256k1_CURVE = Object.freeze({
+      p: 0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2fn,
+      n: 0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141n,
+      h: 1n,
+      a: 0n,
+      b: 7n,
+      Gx: 0x79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798n,
+      Gy: 0x483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8n
+    });
+    ({ p: P, n: N, Gx, Gy, b: _b } = secp256k1_CURVE);
+    L = 32;
+    L2 = 64;
+    lengths = {
+      publicKey: L + 1,
+      publicKeyUncompressed: L2 + 1,
+      signature: L2,
+      // 48-byte keygen seed floor: 384 bits exceeds FIPS 186-5 Table A.2's
+      // 352-bit recommendation for 256-bit prime curves.
+      seed: L + L / 2
+    };
+    err = (message = "", E = Error) => {
+      const e = new E(message);
+      const { captureStackTrace: captureStackTrace2 } = Error;
+      if (typeof captureStackTrace2 === "function")
+        captureStackTrace2(e, err);
+      throw e;
+    };
+    isBytes = (a) => a instanceof Uint8Array || ArrayBuffer.isView(a) && a.constructor.name === "Uint8Array" && a.BYTES_PER_ELEMENT === 1;
+    abytes = (value, length, title = "") => {
+      const bytes = isBytes(value);
+      const len = value?.length;
+      const needsLen = length !== void 0;
+      if (!bytes || needsLen && len !== length) {
+        const prefix = title && `"${title}" `;
+        const ofLen = needsLen ? ` of length ${length}` : "";
+        const got = bytes ? `length=${len}` : `type=${typeof value}`;
+        const msg = prefix + "expected Uint8Array" + ofLen + ", got " + got;
+        return bytes ? err(msg, RangeError) : err(msg, TypeError);
+      }
+      return value;
+    };
+    u8n = (len) => new Uint8Array(len);
+    padh = (n, pad) => n.toString(16).padStart(pad, "0");
+    bytesToHex = (b) => {
+      let hex = "";
+      for (const e of abytes(b))
+        hex += padh(e, 2);
+      return hex;
+    };
+    C = { _0: 48, _9: 57, A: 65, F: 70, a: 97, f: 102 };
+    _ch = (ch) => ch >= C._0 && ch <= C._9 ? ch - C._0 : ch >= C.A && ch <= C.F ? ch - (C.A - 10) : ch >= C.a && ch <= C.f ? ch - (C.a - 10) : void 0;
+    hexToBytes2 = (hex) => {
+      const e = "hex invalid";
+      if (typeof hex !== "string")
+        return err(e);
+      const hl = hex.length;
+      const al = hl / 2;
+      if (hl % 2)
+        return err(e);
+      const array2 = u8n(al);
+      for (let ai = 0, hi = 0; ai < al; ai++, hi += 2) {
+        const n1 = _ch(hex.charCodeAt(hi));
+        const n2 = _ch(hex.charCodeAt(hi + 1));
+        if (n1 === void 0 || n2 === void 0)
+          return err(e);
+        array2[ai] = n1 * 16 + n2;
+      }
+      return array2;
+    };
+    concatBytes = (...arrs) => {
+      let len = 0;
+      for (const a of arrs)
+        len += abytes(a).length;
+      const r = u8n(len);
+      let pad = 0;
+      for (const a of arrs)
+        r.set(a, pad), pad += a.length;
+      return r;
+    };
+    big = BigInt;
+    arange = (n, min, max, msg = "bad number: out of range") => {
+      if (typeof n !== "bigint")
+        return err(msg, TypeError);
+      if (min <= n && n < max)
+        return n;
+      return err(msg, RangeError);
+    };
+    M = (a, b = P) => {
+      const r = a % b;
+      return r >= 0n ? r : b + r;
+    };
+    invert = (num, md) => {
+      if (num === 0n || md <= 0n)
+        err("no inverse n=" + num + " mod=" + md);
+      let a = M(num, md), b = md, x = 0n, y = 1n, u = 1n, v = 0n;
+      while (a !== 0n) {
+        const q = b / a, r = b % a;
+        const m = x - u * q, n = y - v * q;
+        b = a, a = r, x = u, y = v, u = m, v = n;
+      }
+      return b === 1n ? M(x, md) : err("no inverse");
+    };
+    apoint = (p) => p instanceof Point ? p : err("Point expected");
+    koblitz = (x) => M(M(x * x) * x + _b);
+    FpIsValid = (n) => arange(n, 0n, P);
+    FpIsValidNot0 = (n) => arange(n, 1n, P);
+    FnIsValidNot0 = (n) => arange(n, 1n, N);
+    isEven = (y) => !(y & 1n);
+    u8of = (n) => Uint8Array.of(n);
+    getPrefix = (y) => u8of(isEven(y) ? 2 : 3);
+    lift_x = (x) => {
+      const c = koblitz(FpIsValidNot0(x));
+      let r = 1n;
+      for (let num = c, e = (P + 1n) / 4n; e > 0n; e >>= 1n) {
+        if (e & 1n)
+          r = r * num % P;
+        num = num * num % P;
+      }
+      if (M(r * r) !== c)
+        err("sqrt invalid");
+      return isEven(r) ? r : M(-r);
+    };
+    Point = class _Point {
+      static BASE;
+      static ZERO;
+      X;
+      Y;
+      Z;
+      constructor(X, Y, Z) {
+        this.X = FpIsValid(X);
+        this.Y = FpIsValidNot0(Y);
+        this.Z = FpIsValid(Z);
+        Object.freeze(this);
+      }
+      /** Returns the shared curve metadata object by reference.
+       * It is readonly only at type level, and mutating it won't retarget arithmetic,
+       * which already uses module-load snapshots. */
+      static CURVE() {
+        return secp256k1_CURVE;
+      }
+      /** Create 3d xyz point from 2d xy. (0, 0) => (0, 1, 0), not (0, 0, 1) */
+      static fromAffine(ap) {
+        const { x, y } = ap;
+        return x === 0n && y === 0n ? I : new _Point(x, y, 1n);
+      }
+      /** Convert Uint8Array or hex string to Point. */
+      static fromBytes(bytes) {
+        abytes(bytes);
+        const { publicKey: comp, publicKeyUncompressed: uncomp } = lengths;
+        let p = void 0;
+        const length = bytes.length;
+        const head = bytes[0];
+        const tail = bytes.subarray(1);
+        const x = sliceBytesNumBE(tail, 0, L);
+        if (length === comp && (head === 2 || head === 3)) {
+          let y = lift_x(x);
+          if (head === 3)
+            y = M(-y);
+          p = new _Point(x, y, 1n);
+        }
+        if (length === uncomp && head === 4)
+          p = new _Point(x, sliceBytesNumBE(tail, L, L2), 1n);
+        return p ? p.assertValidity() : err("bad point: not on curve");
+      }
+      static fromHex(hex) {
+        return _Point.fromBytes(hexToBytes2(hex));
+      }
+      get x() {
+        return this.toAffine().x;
+      }
+      get y() {
+        return this.toAffine().y;
+      }
+      /** Equality check: compare points P&Q. */
+      equals(other) {
+        const { X: X1, Y: Y1, Z: Z1 } = this;
+        const { X: X2, Y: Y2, Z: Z2 } = apoint(other);
+        const X1Z2 = M(X1 * Z2);
+        const X2Z1 = M(X2 * Z1);
+        const Y1Z2 = M(Y1 * Z2);
+        const Y2Z1 = M(Y2 * Z1);
+        return X1Z2 === X2Z1 && Y1Z2 === Y2Z1;
+      }
+      is0() {
+        return this.equals(I);
+      }
+      /** Flip point over y coordinate. */
+      negate() {
+        return new _Point(this.X, M(-this.Y), this.Z);
+      }
+      /** Point doubling: P+P, complete formula. */
+      double() {
+        return this.add(this);
+      }
+      /**
+       * Point addition: P+Q, complete, exception-free formula
+       * (Renes-Costello-Batina, algo 1 of [2015/1060](https://eprint.iacr.org/2015/1060)).
+       * Cost: `12M + 0S + 3*a + 3*b3 + 23add`.
+       */
+      // prettier-ignore
+      add(other) {
+        const { X: X1, Y: Y1, Z: Z1 } = this;
+        const { X: X2, Y: Y2, Z: Z2 } = apoint(other);
+        const a = 0n;
+        const b = _b;
+        let X3 = 0n, Y3 = 0n, Z3 = 0n;
+        const b3 = M(b * 3n);
+        let t0 = M(X1 * X2), t1 = M(Y1 * Y2), t2 = M(Z1 * Z2), t3 = M(X1 + Y1);
+        let t4 = M(X2 + Y2);
+        t3 = M(t3 * t4);
+        t4 = M(t0 + t1);
+        t3 = M(t3 - t4);
+        t4 = M(X1 + Z1);
+        let t5 = M(X2 + Z2);
+        t4 = M(t4 * t5);
+        t5 = M(t0 + t2);
+        t4 = M(t4 - t5);
+        t5 = M(Y1 + Z1);
+        X3 = M(Y2 + Z2);
+        t5 = M(t5 * X3);
+        X3 = M(t1 + t2);
+        t5 = M(t5 - X3);
+        Z3 = M(a * t4);
+        X3 = M(b3 * t2);
+        Z3 = M(X3 + Z3);
+        X3 = M(t1 - Z3);
+        Z3 = M(t1 + Z3);
+        Y3 = M(X3 * Z3);
+        t1 = M(t0 + t0);
+        t1 = M(t1 + t0);
+        t2 = M(a * t2);
+        t4 = M(b3 * t4);
+        t1 = M(t1 + t2);
+        t2 = M(t0 - t2);
+        t2 = M(a * t2);
+        t4 = M(t4 + t2);
+        t0 = M(t1 * t4);
+        Y3 = M(Y3 + t0);
+        t0 = M(t5 * t4);
+        X3 = M(t3 * X3);
+        X3 = M(X3 - t0);
+        t0 = M(t3 * t1);
+        Z3 = M(t5 * Z3);
+        Z3 = M(Z3 + t0);
+        return new _Point(X3, Y3, Z3);
+      }
+      subtract(other) {
+        return this.add(apoint(other).negate());
+      }
+      /**
+       * Point-by-scalar multiplication. Scalar must be in range 1 <= n < CURVE.n.
+       * Uses {@link wNAF} for base point.
+       * Uses fake point to mitigate leakage shape in JS, not as a hard constant-time guarantee.
+       * @param n scalar by which point is multiplied
+       * @param safe safe mode guards against timing attacks; unsafe mode is faster
+       */
+      multiply(n, safe = true) {
+        if (!safe && n === 0n)
+          return I;
+        FnIsValidNot0(n);
+        if (n === 1n)
+          return this;
+        if (this.equals(G))
+          return wNAF(n).p;
+        let p = I;
+        let f = G;
+        for (let d = this; n > 0n; d = d.double(), n >>= 1n) {
+          if (n & 1n)
+            p = p.add(d);
+          else if (safe)
+            f = f.add(d);
+        }
+        return p;
+      }
+      multiplyUnsafe(scalar) {
+        return this.multiply(scalar, false);
+      }
+      /** Convert point to 2d xy affine point. (X, Y, Z) ∋ (x=X/Z, y=Y/Z) */
+      toAffine() {
+        const { X: x, Y: y, Z: z } = this;
+        if (this.equals(I))
+          return { x: 0n, y: 0n };
+        if (z === 1n)
+          return { x, y };
+        const iz = invert(z, P);
+        if (M(z * iz) !== 1n)
+          err("inverse invalid");
+        return { x: M(x * iz), y: M(y * iz) };
+      }
+      /** Checks if the point is valid and on-curve. */
+      assertValidity() {
+        const { x, y } = this.toAffine();
+        FpIsValidNot0(x);
+        FpIsValidNot0(y);
+        return M(y * y) === koblitz(x) ? this : err("bad point: not on curve");
+      }
+      /** Converts point to 33/65-byte Uint8Array. */
+      toBytes(isCompressed = true) {
+        const { x, y } = this.assertValidity().toAffine();
+        const x32b = numTo32b(x);
+        if (isCompressed)
+          return concatBytes(getPrefix(y), x32b);
+        return concatBytes(u8of(4), x32b, numTo32b(y));
+      }
+      toHex(isCompressed) {
+        return bytesToHex(this.toBytes(isCompressed));
+      }
+    };
+    G = new Point(Gx, Gy, 1n);
+    I = new Point(0n, 1n, 0n);
+    Point.BASE = G;
+    Point.ZERO = I;
+    bytesToNumBE = (b) => big("0x" + (bytesToHex(b) || "0"));
+    sliceBytesNumBE = (b, from, to) => bytesToNumBE(b.subarray(from, to));
+    B256 = 2n ** 256n;
+    numTo32b = (num) => hexToBytes2(padh(arange(num, 0n, B256), L2));
+    secretKeyToScalar = (secretKey) => {
+      const num = bytesToNumBE(abytes(secretKey, L, "secret key"));
+      return arange(num, 1n, N, "invalid secret key: outside of range");
+    };
+    getPublicKey = (privKey, isCompressed = true) => {
+      return G.multiply(secretKeyToScalar(privKey)).toBytes(isCompressed);
+    };
+    W = 8;
+    scalarBits = 256;
+    pwindows = Math.ceil(scalarBits / W) + 1;
+    pwindowSize = 2 ** (W - 1);
+    precompute = () => {
+      const points = [];
+      let p = G;
+      let b = p;
+      for (let w = 0; w < pwindows; w++) {
+        b = p;
+        points.push(b);
+        for (let i = 1; i < pwindowSize; i++) {
+          b = b.add(p);
+          points.push(b);
+        }
+        p = b.double();
+      }
+      return points;
+    };
+    Gpows = void 0;
+    ctneg = (cnd, p) => {
+      const n = p.negate();
+      return cnd ? n : p;
+    };
+    wNAF = (n) => {
+      const comp = Gpows || (Gpows = precompute());
+      let p = I;
+      let f = G;
+      const pow_2_w = 2 ** W;
+      const maxNum = pow_2_w;
+      const mask = big(pow_2_w - 1);
+      const shiftBy = big(W);
+      for (let w = 0; w < pwindows; w++) {
+        let wbits = Number(n & mask);
+        n >>= shiftBy;
+        if (wbits > pwindowSize) {
+          wbits -= maxNum;
+          n += 1n;
+        }
+        const off = w * pwindowSize;
+        const offF = off;
+        const offP = off + Math.abs(wbits) - 1;
+        const isEven2 = w % 2 !== 0;
+        const isNeg = wbits < 0;
+        if (wbits === 0) {
+          f = f.add(ctneg(isEven2, comp[offF]));
+        } else {
+          p = p.add(ctneg(isNeg, comp[offP]));
+        }
+      }
+      if (n !== 0n)
+        err("invalid wnaf");
+      return { p, f };
+    };
+  }
+});
+
+// src/lib/tron.ts
+var tron_exports = {};
+__export(tron_exports, {
+  deriveUserDepositAddress: () => deriveUserDepositAddress,
+  deriveUserDepositKey: () => deriveUserDepositKey,
+  getTrc20Balance: () => getTrc20Balance,
+  getTrc20Transactions: () => getTrc20Transactions,
+  getTrc20TxDetails: () => getTrc20TxDetails,
+  getTxInfo: () => getTxInfo,
+  hexToTronAddress: () => hexToTronAddress,
+  privateKeyToTronAddress: () => privateKeyToTronAddress,
+  rawToUsdt: () => rawToUsdt,
+  sendUsdt: () => sendUsdt,
+  tronAddressToHex: () => tronAddressToHex
+});
+import { createHash as createHash2, createHmac } from "node:crypto";
+import { TronWeb } from "tronweb";
+function apiHeaders(overrideKey) {
+  const key = overrideKey || process.env["TRONGRID_API_KEY"] || "";
+  const h = { "Content-Type": "application/json" };
+  if (key) h["TRON-PRO-API-KEY"] = key;
+  return h;
+}
+function sha256(data) {
+  return new Uint8Array(createHash2("sha256").update(data).digest());
+}
+function keccak256(data) {
+  return keccak256Impl(data);
+}
+function keccak256Impl(msg) {
+  const RATE = 136;
+  const STATE_SIZE = 200;
+  const state = new Uint8Array(STATE_SIZE);
+  let offset = 0;
+  const len = msg.length;
+  while (offset < len) {
+    const chunk = Math.min(RATE, len - offset);
+    for (let i = 0; i < chunk; i++) state[i] ^= msg[offset + i];
+    if (chunk === RATE) keccakF(state);
+    offset += chunk;
+  }
+  state[len % RATE] ^= 1;
+  state[RATE - 1] ^= 128;
+  keccakF(state);
+  return state.slice(0, 32);
+}
+function keccakF(state) {
+  const A = new BigInt64Array(25);
+  for (let i = 0; i < 25; i++) {
+    A[i] = BigInt(0);
+    for (let b = 0; b < 8; b++) {
+      A[i] |= BigInt(state[i * 8 + b]) << BigInt(b * 8);
+    }
+  }
+  const RC = [
+    0x0000000000000001n,
+    0x0000000000008082n,
+    0x800000000000808an,
+    0x8000000080008000n,
+    0x000000000000808bn,
+    0x0000000080000001n,
+    0x8000000080008081n,
+    0x8000000000008009n,
+    0x000000000000008an,
+    0x0000000000000088n,
+    0x0000000080008009n,
+    0x000000008000000an,
+    0x000000008000808bn,
+    0x800000000000008bn,
+    0x8000000000008089n,
+    0x8000000000008003n,
+    0x8000000000008002n,
+    0x8000000000000080n,
+    0x000000000000800an,
+    0x800000008000000an,
+    0x8000000080008081n,
+    0x8000000000008080n,
+    0x0000000080000001n,
+    0x8000000080008008n
+  ];
+  const ROT = [
+    0,
+    1,
+    62,
+    28,
+    27,
+    36,
+    44,
+    6,
+    55,
+    20,
+    3,
+    10,
+    43,
+    25,
+    39,
+    41,
+    45,
+    15,
+    21,
+    8,
+    18,
+    2,
+    61,
+    56,
+    14
+  ];
+  const MASK = 0xFFFFFFFFFFFFFFFFn;
+  const rot64 = (v, n) => (v << BigInt(n) | v >> BigInt(64 - n)) & MASK;
+  for (let round = 0; round < 24; round++) {
+    const C2 = Array.from({ length: 5 }, (_, x) => A[x] ^ A[x + 5] ^ A[x + 10] ^ A[x + 15] ^ A[x + 20]);
+    const D = Array.from({ length: 5 }, (_, x) => C2[(x + 4) % 5] ^ rot64(C2[(x + 1) % 5], 1));
+    for (let x = 0; x < 5; x++) for (let y = 0; y < 5; y++) A[x + 5 * y] ^= D[x];
+    const B = new BigInt64Array(25);
+    for (let x = 0; x < 5; x++) for (let y = 0; y < 5; y++) B[y + 5 * ((2 * x + 3 * y) % 5)] = rot64(A[x + 5 * y], ROT[x + 5 * y]);
+    for (let x = 0; x < 5; x++) for (let y = 0; y < 5; y++) A[x + 5 * y] = B[x + 5 * y] ^ ~B[(x + 1) % 5 + 5 * y] & B[(x + 2) % 5 + 5 * y];
+    A[0] ^= RC[round];
+  }
+  for (let i = 0; i < 25; i++) {
+    for (let b = 0; b < 8; b++) {
+      state[i * 8 + b] = Number(A[i] >> BigInt(b * 8) & 0xFFn);
+    }
+  }
+}
+function base58Encode(bytes) {
+  let num = BigInt("0x" + Buffer.from(bytes).toString("hex"));
+  let result = "";
+  const base = BigInt(58);
+  while (num > 0n) {
+    result = BASE58_ALPHABET[Number(num % base)] + result;
+    num = num / base;
+  }
+  for (const b of bytes) {
+    if (b !== 0) break;
+    result = "1" + result;
+  }
+  return result;
+}
+function base58Decode(str) {
+  let num = 0n;
+  for (const ch of str) {
+    const idx = BASE58_ALPHABET.indexOf(ch);
+    if (idx < 0) throw new Error("Invalid base58 character");
+    num = num * 58n + BigInt(idx);
+  }
+  const hex = num.toString(16).padStart(2, "0");
+  const bytes = Buffer.from(hex.length % 2 ? "0" + hex : hex, "hex");
+  const leadingZeros = [...str].filter((c) => c === "1").length;
+  const result = new Uint8Array(leadingZeros + bytes.length);
+  result.set(bytes, leadingZeros);
+  return result;
+}
+function privateKeyToTronAddress(privateKeyHex) {
+  const privBytes = Buffer.from(privateKeyHex.replace(/^0x/, ""), "hex");
+  const pubKey = getPublicKey(privBytes, false);
+  const pubKeyBody = pubKey.slice(1);
+  const hash2 = keccak256(pubKeyBody);
+  const addrBytes = new Uint8Array(21);
+  addrBytes[0] = 65;
+  addrBytes.set(hash2.slice(12), 1);
+  const checksum = sha256(sha256(addrBytes)).slice(0, 4);
+  const full = new Uint8Array(25);
+  full.set(addrBytes);
+  full.set(checksum, 21);
+  return base58Encode(full);
+}
+function tronAddressToHex(address) {
+  const decoded = base58Decode(address);
+  return Buffer.from(decoded.slice(0, 21)).toString("hex");
+}
+function deriveUserDepositKey(masterSeed, userId) {
+  const hmac = createHmac("sha256", masterSeed);
+  hmac.update(`deposit:user:${userId}`);
+  return hmac.digest("hex");
+}
+function deriveUserDepositAddress(masterSeed, userId) {
+  const privateKey = deriveUserDepositKey(masterSeed, userId);
+  return privateKeyToTronAddress(privateKey);
+}
+function hexToTronAddress(hex) {
+  const bytes = Buffer.from(hex, "hex");
+  const checksum = sha256(sha256(bytes)).slice(0, 4);
+  const full = new Uint8Array(bytes.length + 4);
+  full.set(bytes);
+  full.set(checksum, bytes.length);
+  return base58Encode(full);
+}
+async function getTrc20Balance(address) {
+  const url2 = `${TRON_GRID}/v1/accounts/${address}`;
+  const res = await fetch(url2, { headers: apiHeaders() });
+  const data = await res.json();
+  const trc20List = data?.data?.[0]?.trc20 ?? [];
+  const usdtEntry = trc20List.find((t) => Object.keys(t)[0] === USDT_CONTRACT);
+  if (!usdtEntry) return "0";
+  const raw = parseInt(usdtEntry[USDT_CONTRACT] ?? "0", 10);
+  return (raw / 10 ** USDT_DECIMALS).toFixed(6);
+}
+async function getTrc20Transactions(address, minTimestamp) {
+  const params = new URLSearchParams({
+    contract_address: USDT_CONTRACT,
+    limit: "50",
+    order_by: "block_timestamp,desc"
+  });
+  if (minTimestamp) params.set("min_timestamp", String(minTimestamp));
+  const url2 = `${TRON_GRID}/v1/accounts/${address}/transactions/trc20?${params}`;
+  const res = await fetch(url2, { headers: apiHeaders() });
+  if (!res.ok) return [];
+  const data = await res.json();
+  return (data?.data ?? []).map((tx) => ({
+    txid: tx.transaction_id,
+    from: tx.from,
+    to: tx.to,
+    value: tx.value,
+    // raw integer string (6 decimals)
+    blockTimestamp: tx.block_timestamp,
+    confirmed: tx.confirmed
+  }));
+}
+function rawToUsdt(raw) {
+  return (parseInt(raw, 10) / 10 ** USDT_DECIMALS).toFixed(6);
+}
+async function sendUsdt(privateKey, toAddress, amount) {
+  const tronWeb = new TronWeb({
+    fullHost: TRON_GRID,
+    headers: { "TRON-PRO-API-KEY": process.env["TRONGRID_API_KEY"] || "" },
+    privateKey
+  });
+  const amountInSun = Math.floor(amount * 1e6);
+  const contract = await tronWeb.contract().at(USDT_CONTRACT);
+  const result = await contract.transfer(toAddress, amountInSun).send({
+    feeLimit: 3e7,
+    shouldPollResponse: false
+  });
+  if (!result) throw new Error("No transaction ID returned");
+  return result;
+}
+function normalizeTronAddress(addr) {
+  if (!addr) return "";
+  if (/^T[A-Za-z0-9]{32,34}$/.test(addr)) return addr;
+  const h = addr.replace(/^0x/, "");
+  if (h.length === 64) return hexToTronAddress("41" + h.slice(-40));
+  if (h.length === 42 && h.startsWith("41")) return hexToTronAddress(h);
+  if (h.length === 40) return hexToTronAddress("41" + h);
+  return addr;
+}
+async function getTrc20TxDetails(txid, apiKey) {
+  try {
+    const headers = apiHeaders(apiKey);
+    const res = await fetch(`${TRON_GRID}/v1/transactions/${txid}/events`, { headers });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const events = data?.data ?? [];
+    const transfer = events.find(
+      (e) => e.event_name === "Transfer" && (e.contract_address === USDT_CONTRACT || e.contract_address?.toLowerCase() === USDT_CONTRACT.toLowerCase())
+    );
+    if (!transfer) {
+      const txRes = await fetch(`${TRON_GRID}/wallet/gettransactionbyid`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ value: txid })
+      });
+      if (!txRes.ok) return null;
+      const tx = await txRes.json();
+      if (!tx?.txID) return null;
+      return null;
+    }
+    const rawAmount = transfer.result?.value ?? transfer.result?.amount ?? "0";
+    const toAddress = normalizeTronAddress(transfer.result?.to || transfer.result?.["1"] || "");
+    const fromAddress = normalizeTronAddress(
+      transfer.result?.from || transfer.result?.["0"] || transfer.caller_contract_address || ""
+    );
+    return {
+      from: fromAddress,
+      to: toAddress,
+      amount: rawToUsdt(rawAmount),
+      confirmed: true
+    };
+  } catch {
+    return null;
+  }
+}
+async function getTxInfo(txid) {
+  const res = await fetch(`${TRON_GRID}/v1/transactions/${txid}`, { headers: apiHeaders() });
+  if (!res.ok) return null;
+  const data = await res.json();
+  const tx = data?.data?.[0];
+  if (!tx) return null;
+  return {
+    confirmed: tx.confirmed ?? false,
+    amount: "0",
+    to: tx.raw_data?.contract?.[0]?.parameter?.value?.to_address ?? "",
+    from: tx.raw_data?.contract?.[0]?.parameter?.value?.owner_address ?? ""
+  };
+}
+var TRON_GRID, USDT_CONTRACT, USDT_DECIMALS, BASE58_ALPHABET;
+var init_tron = __esm({
+  "src/lib/tron.ts"() {
+    "use strict";
+    init_secp256k1();
+    TRON_GRID = "https://api.trongrid.io";
+    USDT_CONTRACT = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t";
+    USDT_DECIMALS = 6;
+    BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
   }
 });
 
@@ -88214,10 +88904,20 @@ router2.post("/register", async (req, res) => {
       smsVerified: isPhone,
       addressVerified: false
     }).returning();
+    let depositAddress = null;
+    try {
+      const masterKey = process.env["MASTER_PRIVATE_KEY"];
+      if (masterKey) {
+        const { deriveUserDepositAddress: deriveUserDepositAddress2 } = await Promise.resolve().then(() => (init_tron(), tron_exports));
+        depositAddress = deriveUserDepositAddress2(masterKey, user.id);
+      }
+    } catch {
+    }
     await db.insert(walletsTable).values({
       userId: user.id,
       availableBalance: "0.00",
-      frozenBalance: "0.00"
+      frozenBalance: "0.00",
+      depositAddress
     });
     const token = signToken(user.id);
     res.status(201).json({ token, user: formatUser(user) });
@@ -88472,622 +89172,7 @@ var auth_default = router2;
 
 // src/routes/wallet.ts
 var import_express3 = __toESM(require_express2(), 1);
-
-// ../../node_modules/.pnpm/@noble+secp256k1@3.1.0/node_modules/@noble/secp256k1/index.js
-var secp256k1_CURVE = Object.freeze({
-  p: 0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2fn,
-  n: 0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141n,
-  h: 1n,
-  a: 0n,
-  b: 7n,
-  Gx: 0x79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798n,
-  Gy: 0x483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8n
-});
-var { p: P, n: N, Gx, Gy, b: _b } = secp256k1_CURVE;
-var L = 32;
-var L2 = 64;
-var lengths = {
-  publicKey: L + 1,
-  publicKeyUncompressed: L2 + 1,
-  signature: L2,
-  // 48-byte keygen seed floor: 384 bits exceeds FIPS 186-5 Table A.2's
-  // 352-bit recommendation for 256-bit prime curves.
-  seed: L + L / 2
-};
-var err = (message = "", E = Error) => {
-  const e = new E(message);
-  const { captureStackTrace: captureStackTrace2 } = Error;
-  if (typeof captureStackTrace2 === "function")
-    captureStackTrace2(e, err);
-  throw e;
-};
-var isBytes = (a) => a instanceof Uint8Array || ArrayBuffer.isView(a) && a.constructor.name === "Uint8Array" && a.BYTES_PER_ELEMENT === 1;
-var abytes = (value, length, title = "") => {
-  const bytes = isBytes(value);
-  const len = value?.length;
-  const needsLen = length !== void 0;
-  if (!bytes || needsLen && len !== length) {
-    const prefix = title && `"${title}" `;
-    const ofLen = needsLen ? ` of length ${length}` : "";
-    const got = bytes ? `length=${len}` : `type=${typeof value}`;
-    const msg = prefix + "expected Uint8Array" + ofLen + ", got " + got;
-    return bytes ? err(msg, RangeError) : err(msg, TypeError);
-  }
-  return value;
-};
-var u8n = (len) => new Uint8Array(len);
-var padh = (n, pad) => n.toString(16).padStart(pad, "0");
-var bytesToHex = (b) => {
-  let hex = "";
-  for (const e of abytes(b))
-    hex += padh(e, 2);
-  return hex;
-};
-var C = { _0: 48, _9: 57, A: 65, F: 70, a: 97, f: 102 };
-var _ch = (ch) => ch >= C._0 && ch <= C._9 ? ch - C._0 : ch >= C.A && ch <= C.F ? ch - (C.A - 10) : ch >= C.a && ch <= C.f ? ch - (C.a - 10) : void 0;
-var hexToBytes2 = (hex) => {
-  const e = "hex invalid";
-  if (typeof hex !== "string")
-    return err(e);
-  const hl = hex.length;
-  const al = hl / 2;
-  if (hl % 2)
-    return err(e);
-  const array2 = u8n(al);
-  for (let ai = 0, hi = 0; ai < al; ai++, hi += 2) {
-    const n1 = _ch(hex.charCodeAt(hi));
-    const n2 = _ch(hex.charCodeAt(hi + 1));
-    if (n1 === void 0 || n2 === void 0)
-      return err(e);
-    array2[ai] = n1 * 16 + n2;
-  }
-  return array2;
-};
-var concatBytes = (...arrs) => {
-  let len = 0;
-  for (const a of arrs)
-    len += abytes(a).length;
-  const r = u8n(len);
-  let pad = 0;
-  for (const a of arrs)
-    r.set(a, pad), pad += a.length;
-  return r;
-};
-var big = BigInt;
-var arange = (n, min, max, msg = "bad number: out of range") => {
-  if (typeof n !== "bigint")
-    return err(msg, TypeError);
-  if (min <= n && n < max)
-    return n;
-  return err(msg, RangeError);
-};
-var M = (a, b = P) => {
-  const r = a % b;
-  return r >= 0n ? r : b + r;
-};
-var invert = (num, md) => {
-  if (num === 0n || md <= 0n)
-    err("no inverse n=" + num + " mod=" + md);
-  let a = M(num, md), b = md, x = 0n, y = 1n, u = 1n, v = 0n;
-  while (a !== 0n) {
-    const q = b / a, r = b % a;
-    const m = x - u * q, n = y - v * q;
-    b = a, a = r, x = u, y = v, u = m, v = n;
-  }
-  return b === 1n ? M(x, md) : err("no inverse");
-};
-var apoint = (p) => p instanceof Point ? p : err("Point expected");
-var koblitz = (x) => M(M(x * x) * x + _b);
-var FpIsValid = (n) => arange(n, 0n, P);
-var FpIsValidNot0 = (n) => arange(n, 1n, P);
-var FnIsValidNot0 = (n) => arange(n, 1n, N);
-var isEven = (y) => !(y & 1n);
-var u8of = (n) => Uint8Array.of(n);
-var getPrefix = (y) => u8of(isEven(y) ? 2 : 3);
-var lift_x = (x) => {
-  const c = koblitz(FpIsValidNot0(x));
-  let r = 1n;
-  for (let num = c, e = (P + 1n) / 4n; e > 0n; e >>= 1n) {
-    if (e & 1n)
-      r = r * num % P;
-    num = num * num % P;
-  }
-  if (M(r * r) !== c)
-    err("sqrt invalid");
-  return isEven(r) ? r : M(-r);
-};
-var Point = class _Point {
-  static BASE;
-  static ZERO;
-  X;
-  Y;
-  Z;
-  constructor(X, Y, Z) {
-    this.X = FpIsValid(X);
-    this.Y = FpIsValidNot0(Y);
-    this.Z = FpIsValid(Z);
-    Object.freeze(this);
-  }
-  /** Returns the shared curve metadata object by reference.
-   * It is readonly only at type level, and mutating it won't retarget arithmetic,
-   * which already uses module-load snapshots. */
-  static CURVE() {
-    return secp256k1_CURVE;
-  }
-  /** Create 3d xyz point from 2d xy. (0, 0) => (0, 1, 0), not (0, 0, 1) */
-  static fromAffine(ap) {
-    const { x, y } = ap;
-    return x === 0n && y === 0n ? I : new _Point(x, y, 1n);
-  }
-  /** Convert Uint8Array or hex string to Point. */
-  static fromBytes(bytes) {
-    abytes(bytes);
-    const { publicKey: comp, publicKeyUncompressed: uncomp } = lengths;
-    let p = void 0;
-    const length = bytes.length;
-    const head = bytes[0];
-    const tail = bytes.subarray(1);
-    const x = sliceBytesNumBE(tail, 0, L);
-    if (length === comp && (head === 2 || head === 3)) {
-      let y = lift_x(x);
-      if (head === 3)
-        y = M(-y);
-      p = new _Point(x, y, 1n);
-    }
-    if (length === uncomp && head === 4)
-      p = new _Point(x, sliceBytesNumBE(tail, L, L2), 1n);
-    return p ? p.assertValidity() : err("bad point: not on curve");
-  }
-  static fromHex(hex) {
-    return _Point.fromBytes(hexToBytes2(hex));
-  }
-  get x() {
-    return this.toAffine().x;
-  }
-  get y() {
-    return this.toAffine().y;
-  }
-  /** Equality check: compare points P&Q. */
-  equals(other) {
-    const { X: X1, Y: Y1, Z: Z1 } = this;
-    const { X: X2, Y: Y2, Z: Z2 } = apoint(other);
-    const X1Z2 = M(X1 * Z2);
-    const X2Z1 = M(X2 * Z1);
-    const Y1Z2 = M(Y1 * Z2);
-    const Y2Z1 = M(Y2 * Z1);
-    return X1Z2 === X2Z1 && Y1Z2 === Y2Z1;
-  }
-  is0() {
-    return this.equals(I);
-  }
-  /** Flip point over y coordinate. */
-  negate() {
-    return new _Point(this.X, M(-this.Y), this.Z);
-  }
-  /** Point doubling: P+P, complete formula. */
-  double() {
-    return this.add(this);
-  }
-  /**
-   * Point addition: P+Q, complete, exception-free formula
-   * (Renes-Costello-Batina, algo 1 of [2015/1060](https://eprint.iacr.org/2015/1060)).
-   * Cost: `12M + 0S + 3*a + 3*b3 + 23add`.
-   */
-  // prettier-ignore
-  add(other) {
-    const { X: X1, Y: Y1, Z: Z1 } = this;
-    const { X: X2, Y: Y2, Z: Z2 } = apoint(other);
-    const a = 0n;
-    const b = _b;
-    let X3 = 0n, Y3 = 0n, Z3 = 0n;
-    const b3 = M(b * 3n);
-    let t0 = M(X1 * X2), t1 = M(Y1 * Y2), t2 = M(Z1 * Z2), t3 = M(X1 + Y1);
-    let t4 = M(X2 + Y2);
-    t3 = M(t3 * t4);
-    t4 = M(t0 + t1);
-    t3 = M(t3 - t4);
-    t4 = M(X1 + Z1);
-    let t5 = M(X2 + Z2);
-    t4 = M(t4 * t5);
-    t5 = M(t0 + t2);
-    t4 = M(t4 - t5);
-    t5 = M(Y1 + Z1);
-    X3 = M(Y2 + Z2);
-    t5 = M(t5 * X3);
-    X3 = M(t1 + t2);
-    t5 = M(t5 - X3);
-    Z3 = M(a * t4);
-    X3 = M(b3 * t2);
-    Z3 = M(X3 + Z3);
-    X3 = M(t1 - Z3);
-    Z3 = M(t1 + Z3);
-    Y3 = M(X3 * Z3);
-    t1 = M(t0 + t0);
-    t1 = M(t1 + t0);
-    t2 = M(a * t2);
-    t4 = M(b3 * t4);
-    t1 = M(t1 + t2);
-    t2 = M(t0 - t2);
-    t2 = M(a * t2);
-    t4 = M(t4 + t2);
-    t0 = M(t1 * t4);
-    Y3 = M(Y3 + t0);
-    t0 = M(t5 * t4);
-    X3 = M(t3 * X3);
-    X3 = M(X3 - t0);
-    t0 = M(t3 * t1);
-    Z3 = M(t5 * Z3);
-    Z3 = M(Z3 + t0);
-    return new _Point(X3, Y3, Z3);
-  }
-  subtract(other) {
-    return this.add(apoint(other).negate());
-  }
-  /**
-   * Point-by-scalar multiplication. Scalar must be in range 1 <= n < CURVE.n.
-   * Uses {@link wNAF} for base point.
-   * Uses fake point to mitigate leakage shape in JS, not as a hard constant-time guarantee.
-   * @param n scalar by which point is multiplied
-   * @param safe safe mode guards against timing attacks; unsafe mode is faster
-   */
-  multiply(n, safe = true) {
-    if (!safe && n === 0n)
-      return I;
-    FnIsValidNot0(n);
-    if (n === 1n)
-      return this;
-    if (this.equals(G))
-      return wNAF(n).p;
-    let p = I;
-    let f = G;
-    for (let d = this; n > 0n; d = d.double(), n >>= 1n) {
-      if (n & 1n)
-        p = p.add(d);
-      else if (safe)
-        f = f.add(d);
-    }
-    return p;
-  }
-  multiplyUnsafe(scalar) {
-    return this.multiply(scalar, false);
-  }
-  /** Convert point to 2d xy affine point. (X, Y, Z) ∋ (x=X/Z, y=Y/Z) */
-  toAffine() {
-    const { X: x, Y: y, Z: z } = this;
-    if (this.equals(I))
-      return { x: 0n, y: 0n };
-    if (z === 1n)
-      return { x, y };
-    const iz = invert(z, P);
-    if (M(z * iz) !== 1n)
-      err("inverse invalid");
-    return { x: M(x * iz), y: M(y * iz) };
-  }
-  /** Checks if the point is valid and on-curve. */
-  assertValidity() {
-    const { x, y } = this.toAffine();
-    FpIsValidNot0(x);
-    FpIsValidNot0(y);
-    return M(y * y) === koblitz(x) ? this : err("bad point: not on curve");
-  }
-  /** Converts point to 33/65-byte Uint8Array. */
-  toBytes(isCompressed = true) {
-    const { x, y } = this.assertValidity().toAffine();
-    const x32b = numTo32b(x);
-    if (isCompressed)
-      return concatBytes(getPrefix(y), x32b);
-    return concatBytes(u8of(4), x32b, numTo32b(y));
-  }
-  toHex(isCompressed) {
-    return bytesToHex(this.toBytes(isCompressed));
-  }
-};
-var G = new Point(Gx, Gy, 1n);
-var I = new Point(0n, 1n, 0n);
-Point.BASE = G;
-Point.ZERO = I;
-var bytesToNumBE = (b) => big("0x" + (bytesToHex(b) || "0"));
-var sliceBytesNumBE = (b, from, to) => bytesToNumBE(b.subarray(from, to));
-var B256 = 2n ** 256n;
-var numTo32b = (num) => hexToBytes2(padh(arange(num, 0n, B256), L2));
-var secretKeyToScalar = (secretKey) => {
-  const num = bytesToNumBE(abytes(secretKey, L, "secret key"));
-  return arange(num, 1n, N, "invalid secret key: outside of range");
-};
-var getPublicKey = (privKey, isCompressed = true) => {
-  return G.multiply(secretKeyToScalar(privKey)).toBytes(isCompressed);
-};
-var W = 8;
-var scalarBits = 256;
-var pwindows = Math.ceil(scalarBits / W) + 1;
-var pwindowSize = 2 ** (W - 1);
-var precompute = () => {
-  const points = [];
-  let p = G;
-  let b = p;
-  for (let w = 0; w < pwindows; w++) {
-    b = p;
-    points.push(b);
-    for (let i = 1; i < pwindowSize; i++) {
-      b = b.add(p);
-      points.push(b);
-    }
-    p = b.double();
-  }
-  return points;
-};
-var Gpows = void 0;
-var ctneg = (cnd, p) => {
-  const n = p.negate();
-  return cnd ? n : p;
-};
-var wNAF = (n) => {
-  const comp = Gpows || (Gpows = precompute());
-  let p = I;
-  let f = G;
-  const pow_2_w = 2 ** W;
-  const maxNum = pow_2_w;
-  const mask = big(pow_2_w - 1);
-  const shiftBy = big(W);
-  for (let w = 0; w < pwindows; w++) {
-    let wbits = Number(n & mask);
-    n >>= shiftBy;
-    if (wbits > pwindowSize) {
-      wbits -= maxNum;
-      n += 1n;
-    }
-    const off = w * pwindowSize;
-    const offF = off;
-    const offP = off + Math.abs(wbits) - 1;
-    const isEven2 = w % 2 !== 0;
-    const isNeg = wbits < 0;
-    if (wbits === 0) {
-      f = f.add(ctneg(isEven2, comp[offF]));
-    } else {
-      p = p.add(ctneg(isNeg, comp[offP]));
-    }
-  }
-  if (n !== 0n)
-    err("invalid wnaf");
-  return { p, f };
-};
-
-// src/lib/tron.ts
-import { createHash as createHash2, createHmac } from "node:crypto";
-import { TronWeb } from "tronweb";
-var TRON_GRID = "https://api.trongrid.io";
-var USDT_CONTRACT = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t";
-var USDT_DECIMALS = 6;
-function apiHeaders(overrideKey) {
-  const key = overrideKey || process.env["TRONGRID_API_KEY"] || "";
-  const h = { "Content-Type": "application/json" };
-  if (key) h["TRON-PRO-API-KEY"] = key;
-  return h;
-}
-function sha256(data) {
-  return new Uint8Array(createHash2("sha256").update(data).digest());
-}
-function keccak256(data) {
-  return keccak256Impl(data);
-}
-function keccak256Impl(msg) {
-  const RATE = 136;
-  const STATE_SIZE = 200;
-  const state = new Uint8Array(STATE_SIZE);
-  let offset = 0;
-  const len = msg.length;
-  while (offset < len) {
-    const chunk = Math.min(RATE, len - offset);
-    for (let i = 0; i < chunk; i++) state[i] ^= msg[offset + i];
-    if (chunk === RATE) keccakF(state);
-    offset += chunk;
-  }
-  state[len % RATE] ^= 1;
-  state[RATE - 1] ^= 128;
-  keccakF(state);
-  return state.slice(0, 32);
-}
-function keccakF(state) {
-  const A = new BigInt64Array(25);
-  for (let i = 0; i < 25; i++) {
-    A[i] = BigInt(0);
-    for (let b = 0; b < 8; b++) {
-      A[i] |= BigInt(state[i * 8 + b]) << BigInt(b * 8);
-    }
-  }
-  const RC = [
-    0x0000000000000001n,
-    0x0000000000008082n,
-    0x800000000000808an,
-    0x8000000080008000n,
-    0x000000000000808bn,
-    0x0000000080000001n,
-    0x8000000080008081n,
-    0x8000000000008009n,
-    0x000000000000008an,
-    0x0000000000000088n,
-    0x0000000080008009n,
-    0x000000008000000an,
-    0x000000008000808bn,
-    0x800000000000008bn,
-    0x8000000000008089n,
-    0x8000000000008003n,
-    0x8000000000008002n,
-    0x8000000000000080n,
-    0x000000000000800an,
-    0x800000008000000an,
-    0x8000000080008081n,
-    0x8000000000008080n,
-    0x0000000080000001n,
-    0x8000000080008008n
-  ];
-  const ROT = [
-    0,
-    1,
-    62,
-    28,
-    27,
-    36,
-    44,
-    6,
-    55,
-    20,
-    3,
-    10,
-    43,
-    25,
-    39,
-    41,
-    45,
-    15,
-    21,
-    8,
-    18,
-    2,
-    61,
-    56,
-    14
-  ];
-  const MASK = 0xFFFFFFFFFFFFFFFFn;
-  const rot64 = (v, n) => (v << BigInt(n) | v >> BigInt(64 - n)) & MASK;
-  for (let round = 0; round < 24; round++) {
-    const C2 = Array.from({ length: 5 }, (_, x) => A[x] ^ A[x + 5] ^ A[x + 10] ^ A[x + 15] ^ A[x + 20]);
-    const D = Array.from({ length: 5 }, (_, x) => C2[(x + 4) % 5] ^ rot64(C2[(x + 1) % 5], 1));
-    for (let x = 0; x < 5; x++) for (let y = 0; y < 5; y++) A[x + 5 * y] ^= D[x];
-    const B = new BigInt64Array(25);
-    for (let x = 0; x < 5; x++) for (let y = 0; y < 5; y++) B[y + 5 * ((2 * x + 3 * y) % 5)] = rot64(A[x + 5 * y], ROT[x + 5 * y]);
-    for (let x = 0; x < 5; x++) for (let y = 0; y < 5; y++) A[x + 5 * y] = B[x + 5 * y] ^ ~B[(x + 1) % 5 + 5 * y] & B[(x + 2) % 5 + 5 * y];
-    A[0] ^= RC[round];
-  }
-  for (let i = 0; i < 25; i++) {
-    for (let b = 0; b < 8; b++) {
-      state[i * 8 + b] = Number(A[i] >> BigInt(b * 8) & 0xFFn);
-    }
-  }
-}
-var BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
-function base58Encode(bytes) {
-  let num = BigInt("0x" + Buffer.from(bytes).toString("hex"));
-  let result = "";
-  const base = BigInt(58);
-  while (num > 0n) {
-    result = BASE58_ALPHABET[Number(num % base)] + result;
-    num = num / base;
-  }
-  for (const b of bytes) {
-    if (b !== 0) break;
-    result = "1" + result;
-  }
-  return result;
-}
-function privateKeyToTronAddress(privateKeyHex) {
-  const privBytes = Buffer.from(privateKeyHex.replace(/^0x/, ""), "hex");
-  const pubKey = getPublicKey(privBytes, false);
-  const pubKeyBody = pubKey.slice(1);
-  const hash2 = keccak256(pubKeyBody);
-  const addrBytes = new Uint8Array(21);
-  addrBytes[0] = 65;
-  addrBytes.set(hash2.slice(12), 1);
-  const checksum = sha256(sha256(addrBytes)).slice(0, 4);
-  const full = new Uint8Array(25);
-  full.set(addrBytes);
-  full.set(checksum, 21);
-  return base58Encode(full);
-}
-function hexToTronAddress(hex) {
-  const bytes = Buffer.from(hex, "hex");
-  const checksum = sha256(sha256(bytes)).slice(0, 4);
-  const full = new Uint8Array(bytes.length + 4);
-  full.set(bytes);
-  full.set(checksum, bytes.length);
-  return base58Encode(full);
-}
-async function getTrc20Transactions(address, minTimestamp) {
-  const params = new URLSearchParams({
-    contract_address: USDT_CONTRACT,
-    limit: "50",
-    order_by: "block_timestamp,desc"
-  });
-  if (minTimestamp) params.set("min_timestamp", String(minTimestamp));
-  const url2 = `${TRON_GRID}/v1/accounts/${address}/transactions/trc20?${params}`;
-  const res = await fetch(url2, { headers: apiHeaders() });
-  if (!res.ok) return [];
-  const data = await res.json();
-  return (data?.data ?? []).map((tx) => ({
-    txid: tx.transaction_id,
-    from: tx.from,
-    to: tx.to,
-    value: tx.value,
-    // raw integer string (6 decimals)
-    blockTimestamp: tx.block_timestamp,
-    confirmed: tx.confirmed
-  }));
-}
-function rawToUsdt(raw) {
-  return (parseInt(raw, 10) / 10 ** USDT_DECIMALS).toFixed(6);
-}
-async function sendUsdt(privateKey, toAddress, amount) {
-  const tronWeb = new TronWeb({
-    fullHost: TRON_GRID,
-    headers: { "TRON-PRO-API-KEY": process.env["TRONGRID_API_KEY"] || "" },
-    privateKey
-  });
-  const amountInSun = Math.floor(amount * 1e6);
-  const contract = await tronWeb.contract().at(USDT_CONTRACT);
-  const result = await contract.transfer(toAddress, amountInSun).send({
-    feeLimit: 3e7,
-    shouldPollResponse: false
-  });
-  if (!result) throw new Error("No transaction ID returned");
-  return result;
-}
-function normalizeTronAddress(addr) {
-  if (!addr) return "";
-  if (/^T[A-Za-z0-9]{32,34}$/.test(addr)) return addr;
-  const h = addr.replace(/^0x/, "");
-  if (h.length === 64) return hexToTronAddress("41" + h.slice(-40));
-  if (h.length === 42 && h.startsWith("41")) return hexToTronAddress(h);
-  if (h.length === 40) return hexToTronAddress("41" + h);
-  return addr;
-}
-async function getTrc20TxDetails(txid, apiKey) {
-  try {
-    const headers = apiHeaders(apiKey);
-    const res = await fetch(`${TRON_GRID}/v1/transactions/${txid}/events`, { headers });
-    if (!res.ok) return null;
-    const data = await res.json();
-    const events = data?.data ?? [];
-    const transfer = events.find(
-      (e) => e.event_name === "Transfer" && (e.contract_address === USDT_CONTRACT || e.contract_address?.toLowerCase() === USDT_CONTRACT.toLowerCase())
-    );
-    if (!transfer) {
-      const txRes = await fetch(`${TRON_GRID}/wallet/gettransactionbyid`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ value: txid })
-      });
-      if (!txRes.ok) return null;
-      const tx = await txRes.json();
-      if (!tx?.txID) return null;
-      return null;
-    }
-    const rawAmount = transfer.result?.value ?? transfer.result?.amount ?? "0";
-    const toAddress = normalizeTronAddress(transfer.result?.to || transfer.result?.["1"] || "");
-    const fromAddress = normalizeTronAddress(
-      transfer.result?.from || transfer.result?.["0"] || transfer.caller_contract_address || ""
-    );
-    return {
-      from: fromAddress,
-      to: toAddress,
-      amount: rawToUsdt(rawAmount),
-      confirmed: true
-    };
-  } catch {
-    return null;
-  }
-}
-
-// src/routes/wallet.ts
+init_tron();
 init_bsc();
 
 // src/lib/sse.ts
@@ -89165,14 +89250,37 @@ router3.get("/deposit-address", async (req, res) => {
     return res.status(400).json({ error: "Invalid network. Supported: TRC20, BEP20" });
   }
   try {
-    const settingKey = network === "BEP20" ? "bep20Address" : "trc20Address";
-    const address = await getSetting2(settingKey, "");
+    const minDeposit = await getSetting2("minDeposit", "1");
+    if (network === "TRC20") {
+      const userId = req.userId;
+      const walletRows = await db.select().from(walletsTable).where(eq(walletsTable.userId, userId));
+      const wallet = walletRows[0];
+      let address2 = wallet?.depositAddress ?? null;
+      if (!address2) {
+        const masterKey = process.env["MASTER_PRIVATE_KEY"];
+        if (masterKey && wallet) {
+          try {
+            const { deriveUserDepositAddress: deriveUserDepositAddress2 } = await Promise.resolve().then(() => (init_tron(), tron_exports));
+            address2 = deriveUserDepositAddress2(masterKey, userId);
+            await db.update(walletsTable).set({ depositAddress: address2, updatedAt: /* @__PURE__ */ new Date() }).where(eq(walletsTable.id, wallet.id));
+          } catch {
+          }
+        }
+      }
+      if (!address2) {
+        address2 = await getSetting2("trc20Address", "");
+      }
+      if (!address2) {
+        return res.status(503).json({ error: "Deposit address not configured yet. Please contact support." });
+      }
+      return res.json({ address: address2, network, minDeposit });
+    }
+    const address = await getSetting2("bep20Address", "");
     if (!address) {
       return res.status(503).json({
         error: "Deposit address not configured yet. Please contact support."
       });
     }
-    const minDeposit = await getSetting2("minDeposit", "1");
     res.json({ address, network, minDeposit });
   } catch (err2) {
     req.log.error({ err: err2 }, "Failed to get deposit address");
@@ -91816,6 +91924,7 @@ var stats_default = router12;
 var import_express13 = __toESM(require_express2(), 1);
 import { createHmac as createHmac2, timingSafeEqual, randomBytes as randomBytes4 } from "crypto";
 init_bot();
+init_tron();
 var router13 = (0, import_express13.Router)();
 function sign(payload, secret) {
   const data = Buffer.from(JSON.stringify(payload)).toString("base64url");
@@ -93625,16 +93734,17 @@ app.use("/api", routes_default);
 var app_default = app;
 
 // src/lib/deposit-monitor.ts
+init_tron();
 var POLL_INTERVAL_MS = 6e4;
+var API_CALL_DELAY_MS = 300;
 var monitorInterval = null;
 var isRunning = false;
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
 async function getSetting3(key) {
   const rows = await db.select().from(systemSettingsTable).where(eq(systemSettingsTable.key, key));
   return rows[0]?.value?.trim() ?? "";
-}
-async function getBusinessAddress() {
-  const addr = await getSetting3("trc20Address");
-  return addr || null;
 }
 async function getProcessedTxIds() {
   const [completedRows, reviewedRows] = await Promise.all([
@@ -93705,96 +93815,88 @@ async function sendDepositEmail(userId, username, email3, amount, txHash) {
     console.warn("[Deposit] Email send error:", err2);
   }
 }
+async function creditUser(userId, walletId, currentBalance, amountUsdt, tx) {
+  const amountFloat = parseFloat(amountUsdt);
+  const newBalance = (parseFloat(currentBalance) + amountFloat).toFixed(6);
+  console.log(
+    `[Deposit] Found new transaction: ${tx.txid} amount: ${amountUsdt} crediting user: ${userId}`
+  );
+  await db.update(walletsTable).set({ availableBalance: newBalance, updatedAt: /* @__PURE__ */ new Date() }).where(eq(walletsTable.id, walletId));
+  await db.insert(transactionsTable).values({
+    userId,
+    type: "deposit",
+    amount: amountUsdt,
+    network: "TRC20",
+    status: "completed",
+    txid: tx.txid,
+    address: tx.from
+  });
+  await db.insert(depositVerificationsTable).values({
+    userId,
+    txid: tx.txid,
+    amount: amountUsdt,
+    fromAddress: tx.from,
+    toAddress: tx.to,
+    network: "TRC20",
+    status: "completed",
+    source: "monitor_auto",
+    adminNote: `Auto-credited by deposit monitor. ${amountUsdt} USDT from ${tx.from}`
+  }).onConflictDoNothing();
+  PushNotify.depositReceived(userId, amountUsdt).catch((err2) => {
+    console.warn("[Deposit] Push notification failed:", err2);
+  });
+  db.select({
+    email: usersTable.email,
+    emailVerified: usersTable.emailVerified,
+    username: usersTable.username
+  }).from(usersTable).where(eq(usersTable.id, userId)).then(([user]) => {
+    if (user?.emailVerified && user.email) {
+      sendDepositEmail(userId, user.username, user.email, amountUsdt, tx.txid).catch(() => {
+      });
+    }
+  }).catch(() => {
+  });
+}
 async function poll() {
   if (isRunning) return;
   isRunning = true;
   try {
-    const businessAddress = await getBusinessAddress();
-    if (!businessAddress) {
-      logger.debug("No business TRC20 address configured in admin settings \u2014 skipping deposit poll");
+    const wallets = await db.select({
+      id: walletsTable.id,
+      userId: walletsTable.userId,
+      depositAddress: walletsTable.depositAddress,
+      availableBalance: walletsTable.availableBalance
+    }).from(walletsTable).where(isNotNull(walletsTable.depositAddress));
+    if (wallets.length === 0) {
+      logger.debug("[Deposit] No user deposit addresses assigned yet \u2014 skipping poll");
       return;
     }
-    console.log("[Deposit] Checking TRC20 transactions for address:", businessAddress);
+    console.log(
+      `[Deposit] Checking TRC20 transactions for ${wallets.length} user address(es)`
+    );
     const processed = await getProcessedTxIds();
     const since = Date.now() - 24 * 60 * 60 * 1e3;
-    let txs;
-    try {
-      txs = await getTrc20Transactions(businessAddress, since);
-    } catch (err2) {
-      logger.error({ err: err2, businessAddress }, "Error fetching TRC20 transactions for business address");
-      return;
-    }
-    for (const tx of txs) {
-      if (!tx.confirmed) continue;
-      if (processed.has(tx.txid)) continue;
-      if (tx.to.toLowerCase() !== businessAddress.toLowerCase()) continue;
-      const amountUsdt = rawToUsdt(tx.value);
-      const amountFloat = parseFloat(amountUsdt);
-      if (amountFloat <= 0) continue;
-      const matchingWallets = await db.select({
-        userId: walletsTable.userId,
-        walletId: walletsTable.id,
-        balance: walletsTable.availableBalance
-      }).from(walletsTable).where(eq(walletsTable.depositAddress, tx.to));
-      if (matchingWallets.length === 1) {
-        const { userId, walletId, balance } = matchingWallets[0];
-        const newBalance = (parseFloat(balance) + amountFloat).toFixed(6);
-        console.log(
-          `[Deposit] Found new transaction: ${tx.txid} amount: ${amountUsdt} crediting user: ${userId}`
-        );
-        await db.update(walletsTable).set({ availableBalance: newBalance, updatedAt: /* @__PURE__ */ new Date() }).where(eq(walletsTable.id, walletId));
-        await db.insert(transactionsTable).values({
-          userId,
-          type: "deposit",
-          amount: amountUsdt,
-          network: "TRC20",
-          status: "completed",
-          txid: tx.txid,
-          address: tx.from
-        });
-        await db.insert(depositVerificationsTable).values({
-          userId,
-          txid: tx.txid,
-          amount: amountUsdt,
-          fromAddress: tx.from,
-          toAddress: businessAddress,
-          network: "TRC20",
-          status: "completed",
-          source: "monitor_auto",
-          adminNote: `Auto-credited by deposit monitor. ${amountUsdt} USDT from ${tx.from}`
-        }).onConflictDoNothing();
-        PushNotify.depositReceived(userId, amountUsdt).catch((err2) => {
-          console.warn("[Deposit] Push notification failed:", err2);
-        });
-        db.select({
-          email: usersTable.email,
-          emailVerified: usersTable.emailVerified,
-          username: usersTable.username
-        }).from(usersTable).where(eq(usersTable.id, userId)).then(([user]) => {
-          if (user?.emailVerified && user.email) {
-            sendDepositEmail(userId, user.username, user.email, amountUsdt, tx.txid).catch(() => {
-            });
-          }
-        }).catch(() => {
-        });
-      } else {
-        await db.insert(depositVerificationsTable).values({
-          userId: null,
-          txid: tx.txid,
-          amount: amountUsdt,
-          fromAddress: tx.from,
-          toAddress: businessAddress,
-          network: "TRC20",
-          status: "pending",
-          source: "monitor_failure",
-          adminNote: "Incoming deposit detected on-chain. Assign to the correct user to credit their balance."
-        }).onConflictDoNothing();
-        logger.info(
-          { txid: tx.txid, amountUsdt, fromAddress: tx.from, matchCount: matchingWallets.length },
-          "Deposit detected \u2014 queued for admin assignment (no unique user match)"
-        );
+    for (const wallet of wallets) {
+      const address = wallet.depositAddress;
+      console.log("[Deposit] Checking TRC20 transactions for address:", address);
+      let txs;
+      try {
+        txs = await getTrc20Transactions(address, since);
+      } catch (err2) {
+        logger.error({ err: err2, address, userId: wallet.userId }, "Error fetching TRC20 transactions for user address");
+        await sleep(API_CALL_DELAY_MS);
+        continue;
       }
-      processed.add(tx.txid);
+      for (const tx of txs) {
+        if (!tx.confirmed) continue;
+        if (processed.has(tx.txid)) continue;
+        if (tx.to.toLowerCase() !== address.toLowerCase()) continue;
+        const amountUsdt = rawToUsdt(tx.value);
+        if (parseFloat(amountUsdt) <= 0) continue;
+        await creditUser(wallet.userId, wallet.id, wallet.availableBalance, amountUsdt, tx);
+        processed.add(tx.txid);
+      }
+      await sleep(API_CALL_DELAY_MS);
     }
   } catch (err2) {
     logger.error({ err: err2 }, "Deposit monitor poll error");
@@ -93804,7 +93906,7 @@ async function poll() {
 }
 function startDepositMonitor() {
   if (monitorInterval) return;
-  logger.info("Starting TRC20 deposit monitor \u2014 watching business address (60s interval)");
+  logger.info("Starting TRC20 deposit monitor \u2014 scanning all user deposit addresses (60s interval)");
   poll();
   monitorInterval = setInterval(poll, POLL_INTERVAL_MS);
 }
@@ -94133,14 +94235,14 @@ object-assign/index.js:
 safe-buffer/index.js:
   (*! safe-buffer. MIT License. Feross Aboukhadijeh <https://feross.org/opensource> *)
 
+@noble/secp256k1/index.js:
+  (*! noble-secp256k1 - MIT License (c) 2019 Paul Miller (paulmillr.com) *)
+
 media-typer/index.js:
   (*!
    * media-typer
    * Copyright(c) 2014 Douglas Christopher Wilson
    * MIT Licensed
    *)
-
-@noble/secp256k1/index.js:
-  (*! noble-secp256k1 - MIT License (c) 2019 Paul Miller (paulmillr.com) *)
 */
 //# sourceMappingURL=index.mjs.map

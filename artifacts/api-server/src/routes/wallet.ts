@@ -60,14 +60,51 @@ router.get("/deposit-address", async (req, res) => {
   }
 
   try {
-    const settingKey = network === "BEP20" ? "bep20Address" : "trc20Address";
-    const address = await getSetting(settingKey, "");
+    const minDeposit = await getSetting("minDeposit", "1");
+
+    if (network === "TRC20") {
+      const userId = (req as any).userId as number;
+
+      // Find this user's wallet
+      const walletRows = await db.select().from(walletsTable).where(eq(walletsTable.userId, userId));
+      const wallet = walletRows[0];
+      let address = wallet?.depositAddress ?? null;
+
+      // Derive a unique address on-the-fly if not yet assigned (existing users)
+      if (!address) {
+        const masterKey = process.env["MASTER_PRIVATE_KEY"];
+        if (masterKey && wallet) {
+          try {
+            const { deriveUserDepositAddress } = await import("../lib/tron.js");
+            address = deriveUserDepositAddress(masterKey, userId);
+            await db.update(walletsTable)
+              .set({ depositAddress: address, updatedAt: new Date() })
+              .where(eq(walletsTable.id, wallet.id));
+          } catch {
+            // fall through to business address fallback
+          }
+        }
+      }
+
+      // Final fallback: shared business address (if MASTER_PRIVATE_KEY not configured)
+      if (!address) {
+        address = await getSetting("trc20Address", "");
+      }
+
+      if (!address) {
+        return res.status(503).json({ error: "Deposit address not configured yet. Please contact support." });
+      }
+
+      return res.json({ address, network, minDeposit });
+    }
+
+    // BEP20: use shared business address from settings
+    const address = await getSetting("bep20Address", "");
     if (!address) {
       return res.status(503).json({
         error: "Deposit address not configured yet. Please contact support.",
       });
     }
-    const minDeposit = await getSetting("minDeposit", "1");
     res.json({ address, network, minDeposit });
   } catch (err) {
     req.log.error({ err }, "Failed to get deposit address");

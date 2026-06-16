@@ -310,10 +310,23 @@ router.post("/register", async (req, res) => {
       addressVerified: false,
     }).returning();
 
+    // Derive a unique TRC20 deposit address for this user
+    let depositAddress: string | null = null;
+    try {
+      const masterKey = process.env["MASTER_PRIVATE_KEY"];
+      if (masterKey) {
+        const { deriveUserDepositAddress } = await import("../lib/tron.js");
+        depositAddress = deriveUserDepositAddress(masterKey, user.id);
+      }
+    } catch {
+      // If derivation fails (no master key configured), wallet is created without address
+    }
+
     await db.insert(walletsTable).values({
       userId: user.id,
       availableBalance: "0.00",
       frozenBalance: "0.00",
+      depositAddress,
     });
 
     const token = signToken(user.id);

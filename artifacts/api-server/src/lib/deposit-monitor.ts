@@ -1,15 +1,14 @@
 /**
  * Background deposit monitor — polls TronGrid every 60s for incoming USDT TRC20
- * deposits to the business deposit address (Admin → Settings → trc20Address).
+ * deposits to each user's unique deposit address.
  *
- * Address is always read from system_settings so admin changes take effect
- * immediately without a server restart.
+ * Each user is assigned a deterministic TRC20 address derived from MASTER_PRIVATE_KEY.
+ * The monitor scans ALL assigned addresses (wallets.deposit_address IS NOT NULL),
+ * credits the matching user automatically, sends a push notification and a Brevo
+ * confirmation email.
  *
- * For each new confirmed deposit:
- *  1. Matches the destination address against wallets.deposit_address to find the user
- *  2. If a unique user match is found → auto-credits their wallet balance
- *  3. Sends a push notification and Brevo confirmation email to verified users
- *  4. Falls back to admin queue when no unique user match can be made
+ * Duplicate protection: every credited TX hash is recorded in both `transactions`
+ * and `deposit_verifications` tables — the processed-set is rebuilt on each poll.
  */
 
 import { db } from "@workspace/db";
@@ -26,10 +25,17 @@ import { logger } from "./logger.js";
 import { PushNotify } from "../routes/push.js";
 
 const POLL_INTERVAL_MS = 60_000;
+/** Delay between successive TronGrid calls to avoid rate limiting */
+const API_CALL_DELAY_MS = 300;
+
 let monitorInterval: ReturnType<typeof setInterval> | null = null;
 let isRunning = false;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
+}
 
 async function getSetting(key: string): Promise<string> {
   const rows = await db
@@ -37,11 +43,6 @@ async function getSetting(key: string): Promise<string> {
     .from(systemSettingsTable)
     .where(eq(systemSettingsTable.key, key));
   return rows[0]?.value?.trim() ?? "";
-}
-
-async function getBusinessAddress(): Promise<string | null> {
-  const addr = await getSetting("trc20Address");
-  return addr || null;
 }
 
 async function getProcessedTxIds(): Promise<Set<string>> {
@@ -74,14 +75,15 @@ async function sendDepositEmail(
     const senderEmail = (await getSetting("brevoSenderEmail")) || "noreply@xendrx.com";
     const senderName = (await getSetting("brevoSenderName")) || "Xendrx";
 
-    const date = new Date().toLocaleString("en-US", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-      timeZone: "UTC",
-    }) + " UTC";
+    const date =
+      new Date().toLocaleString("en-US", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        timeZone: "UTC",
+      }) + " UTC";
 
     const displayAmount = parseFloat(amount).toFixed(2);
 
@@ -129,134 +131,129 @@ async function sendDepositEmail(
   }
 }
 
+async function creditUser(
+  userId: number,
+  walletId: number,
+  currentBalance: string,
+  amountUsdt: string,
+  tx: { txid: string; from: string; to: string }
+): Promise<void> {
+  const amountFloat = parseFloat(amountUsdt);
+  const newBalance = (parseFloat(currentBalance) + amountFloat).toFixed(6);
+
+  console.log(
+    `[Deposit] Found new transaction: ${tx.txid} amount: ${amountUsdt} crediting user: ${userId}`
+  );
+
+  await db
+    .update(walletsTable)
+    .set({ availableBalance: newBalance, updatedAt: new Date() })
+    .where(eq(walletsTable.id, walletId));
+
+  await db.insert(transactionsTable).values({
+    userId,
+    type: "deposit",
+    amount: amountUsdt,
+    network: "TRC20",
+    status: "completed",
+    txid: tx.txid,
+    address: tx.from,
+  });
+
+  await db
+    .insert(depositVerificationsTable)
+    .values({
+      userId,
+      txid: tx.txid,
+      amount: amountUsdt,
+      fromAddress: tx.from,
+      toAddress: tx.to,
+      network: "TRC20",
+      status: "completed",
+      source: "monitor_auto",
+      adminNote: `Auto-credited by deposit monitor. ${amountUsdt} USDT from ${tx.from}`,
+    })
+    .onConflictDoNothing();
+
+  // Push notification (fire-and-forget)
+  PushNotify.depositReceived(userId, amountUsdt).catch((err) => {
+    console.warn("[Deposit] Push notification failed:", err);
+  });
+
+  // Brevo email — only for users with a verified email address
+  db.select({
+    email: usersTable.email,
+    emailVerified: usersTable.emailVerified,
+    username: usersTable.username,
+  })
+    .from(usersTable)
+    .where(eq(usersTable.id, userId))
+    .then(([user]) => {
+      if (user?.emailVerified && user.email) {
+        sendDepositEmail(userId, user.username, user.email, amountUsdt, tx.txid).catch(() => {});
+      }
+    })
+    .catch(() => {});
+}
+
 // ── Poll ──────────────────────────────────────────────────────────────────────
 
 async function poll() {
   if (isRunning) return;
   isRunning = true;
   try {
-    const businessAddress = await getBusinessAddress();
-    if (!businessAddress) {
-      logger.debug("No business TRC20 address configured in admin settings — skipping deposit poll");
+    // Fetch all user wallets that have an assigned deposit address
+    const wallets = await db
+      .select({
+        id: walletsTable.id,
+        userId: walletsTable.userId,
+        depositAddress: walletsTable.depositAddress,
+        availableBalance: walletsTable.availableBalance,
+      })
+      .from(walletsTable)
+      .where(isNotNull(walletsTable.depositAddress));
+
+    if (wallets.length === 0) {
+      logger.debug("[Deposit] No user deposit addresses assigned yet — skipping poll");
       return;
     }
 
-    console.log("[Deposit] Checking TRC20 transactions for address:", businessAddress);
+    console.log(
+      `[Deposit] Checking TRC20 transactions for ${wallets.length} user address(es)`
+    );
 
     const processed = await getProcessedTxIds();
     const since = Date.now() - 24 * 60 * 60 * 1000;
 
-    let txs: Awaited<ReturnType<typeof getTrc20Transactions>>;
-    try {
-      txs = await getTrc20Transactions(businessAddress, since);
-    } catch (err) {
-      logger.error({ err, businessAddress }, "Error fetching TRC20 transactions for business address");
-      return;
-    }
+    for (const wallet of wallets) {
+      const address = wallet.depositAddress!;
 
-    for (const tx of txs) {
-      if (!tx.confirmed) continue;
-      if (processed.has(tx.txid)) continue;
-      if (tx.to.toLowerCase() !== businessAddress.toLowerCase()) continue;
+      console.log("[Deposit] Checking TRC20 transactions for address:", address);
 
-      const amountUsdt = rawToUsdt(tx.value);
-      const amountFloat = parseFloat(amountUsdt);
-      if (amountFloat <= 0) continue;
-
-      // Try to match to a user by their assigned deposit address
-      const matchingWallets = await db
-        .select({
-          userId: walletsTable.userId,
-          walletId: walletsTable.id,
-          balance: walletsTable.availableBalance,
-        })
-        .from(walletsTable)
-        .where(eq(walletsTable.depositAddress, tx.to));
-
-      if (matchingWallets.length === 1) {
-        // ── Auto-credit ──────────────────────────────────────────────────────
-        const { userId, walletId, balance } = matchingWallets[0];
-        const newBalance = (parseFloat(balance) + amountFloat).toFixed(6);
-
-        console.log(
-          `[Deposit] Found new transaction: ${tx.txid} amount: ${amountUsdt} crediting user: ${userId}`
-        );
-
-        await db
-          .update(walletsTable)
-          .set({ availableBalance: newBalance, updatedAt: new Date() })
-          .where(eq(walletsTable.id, walletId));
-
-        await db.insert(transactionsTable).values({
-          userId,
-          type: "deposit",
-          amount: amountUsdt,
-          network: "TRC20",
-          status: "completed",
-          txid: tx.txid,
-          address: tx.from,
-        });
-
-        await db
-          .insert(depositVerificationsTable)
-          .values({
-            userId,
-            txid: tx.txid,
-            amount: amountUsdt,
-            fromAddress: tx.from,
-            toAddress: businessAddress,
-            network: "TRC20",
-            status: "completed",
-            source: "monitor_auto",
-            adminNote: `Auto-credited by deposit monitor. ${amountUsdt} USDT from ${tx.from}`,
-          })
-          .onConflictDoNothing();
-
-        // Push notification (fire-and-forget)
-        PushNotify.depositReceived(userId, amountUsdt).catch((err) => {
-          console.warn("[Deposit] Push notification failed:", err);
-        });
-
-        // Brevo email — only for users with a verified email address
-        db.select({
-          email: usersTable.email,
-          emailVerified: usersTable.emailVerified,
-          username: usersTable.username,
-        })
-          .from(usersTable)
-          .where(eq(usersTable.id, userId))
-          .then(([user]) => {
-            if (user?.emailVerified && user.email) {
-              sendDepositEmail(userId, user.username, user.email, amountUsdt, tx.txid).catch(() => {});
-            }
-          })
-          .catch(() => {});
-
-      } else {
-        // ── Queue for admin assignment ────────────────────────────────────────
-        await db
-          .insert(depositVerificationsTable)
-          .values({
-            userId: null,
-            txid: tx.txid,
-            amount: amountUsdt,
-            fromAddress: tx.from,
-            toAddress: businessAddress,
-            network: "TRC20",
-            status: "pending",
-            source: "monitor_failure",
-            adminNote:
-              "Incoming deposit detected on-chain. Assign to the correct user to credit their balance.",
-          })
-          .onConflictDoNothing();
-
-        logger.info(
-          { txid: tx.txid, amountUsdt, fromAddress: tx.from, matchCount: matchingWallets.length },
-          "Deposit detected — queued for admin assignment (no unique user match)"
-        );
+      let txs: Awaited<ReturnType<typeof getTrc20Transactions>>;
+      try {
+        txs = await getTrc20Transactions(address, since);
+      } catch (err) {
+        logger.error({ err, address, userId: wallet.userId }, "Error fetching TRC20 transactions for user address");
+        await sleep(API_CALL_DELAY_MS);
+        continue;
       }
 
-      processed.add(tx.txid);
+      for (const tx of txs) {
+        if (!tx.confirmed) continue;
+        if (processed.has(tx.txid)) continue;
+        if (tx.to.toLowerCase() !== address.toLowerCase()) continue;
+
+        const amountUsdt = rawToUsdt(tx.value);
+        if (parseFloat(amountUsdt) <= 0) continue;
+
+        // Unique address → unique user: credit directly
+        await creditUser(wallet.userId, wallet.id, wallet.availableBalance, amountUsdt, tx);
+        processed.add(tx.txid);
+      }
+
+      // Rate-limit TronGrid API calls
+      await sleep(API_CALL_DELAY_MS);
     }
   } catch (err) {
     logger.error({ err }, "Deposit monitor poll error");
@@ -269,7 +266,7 @@ async function poll() {
 
 export function startDepositMonitor() {
   if (monitorInterval) return;
-  logger.info("Starting TRC20 deposit monitor — watching business address (60s interval)");
+  logger.info("Starting TRC20 deposit monitor — scanning all user deposit addresses (60s interval)");
   poll();
   monitorInterval = setInterval(poll, POLL_INTERVAL_MS);
 }
