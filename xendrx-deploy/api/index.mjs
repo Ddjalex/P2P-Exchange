@@ -89046,9 +89046,15 @@ function rawToUsdt(raw) {
 }
 async function sendUsdt(fromPrivKeyHex, toAddress, amountUsdt) {
   const privateKey = fromPrivKeyHex.replace(/^0x/, "");
-  const fromAddress = privateKeyToTronAddress(privateKey);
+  const tronWeb = new TronWeb({
+    fullHost: TRON_GRID,
+    headers: apiHeaders(),
+    privateKey
+  });
+  const fromAddress = tronWeb.address.fromPrivateKey(privateKey);
+  console.log("[Withdraw] fromAddress derived from private key:", fromAddress);
+  if (!fromAddress) throw new Error("Could not derive TRON address from private key");
   const amountSun = Math.round(amountUsdt * 10 ** USDT_DECIMALS);
-  const funcSelector = "a9059cbb";
   const toHex = tronAddressToHex(toAddress).slice(2);
   const toHexPadded = toHex.padStart(64, "0");
   const amountHex = amountSun.toString(16).padStart(64, "0");
@@ -89072,10 +89078,6 @@ async function sendUsdt(fromPrivKeyHex, toAddress, amountUsdt) {
   }
   const unsignedTx = buildData.transaction;
   if (!unsignedTx) throw new Error("No transaction returned from TronGrid");
-  const tronWeb = new TronWeb({
-    fullHost: TRON_GRID,
-    headers: apiHeaders()
-  });
   const signedTx = await tronWeb.trx.sign(unsignedTx, privateKey);
   const broadcastRes = await fetch(`${TRON_GRID}/wallet/broadcasttransaction`, {
     method: "POST",
@@ -92566,6 +92568,18 @@ router13.get("/wallet/overview", adminAuth, async (req, res) => {
     res.status(500).json({ error: "Internal server error" });
   }
 });
+router13.get("/wallet/transactions/:id", adminAuth, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const tx = await db.select().from(transactionsTable).where(eq(transactionsTable.id, id)).then((r) => r[0]);
+    if (!tx) return res.status(404).json({ error: "Transaction not found" });
+    const user = await db.select({ username: usersTable.username, email: usersTable.email, phone: usersTable.phone }).from(usersTable).where(eq(usersTable.id, tx.userId)).then((r) => r[0]);
+    res.json({ ...tx, username: user?.username ?? "Unknown", email: user?.email ?? "", phone: user?.phone ?? "" });
+  } catch (err2) {
+    req.log.error({ err: err2 }, "Admin transaction detail failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
 router13.get("/wallet/transactions", adminAuth, async (req, res) => {
   try {
     const { type, status, page = "1" } = req.query;
@@ -92625,18 +92639,20 @@ router13.put("/wallet/transactions/:id/approve", adminAuth, async (req, res) => 
 router13.put("/wallet/transactions/:id/reject", adminAuth, async (req, res) => {
   try {
     const id = parseInt(req.params.id);
+    const { reason } = req.body ?? {};
+    const rejectReason = reason?.trim() || "Rejected by admin";
     const tx = await db.select().from(transactionsTable).where(eq(transactionsTable.id, id)).then((r) => r[0]);
     if (tx) {
       await db.update(transactionsTable).set({ status: "failed" }).where(eq(transactionsTable.id, id));
-      const wallet = await db.select().from(walletsTable).where(eq(walletsTable.userId, tx.userId)).then((r) => r[0]);
+      const wallet = await db.select().from(walletsTable).where(and(eq(walletsTable.userId, tx.userId), eq(walletsTable.asset, "USDT"))).then((r) => r[0]);
       if (wallet) {
-        const newBalance = (parseFloat(wallet.availableBalance) + parseFloat(tx.amount)).toFixed(2);
-        await db.update(walletsTable).set({ availableBalance: newBalance }).where(eq(walletsTable.userId, tx.userId));
+        const newBalance = (parseFloat(wallet.availableBalance) + parseFloat(tx.amount)).toFixed(6);
+        await db.update(walletsTable).set({ availableBalance: newBalance }).where(eq(walletsTable.id, wallet.id));
       }
-      PushNotify.withdrawalRejected(tx.userId, tx.amount, "Rejected by admin").catch(console.error);
-      TelegramNotify.withdrawalRejected(tx.userId, tx.amount, "Rejected by admin").catch(console.error);
+      PushNotify.withdrawalRejected(tx.userId, tx.amount, rejectReason).catch(console.error);
+      TelegramNotify.withdrawalRejected(tx.userId, tx.amount, rejectReason).catch(console.error);
     }
-    await log(req.adminEmail, "reject_withdrawal", "transaction", id);
+    await log(req.adminEmail, "reject_withdrawal", "transaction", id, rejectReason);
     res.json({ success: true });
   } catch (err2) {
     req.log.error({ err: err2 }, "Admin reject withdrawal failed");
