@@ -16503,7 +16503,7 @@ var require_sign = __commonJS({
   "../../node_modules/.pnpm/math-intrinsics@1.1.0/node_modules/math-intrinsics/sign.js"(exports, module) {
     "use strict";
     var $isNaN = require_isNaN();
-    module.exports = function sign3(number4) {
+    module.exports = function sign2(number4) {
       if ($isNaN(number4) || number4 === 0) {
         return number4;
       }
@@ -16867,7 +16867,7 @@ var require_get_intrinsic = __commonJS({
     var min = require_min();
     var pow = require_pow();
     var round = require_round();
-    var sign3 = require_sign();
+    var sign2 = require_sign();
     var $Function = Function;
     var getEvalledConstructor = function(expressionSyntax) {
       try {
@@ -16981,7 +16981,7 @@ var require_get_intrinsic = __commonJS({
       "%Math.min%": min,
       "%Math.pow%": pow,
       "%Math.round%": round,
-      "%Math.sign%": sign3,
+      "%Math.sign%": sign2,
       "%Reflect.getPrototypeOf%": $ReflectGPO
     };
     if (getProto) {
@@ -23005,7 +23005,7 @@ var require_response = __commonJS({
     var path4 = __require("node:path");
     var pathIsAbsolute = __require("node:path").isAbsolute;
     var statuses = require_statuses();
-    var sign3 = require_cookie_signature().sign;
+    var sign2 = require_cookie_signature().sign;
     var normalizeType = require_utils3().normalizeType;
     var normalizeTypes = require_utils3().normalizeTypes;
     var setCharset = require_utils3().setCharset;
@@ -23296,7 +23296,7 @@ var require_response = __commonJS({
       }
       var val = typeof value === "object" ? "j:" + JSON.stringify(value) : String(value);
       if (signed) {
-        val = "s:" + sign3(val, secret);
+        val = "s:" + sign2(val, secret);
       }
       if (opts.maxAge != null) {
         var maxAge = opts.maxAge - 0;
@@ -28855,7 +28855,7 @@ var require_jwa = __commonJS({
       return thing;
     }
     function createHmacSigner(bits) {
-      return function sign3(thing, secret) {
+      return function sign2(thing, secret) {
         checkIsSecretKey(secret);
         thing = normalizeInput(thing);
         var hmac = crypto2.createHmac("sha" + bits, secret);
@@ -28882,7 +28882,7 @@ var require_jwa = __commonJS({
       };
     }
     function createKeySigner(bits) {
-      return function sign3(thing, privateKey) {
+      return function sign2(thing, privateKey) {
         checkIsPrivateKey(privateKey);
         thing = normalizeInput(thing);
         var signer = crypto2.createSign("RSA-SHA" + bits);
@@ -28901,7 +28901,7 @@ var require_jwa = __commonJS({
       };
     }
     function createPSSKeySigner(bits) {
-      return function sign3(thing, privateKey) {
+      return function sign2(thing, privateKey) {
         checkIsPrivateKey(privateKey);
         thing = normalizeInput(thing);
         var signer = crypto2.createSign("RSA-SHA" + bits);
@@ -28929,7 +28929,7 @@ var require_jwa = __commonJS({
     }
     function createECDSASigner(bits) {
       var inner = createKeySigner(bits);
-      return function sign3() {
+      return function sign2() {
         var signature = inner.apply(null, arguments);
         signature = formatEcdsa.derToJose(signature, "ES" + bits);
         return signature;
@@ -28944,7 +28944,7 @@ var require_jwa = __commonJS({
       };
     }
     function createNoneSigner() {
-      return function sign3() {
+      return function sign2() {
         return "";
       };
     }
@@ -29046,7 +29046,7 @@ var require_sign_stream = __commonJS({
       }.bind(this));
     }
     util2.inherits(SignStream, Stream);
-    SignStream.prototype.sign = function sign3() {
+    SignStream.prototype.sign = function sign2() {
       try {
         var signature = jwsSign({
           header: this.header,
@@ -31734,8 +31734,8 @@ var require_lodash = __commonJS({
       }
       value = toNumber(value);
       if (value === INFINITY || value === -INFINITY) {
-        var sign3 = value < 0 ? -1 : 1;
-        return sign3 * MAX_INTEGER;
+        var sign2 = value < 0 ? -1 : 1;
+        return sign2 * MAX_INTEGER;
       }
       return value === value ? value : 0;
     }
@@ -31820,8 +31820,8 @@ var require_lodash3 = __commonJS({
       }
       value = toNumber(value);
       if (value === INFINITY || value === -INFINITY) {
-        var sign3 = value < 0 ? -1 : 1;
-        return sign3 * MAX_INTEGER;
+        var sign2 = value < 0 ? -1 : 1;
+        return sign2 * MAX_INTEGER;
       }
       return value === value ? value : 0;
     }
@@ -31978,8 +31978,8 @@ var require_lodash7 = __commonJS({
       }
       value = toNumber(value);
       if (value === INFINITY || value === -INFINITY) {
-        var sign3 = value < 0 ? -1 : 1;
-        return sign3 * MAX_INTEGER;
+        var sign2 = value < 0 ? -1 : 1;
+        return sign2 * MAX_INTEGER;
       }
       return value === value ? value : 0;
     }
@@ -32432,9 +32432,9 @@ var require_postgres_date = __commonJS({
       if (type === "Z") {
         return 0;
       }
-      var sign3 = type === "-" ? -1 : 1;
+      var sign2 = type === "-" ? -1 : 1;
       var offset = parseInt(zone[2], 10) * 3600 + parseInt(zone[3] || 0, 10) * 60 + parseInt(zone[4] || 0, 10);
-      return offset * sign3 * 1e3;
+      return offset * sign2 * 1e3;
     }
     function bcYearToNegativeYear(year) {
       return -(year - 1);
@@ -32799,11 +32799,11 @@ var require_pg_int8 = __commonJS({
     function readInt8(buffer) {
       var high = buffer.readInt32BE(0);
       var low = buffer.readUInt32BE(4);
-      var sign3 = "";
+      var sign2 = "";
       if (high < 0) {
         high = ~high + (low === 0);
         low = ~low + 1 >>> 0;
-        sign3 = "-";
+        sign2 = "-";
       }
       var result = "";
       var carry;
@@ -32819,7 +32819,7 @@ var require_pg_int8 = __commonJS({
         low = t / BASE >>> 0;
         digits = "" + (t - BASE * low);
         if (low === 0 && high === 0) {
-          return sign3 + digits + result;
+          return sign2 + digits + result;
         }
         pad = "";
         l = 6 - digits.length;
@@ -32835,7 +32835,7 @@ var require_pg_int8 = __commonJS({
         low = t / BASE >>> 0;
         digits = "" + (t - BASE * low);
         if (low === 0 && high === 0) {
-          return sign3 + digits + result;
+          return sign2 + digits + result;
         }
         pad = "";
         l = 6 - digits.length;
@@ -32851,7 +32851,7 @@ var require_pg_int8 = __commonJS({
         low = t / BASE >>> 0;
         digits = "" + (t - BASE * low);
         if (low === 0 && high === 0) {
-          return sign3 + digits + result;
+          return sign2 + digits + result;
         }
         pad = "";
         l = 6 - digits.length;
@@ -32864,7 +32864,7 @@ var require_pg_int8 = __commonJS({
         carry = high % BASE;
         t = 4294967296 * carry + low;
         digits = "" + t % BASE;
-        return sign3 + digits + result;
+        return sign2 + digits + result;
       }
     }
     module.exports = readInt8;
@@ -32913,7 +32913,7 @@ var require_binaryParsers = __commonJS({
     };
     var parseFloatFromBits = function(data, precisionBits, exponentBits) {
       var bias = Math.pow(2, exponentBits - 1) - 1;
-      var sign3 = parseBits(data, 1);
+      var sign2 = parseBits(data, 1);
       var exponent = parseBits(data, exponentBits, 1);
       if (exponent === 0) {
         return 0;
@@ -32934,11 +32934,11 @@ var require_binaryParsers = __commonJS({
       var mantissa = parseBits(data, precisionBits, exponentBits + 1, false, parsePrecisionBits);
       if (exponent == Math.pow(2, exponentBits + 1) - 1) {
         if (mantissa === 0) {
-          return sign3 === 0 ? Infinity : -Infinity;
+          return sign2 === 0 ? Infinity : -Infinity;
         }
         return NaN;
       }
-      return (sign3 === 0 ? 1 : -1) * Math.pow(2, exponent - bias) * mantissa;
+      return (sign2 === 0 ? 1 : -1) * Math.pow(2, exponent - bias) * mantissa;
     };
     var parseInt16 = function(value) {
       if (parseBits(value, 1) == 1) {
@@ -32959,8 +32959,8 @@ var require_binaryParsers = __commonJS({
       return parseFloatFromBits(value, 52, 11);
     };
     var parseNumeric = function(value) {
-      var sign3 = parseBits(value, 16, 32);
-      if (sign3 == 49152) {
+      var sign2 = parseBits(value, 16, 32);
+      if (sign2 == 49152) {
         return NaN;
       }
       var weight = Math.pow(1e4, parseBits(value, 16, 16));
@@ -32972,12 +32972,12 @@ var require_binaryParsers = __commonJS({
         weight /= 1e4;
       }
       var scale = Math.pow(10, parseBits(value, 16, 48));
-      return (sign3 === 0 ? 1 : -1) * Math.round(result * scale) / scale;
+      return (sign2 === 0 ? 1 : -1) * Math.round(result * scale) / scale;
     };
     var parseDate = function(isUTC, value) {
-      var sign3 = parseBits(value, 1);
+      var sign2 = parseBits(value, 1);
       var rawValue = parseBits(value, 63, 1);
-      var result = new Date((sign3 === 0 ? 1 : -1) * rawValue / 1e3 + 9466848e5);
+      var result = new Date((sign2 === 0 ? 1 : -1) * rawValue / 1e3 + 9466848e5);
       if (!isUTC) {
         result.setTime(result.getTime() + result.getTimezoneOffset() * 6e4);
       }
@@ -33449,7 +33449,7 @@ var require_utils_webcrypto = __commonJS({
     var nodeCrypto2 = __require("crypto");
     module.exports = {
       postgresMd5PasswordHash,
-      randomBytes: randomBytes6,
+      randomBytes: randomBytes5,
       deriveKey,
       sha256: sha2562,
       hashByName,
@@ -33459,7 +33459,7 @@ var require_utils_webcrypto = __commonJS({
     var webCrypto = nodeCrypto2.webcrypto || globalThis.crypto;
     var subtleCrypto = webCrypto.subtle;
     var textEncoder = new TextEncoder();
-    function randomBytes6(length) {
+    function randomBytes5(length) {
       return webCrypto.getRandomValues(Buffer.alloc(length));
     }
     async function md5(string4) {
@@ -33529,8 +33529,8 @@ var require_cert_signatures = __commonJS({
       const { length: OIDLength, index: indexAfterOIDLength } = readASN1Length(data, index);
       index = indexAfterOIDLength;
       const lastIndex = index + OIDLength;
-      const byte12 = data[index++];
-      let oid = (byte12 / 40 >> 0) + "." + byte12 % 40;
+      const byte1 = data[index++];
+      let oid = (byte1 / 40 >> 0) + "." + byte1 % 40;
       while (index < lastIndex) {
         let value = 0;
         while (index < lastIndex) {
@@ -64594,8 +64594,8 @@ var PgTimestampString = class extends PgColumn {
     const shortened = value.toISOString().slice(0, -1).replace("T", " ");
     if (this.withTimezone) {
       const offset = value.getTimezoneOffset();
-      const sign3 = offset <= 0 ? "+" : "-";
-      return `${shortened}${sign3}${Math.floor(Math.abs(offset) / 60).toString().padStart(2, "0")}`;
+      const sign2 = offset <= 0 ? "+" : "-";
+      return `${shortened}${sign2}${Math.floor(Math.abs(offset) / 60).toString().padStart(2, "0")}`;
     }
     return shortened;
   }
@@ -88543,7 +88543,6 @@ var hexToBytes2 = (hex) => {
   }
   return array2;
 };
-var subtle = () => globalThis?.crypto?.subtle ?? err("crypto.subtle must be defined, consider polyfill");
 var concatBytes = (...arrs) => {
   let len = 0;
   for (const a of arrs)
@@ -88554,7 +88553,6 @@ var concatBytes = (...arrs) => {
     r.set(a, pad), pad += a.length;
   return r;
 };
-var randomBytes2 = (len = L) => (globalThis?.crypto).getRandomValues(u8n(len));
 var big = BigInt;
 var arange = (n, min, max, msg = "bad number: out of range") => {
   if (typeof n !== "bigint")
@@ -88567,7 +88565,6 @@ var M = (a, b = P) => {
   const r = a % b;
   return r >= 0n ? r : b + r;
 };
-var modN = (a) => M(a, N);
 var invert = (num, md) => {
   if (num === 0n || md <= 0n)
     err("no inverse n=" + num + " mod=" + md);
@@ -88579,14 +88576,6 @@ var invert = (num, md) => {
   }
   return b === 1n ? M(x, md) : err("no inverse");
 };
-var callHash = (name) => {
-  const fn = hashes[name];
-  if (typeof fn !== "function")
-    err("hashes." + name + " not set");
-  return fn;
-};
-var gh = (name, a, b) => abytes(callHash(name)(a, b), L, "digest");
-var gha = (name, a, b) => Promise.resolve(callHash(name)(a, b)).then((r) => abytes(r, L, "digest"));
 var apoint = (p) => p instanceof Point ? p : err("Point expected");
 var koblitz = (x) => M(M(x * x) * x + _b);
 var FpIsValid = (n) => arange(n, 0n, P);
@@ -88805,175 +88794,8 @@ var secretKeyToScalar = (secretKey) => {
   const num = bytesToNumBE(abytes(secretKey, L, "secret key"));
   return arange(num, 1n, N, "invalid secret key: outside of range");
 };
-var highS = (n) => n > N >> 1n;
 var getPublicKey = (privKey, isCompressed = true) => {
   return G.multiply(secretKeyToScalar(privKey)).toBytes(isCompressed);
-};
-var assertRecoveryBit = (recovery) => [0, 1, 2, 3].includes(recovery) ? recovery : err("invalid recovery id");
-var assertSigFormat = (format) => {
-  if (format === SIG_DER)
-    err('Signature format "der" is not supported: switch to noble-curves');
-  if (format != null && format !== SIG_COMPACT && format !== SIG_RECOVERED)
-    err("Signature format must be one of: compact, recovered, der");
-};
-var assertSigLength = (sig, format = SIG_COMPACT) => {
-  assertSigFormat(format);
-  const len = lengths.signature + Number(format === SIG_RECOVERED);
-  if (sig.length !== len)
-    err(`Signature format "${format}" expects Uint8Array with length ${len}`);
-};
-var Signature = class _Signature {
-  r;
-  s;
-  recovery;
-  constructor(r, s, recovery) {
-    this.r = FnIsValidNot0(r);
-    this.s = FnIsValidNot0(s);
-    if (recovery != null)
-      this.recovery = assertRecoveryBit(recovery);
-    Object.freeze(this);
-  }
-  static fromBytes(b, format = SIG_COMPACT) {
-    assertSigLength(b, format);
-    let rec;
-    if (format === SIG_RECOVERED) {
-      rec = b[0];
-      b = b.subarray(1);
-    }
-    const r = sliceBytesNumBE(b, 0, L);
-    const s = sliceBytesNumBE(b, L, L2);
-    return new _Signature(r, s, rec);
-  }
-  addRecoveryBit(bit2) {
-    return new _Signature(this.r, this.s, bit2);
-  }
-  hasHighS() {
-    return highS(this.s);
-  }
-  toBytes(format = SIG_COMPACT) {
-    assertSigFormat(format);
-    const { r, s, recovery } = this;
-    const res = concatBytes(numTo32b(r), numTo32b(s));
-    if (format === SIG_RECOVERED) {
-      return concatBytes(u8of(assertRecoveryBit(recovery)), res);
-    }
-    return res;
-  }
-};
-var bits2int = (bytes) => {
-  if (bytes.length > 8192)
-    err("input is too large");
-  const delta = bytes.length * 8 - 256;
-  const num = bytesToNumBE(bytes);
-  return delta > 0 ? num >> big(delta) : num;
-};
-var bits2int_modN = (bytes) => modN(bits2int(abytes(bytes)));
-var SIG_COMPACT = "compact";
-var SIG_RECOVERED = "recovered";
-var SIG_DER = "der";
-var _sha = "SHA-256";
-var hashes = {
-  hmacSha256Async: async (key, message) => {
-    const s = subtle();
-    const name = "HMAC";
-    const k = await s.importKey("raw", key, { name, hash: { name: _sha } }, false, ["sign"]);
-    return u8n(await s.sign(name, k, message));
-  },
-  hmacSha256: void 0,
-  sha256Async: async (msg) => u8n(await subtle().digest(_sha, msg)),
-  sha256: void 0
-};
-var prepMsg = (msg, opts, async_) => {
-  const message = abytes(msg, void 0, "message");
-  if (!opts.prehash)
-    return message;
-  return async_ ? gha("sha256Async", message) : gh("sha256", message);
-};
-var NULL = /* @__PURE__ */ u8n(0);
-var byte0 = /* @__PURE__ */ u8of(0);
-var byte1 = /* @__PURE__ */ u8of(1);
-var _maxDrbgIters = 1e3;
-var _drbgErr = "drbg: tried max amount of iterations";
-var hmacDrbg = (seed, pred) => {
-  let v = u8n(L);
-  let k = u8n(L);
-  let i = 0;
-  const reset = () => {
-    v.fill(1);
-    k.fill(0);
-  };
-  const h = (...b) => gh("hmacSha256", k, concatBytes(v, ...b));
-  const reseed = (seed2 = NULL) => {
-    k = h(byte0, seed2);
-    v = h();
-    if (seed2.length === 0)
-      return;
-    k = h(byte1, seed2);
-    v = h();
-  };
-  const gen = () => {
-    if (i++ >= _maxDrbgIters)
-      err(_drbgErr);
-    v = h();
-    return v;
-  };
-  reset();
-  reseed(seed);
-  let res = void 0;
-  while (!(res = pred(gen())))
-    reseed();
-  reset();
-  return res;
-};
-var _sign = (messageHash, secretKey, opts, hmacDrbg2) => {
-  let { lowS, extraEntropy } = opts;
-  const int2octets = numTo32b;
-  const h1i = bits2int_modN(messageHash);
-  const h1o = int2octets(h1i);
-  const d = secretKeyToScalar(secretKey);
-  const seedArgs = [int2octets(d), h1o];
-  if (extraEntropy != null && extraEntropy !== false) {
-    const e = extraEntropy === true ? randomBytes2(L) : extraEntropy;
-    seedArgs.push(abytes(e, void 0, "extraEntropy"));
-  }
-  const seed = concatBytes(...seedArgs);
-  const m = h1i;
-  const k2sig = (kBytes) => {
-    const k = bits2int(kBytes);
-    if (!(1n <= k && k < N))
-      return;
-    const ik = invert(k, N);
-    const q = G.multiply(k).toAffine();
-    const r = modN(q.x);
-    if (r === 0n)
-      return;
-    const s = modN(ik * modN(m + r * d));
-    if (s === 0n)
-      return;
-    let recovery = (q.x === r ? 0 : 2) | Number(q.y & 1n);
-    let normS = s;
-    if (lowS && highS(s)) {
-      normS = modN(-s);
-      recovery ^= 1;
-    }
-    const sig = new Signature(r, normS, recovery);
-    return sig.toBytes(opts.format);
-  };
-  return hmacDrbg2(seed, k2sig);
-};
-var setDefaults = (opts) => {
-  return {
-    lowS: opts.lowS ?? true,
-    prehash: opts.prehash ?? true,
-    format: opts.format ?? SIG_COMPACT,
-    extraEntropy: opts.extraEntropy ?? false
-  };
-};
-var sign = (message, secretKey, opts = {}) => {
-  opts = setDefaults(opts);
-  assertSigFormat(opts.format);
-  const msg = prepMsg(message, opts, false);
-  return _sign(msg, secretKey, opts, hmacDrbg);
 };
 var W = 8;
 var scalarBits = 256;
@@ -89032,6 +88854,7 @@ var wNAF = (n) => {
 
 // src/lib/tron.ts
 import { createHash as createHash2, createHmac } from "node:crypto";
+import TronWeb from "tronweb";
 var TRON_GRID = "https://api.trongrid.io";
 var USDT_CONTRACT = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t";
 var USDT_DECIMALS = 6;
@@ -89249,14 +89072,11 @@ async function sendUsdt(fromPrivKeyHex, toAddress, amountUsdt) {
   }
   const unsignedTx = buildData.transaction;
   if (!unsignedTx) throw new Error("No transaction returned from TronGrid");
-  const rawDataHex = unsignedTx.raw_data_hex;
-  const msgBytes = Buffer.from(rawDataHex, "hex");
-  const msgHash = sha256(sha256(msgBytes));
-  const privBytes = Buffer.from(privateKey, "hex");
-  const { signature, recovery } = sign(msgHash, privBytes, { recovered: true });
-  const sigBytes = signature.toCompactRawBytes();
-  const sigHex = Buffer.from(sigBytes).toString("hex") + recovery.toString(16).padStart(2, "0");
-  const signedTx = { ...unsignedTx, signature: [sigHex] };
+  const tronWeb = new TronWeb({
+    fullHost: TRON_GRID,
+    headers: apiHeaders()
+  });
+  const signedTx = await tronWeb.trx.sign(unsignedTx, privateKey);
   const broadcastRes = await fetch(`${TRON_GRID}/wallet/broadcasttransaction`, {
     method: "POST",
     headers: apiHeaders(),
@@ -91168,14 +90988,14 @@ var import_express8 = __toESM(require_express2(), 1);
 var import_multer = __toESM(require_multer(), 1);
 import path from "node:path";
 import { mkdirSync } from "node:fs";
-import { randomBytes as randomBytes3 } from "node:crypto";
+import { randomBytes as randomBytes2 } from "node:crypto";
 var chatUploadsDir = path.resolve(process.cwd(), "uploads", "chat");
 mkdirSync(chatUploadsDir, { recursive: true });
 var chatStorage = import_multer.default.diskStorage({
   destination: (_req, _file2, cb) => cb(null, chatUploadsDir),
   filename: (_req, file2, cb) => {
     const ext = path.extname(file2.originalname).toLowerCase() || ".jpg";
-    cb(null, randomBytes3(16).toString("hex") + ext);
+    cb(null, randomBytes2(16).toString("hex") + ext);
   }
 });
 var chatUpload = (0, import_multer.default)({
@@ -91748,7 +91568,7 @@ var import_express10 = __toESM(require_express2(), 1);
 var import_multer2 = __toESM(require_multer(), 1);
 import path2 from "node:path";
 import { mkdirSync as mkdirSync2 } from "node:fs";
-import { randomBytes as randomBytes4 } from "node:crypto";
+import { randomBytes as randomBytes3 } from "node:crypto";
 var router10 = (0, import_express10.Router)();
 var uploadsDir = path2.resolve(process.cwd(), "uploads", "kyc");
 mkdirSync2(uploadsDir, { recursive: true });
@@ -91756,7 +91576,7 @@ var storage = import_multer2.default.diskStorage({
   destination: (_req, _file2, cb) => cb(null, uploadsDir),
   filename: (_req, file2, cb) => {
     const ext = path2.extname(file2.originalname).toLowerCase() || ".jpg";
-    const name = randomBytes4(16).toString("hex") + ext;
+    const name = randomBytes3(16).toString("hex") + ext;
     cb(null, name);
   }
 });
@@ -92035,10 +91855,10 @@ var stats_default = router12;
 
 // src/routes/admin.ts
 var import_express13 = __toESM(require_express2(), 1);
-import { createHmac as createHmac2, timingSafeEqual, randomBytes as randomBytes5 } from "crypto";
+import { createHmac as createHmac2, timingSafeEqual, randomBytes as randomBytes4 } from "crypto";
 init_bot();
 var router13 = (0, import_express13.Router)();
-function sign2(payload, secret) {
+function sign(payload, secret) {
   const data = Buffer.from(JSON.stringify(payload)).toString("base64url");
   const sig = createHmac2("sha256", secret).update(data).digest("base64url");
   return `${data}.${sig}`;
@@ -92062,7 +91882,7 @@ function verify(token, secret) {
   }
 }
 function getSecret() {
-  return process.env.ADMIN_JWT_SECRET ?? randomBytes5(32).toString("hex");
+  return process.env.ADMIN_JWT_SECRET ?? randomBytes4(32).toString("hex");
 }
 function adminAuth(req, res, next) {
   const auth = req.headers.authorization;
@@ -92087,7 +91907,7 @@ router13.post("/auth/login", async (req, res) => {
     const adminPassword = pwRows[0]?.value ?? adminPasswordEnv;
     if (email3 !== adminEmail || password !== adminPassword)
       return res.status(401).json({ error: "Invalid credentials" });
-    const token = sign2({ email: email3, iat: Date.now() }, getSecret());
+    const token = sign({ email: email3, iat: Date.now() }, getSecret());
     res.json({ token, admin: { email: email3 } });
   } catch (err2) {
     req.log.error({ err: err2 }, "Admin login failed");
