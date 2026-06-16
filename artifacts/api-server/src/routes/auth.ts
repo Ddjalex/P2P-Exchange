@@ -310,16 +310,12 @@ router.post("/register", async (req, res) => {
       addressVerified: false,
     }).returning();
 
-    // Derive a unique TRC20 deposit address for this user.
-    // Uses HOT_WALLET_PRIVATE_KEY (same key as the hot wallet) so child addresses
-    // are derivable from the same master. MASTER_PRIVATE_KEY is accepted as an alias.
+    // Derive a unique TRC20 deposit address for this user (BIP44 m/44'/195'/0'/0/<userId>).
+    // Uses the same path as sweep key recovery — guaranteed consistent via hd-wallet.ts.
     let depositAddress: string | null = null;
     try {
-      const masterKey = process.env["HOT_WALLET_PRIVATE_KEY"] ?? process.env["MASTER_PRIVATE_KEY"];
-      if (masterKey) {
-        const { deriveUserDepositAddress } = await import("../lib/tron.js");
-        depositAddress = deriveUserDepositAddress(masterKey, user.id);
-      }
+      const { deriveAddressFromEnv } = await import("../lib/hd-wallet.js");
+      depositAddress = deriveAddressFromEnv(user.id);
     } catch {
       // If derivation fails (no master key configured), wallet is created without address
     }

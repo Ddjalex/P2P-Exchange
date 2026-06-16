@@ -27,9 +27,9 @@ import {
   getTrxBalance,
   sendTrx,
   sendUsdt,
-  deriveUserDepositKey,
   privateKeyToTronAddress,
 } from "./tron.js";
+import { deriveUserPrivateKey } from "./hd-wallet.js";
 import { logger } from "./logger.js";
 import { PushNotify } from "../routes/push.js";
 
@@ -141,7 +141,9 @@ async function sweepToHotWallet(
     return;
   }
 
-  const userPrivKey = deriveUserDepositKey(masterKey, userId);
+  // deriveUserPrivateKey uses BIP44 m/44'/195'/0'/0/<userId> — identical path to address
+  // generation in hd-wallet.ts, so address ↔ private key are always consistent.
+  const userPrivKey = deriveUserPrivateKey(masterKey, userId);
   const hotWalletAddress = privateKeyToTronAddress(masterKey);
 
   // ── Step 1: ensure enough TRX for network fees ──
