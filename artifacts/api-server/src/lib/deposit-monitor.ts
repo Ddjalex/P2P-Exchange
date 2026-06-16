@@ -1,15 +1,18 @@
 /**
  * Background deposit monitor — polls TronGrid every 60s for incoming USDT TRC20
- * deposits to each user's unique derived deposit address.
+ * deposits to the ONE shared business address (trc20Address in system_settings).
  *
- * Timestamp strategy:
- *   - First poll for an address: looks back 24 hours
- *   - Subsequent polls: looks back from (lastChecked - 30 s) to avoid boundary gaps
+ * This monitor does NOT auto-credit users because all users share one address
+ * and ownership cannot be determined automatically.
  *
- * After crediting a user:
- *   1. Checks TRX balance of their derived address
- *   2. If < 5 TRX, sends 10 TRX from hot wallet to cover sweep fees
- *   3. Sweeps USDT from derived address → hot wallet
+ * Crediting happens in two ways:
+ *   1. User pastes TX hash → POST /api/wallet/deposit/verify (instant)
+ *   2. Admin manually credits → POST /api/admin/deposits/credit-missed
+ *
+ * The monitor logs every new detected deposit so admins can see incoming funds
+ * in server logs and cross-reference with user-submitted verifications.
+ *
+ * creditUserDeposit() is exported for use by the admin credit-missed endpoint.
  */
 
 import { db } from "@workspace/db";
@@ -21,34 +24,18 @@ import {
   usersTable,
 } from "@workspace/db";
 import { eq, and, isNotNull } from "drizzle-orm";
-import {
-  getTrc20Transactions,
-  rawToUsdt,
-  getTrxBalance,
-  sendTrx,
-  sendUsdt,
-  privateKeyToTronAddress,
-} from "./tron.js";
-import { deriveUserPrivateKey } from "./hd-wallet.js";
+import { getTrc20Transactions, rawToUsdt } from "./tron.js";
 import { logger } from "./logger.js";
 import { PushNotify } from "../routes/push.js";
 
 const POLL_INTERVAL_MS = 60_000;
-/** 200 ms between TronGrid calls = max 5 req/s */
-const API_CALL_DELAY_MS = 200;
-/** Overlap window for subsequent polls (ms) — avoids missing TXs at poll boundaries */
 const POLL_OVERLAP_MS = 30_000;
 
 let monitorInterval: ReturnType<typeof setInterval> | null = null;
 let isRunning = false;
-/** Per-address last-checked timestamps (in-memory, resets on server restart → 24h lookback) */
-const lastCheckedMap = new Map<string, number>();
+let lastChecked: number | null = null;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-function sleep(ms: number) {
-  return new Promise((r) => setTimeout(r, ms));
-}
 
 async function getSetting(key: string): Promise<string> {
   const rows = await db
@@ -128,71 +115,26 @@ async function sendDepositEmail(
   }
 }
 
-/** Sweep USDT from a user's derived address back to the hot wallet (fire-and-forget). */
-async function sweepToHotWallet(
-  userId: number,
-  userAddress: string,
-  amountUsdt: string
-): Promise<void> {
-  const masterKey =
-    process.env["HOT_WALLET_PRIVATE_KEY"] ?? process.env["MASTER_PRIVATE_KEY"];
-  if (!masterKey) {
-    console.warn("[Deposit] No master key configured — skipping sweep from", userAddress);
-    return;
-  }
-
-  // deriveUserPrivateKey uses BIP44 m/44'/195'/0'/0/<userId> — identical path to address
-  // generation in hd-wallet.ts, so address ↔ private key are always consistent.
-  const userPrivKey = deriveUserPrivateKey(masterKey, userId);
-  const hotWalletAddress = privateKeyToTronAddress(masterKey);
-
-  // ── Step 1: ensure enough TRX for network fees ──
-  const trxBalance = await getTrxBalance(userAddress);
-  console.log(`[Deposit] TRX balance of ${userAddress}: ${trxBalance.toFixed(3)} TRX`);
-
-  if (trxBalance < 5) {
-    console.log(`[Deposit] Funding ${userAddress} with 10 TRX for sweep fees`);
-    try {
-      const fundTxid = await sendTrx(masterKey, userAddress, 10);
-      console.log(`[Deposit] TRX funding txid: ${fundTxid} — waiting 15s for confirmation`);
-      await sleep(15_000);
-    } catch (err) {
-      console.warn("[Deposit] TRX funding failed — aborting sweep:", err);
-      return;
-    }
-  }
-
-  // ── Step 2: sweep USDT → hot wallet ──
-  const amount = parseFloat(amountUsdt);
-  console.log(`[Deposit] Sweeping ${amountUsdt} USDT → ${hotWalletAddress}`);
-  try {
-    const txid = await sendUsdt(userPrivKey, hotWalletAddress, amount);
-    console.log("[Deposit] Sweep complete txid:", txid);
-  } catch (err) {
-    console.warn("[Deposit] Sweep failed (funds remain at derived address):", err);
-  }
-}
-
-/** Credit a user's wallet and fire notifications. Returns true on success. */
+/**
+ * Credit a user's wallet and fire push + email notifications.
+ * Exported for use by admin credit-missed endpoint.
+ */
 export async function creditUserDeposit(
   userId: number,
   walletId: number,
   currentBalance: string,
   amountUsdt: string,
   tx: { txid: string; from: string; to: string },
-  sweep = false
 ): Promise<boolean> {
   const amountFloat = parseFloat(amountUsdt);
   const newBalance = (parseFloat(currentBalance) + amountFloat).toFixed(6);
 
-  console.log(`[Deposit] Found TX: ${tx.txid} amount: ${amountUsdt} USDT for user: ${userId}`);
+  console.log(`[Deposit] Crediting user ${userId}: ${amountUsdt} USDT (txid: ${tx.txid})`);
 
   await db
     .update(walletsTable)
     .set({ availableBalance: newBalance, updatedAt: new Date() })
     .where(eq(walletsTable.id, walletId));
-
-  console.log(`[Deposit] Credited user balance: ${userId} + ${amountUsdt} USDT`);
 
   await db.insert(transactionsTable).values({
     userId,
@@ -214,8 +156,8 @@ export async function creditUserDeposit(
       toAddress: tx.to,
       network: "TRC20",
       status: "completed",
-      source: "monitor_auto",
-      adminNote: `Auto-credited by deposit monitor. ${amountUsdt} USDT from ${tx.from}`,
+      source: "admin_manual",
+      adminNote: `Manually credited by admin. ${amountUsdt} USDT from ${tx.from}`,
     })
     .onConflictDoNothing();
 
@@ -239,13 +181,6 @@ export async function creditUserDeposit(
     })
     .catch(() => {});
 
-  // Sweep USDT back to hot wallet (fire-and-forget)
-  if (sweep) {
-    sweepToHotWallet(userId, tx.to, amountUsdt).catch((err) => {
-      console.warn("[Deposit] Sweep error:", err);
-    });
-  }
-
   return true;
 }
 
@@ -255,73 +190,45 @@ async function poll() {
   if (isRunning) return;
   isRunning = true;
   try {
-    const wallets = await db
-      .select({
-        id: walletsTable.id,
-        userId: walletsTable.userId,
-        depositAddress: walletsTable.depositAddress,
-        availableBalance: walletsTable.availableBalance,
-      })
-      .from(walletsTable)
-      .where(isNotNull(walletsTable.depositAddress));
-
-    if (wallets.length === 0) {
-      logger.debug("[Deposit] No user deposit addresses assigned yet — skipping poll");
+    const businessAddress = await getSetting("trc20Address");
+    if (!businessAddress) {
+      logger.debug("[Deposit] trc20Address not configured in system_settings — skipping poll");
       return;
     }
 
-    console.log(
-      `[Deposit] Checking TRC20 transactions for ${wallets.length} user address(es)`
-    );
+    const since = lastChecked
+      ? lastChecked - POLL_OVERLAP_MS
+      : Date.now() - 24 * 60 * 60 * 1000;
+
+    console.log(`[Deposit] Polling business address ${businessAddress} for new TRC20 deposits`);
+
+    let txs: Awaited<ReturnType<typeof getTrc20Transactions>>;
+    try {
+      txs = await getTrc20Transactions(businessAddress, since);
+    } catch (err) {
+      logger.error({ err, address: businessAddress }, "Error fetching TRC20 transactions");
+      return;
+    }
+
+    lastChecked = Date.now();
+
+    if (txs.length === 0) return;
 
     const processed = await getProcessedTxIds();
 
-    for (const wallet of wallets) {
-      const address = wallet.depositAddress!;
-      const lastChecked = lastCheckedMap.get(address);
+    for (const tx of txs) {
+      if (!tx.confirmed) continue;
+      if (processed.has(tx.txid)) continue;
+      if (tx.to.toLowerCase() !== businessAddress.toLowerCase()) continue;
 
-      // First run → 24h lookback; subsequent → from (lastChecked - 30s overlap)
-      const since = lastChecked
-        ? lastChecked - POLL_OVERLAP_MS
-        : Date.now() - 24 * 60 * 60 * 1000;
+      const amountUsdt = rawToUsdt(tx.value);
+      if (parseFloat(amountUsdt) <= 0) continue;
 
-      console.log("[Deposit] Checking TRC20 transactions for address:", address);
-
-      let txs: Awaited<ReturnType<typeof getTrc20Transactions>>;
-      try {
-        txs = await getTrc20Transactions(address, since);
-      } catch (err) {
-        logger.error(
-          { err, address, userId: wallet.userId },
-          "Error fetching TRC20 transactions for user address"
-        );
-        await sleep(API_CALL_DELAY_MS);
-        continue;
-      }
-
-      // Update last-checked timestamp for this address
-      lastCheckedMap.set(address, Date.now());
-
-      for (const tx of txs) {
-        if (!tx.confirmed) continue;
-        if (processed.has(tx.txid)) continue;
-        if (tx.to.toLowerCase() !== address.toLowerCase()) continue;
-
-        const amountUsdt = rawToUsdt(tx.value);
-        if (parseFloat(amountUsdt) <= 0) continue;
-
-        await creditUserDeposit(
-          wallet.userId,
-          wallet.id,
-          wallet.availableBalance,
-          amountUsdt,
-          tx,
-          true // sweep after credit
-        );
-        processed.add(tx.txid);
-      }
-
-      await sleep(API_CALL_DELAY_MS);
+      // Log detected deposit so admins can see it in server logs.
+      // Actual crediting requires user TX hash verification or admin manual credit.
+      console.log(
+        `[Deposit] Detected unprocessed deposit: ${amountUsdt} USDT from ${tx.from} (txid: ${tx.txid})`
+      );
     }
   } catch (err) {
     logger.error({ err }, "Deposit monitor poll error");
@@ -335,7 +242,7 @@ async function poll() {
 export function startDepositMonitor() {
   if (monitorInterval) return;
   logger.info(
-    "Starting TRC20 deposit monitor — scanning all user deposit addresses (60s interval)"
+    "Starting TRC20 deposit monitor — watching business address (60s interval)"
   );
   poll();
   monitorInterval = setInterval(poll, POLL_INTERVAL_MS);

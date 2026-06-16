@@ -310,21 +310,10 @@ router.post("/register", async (req, res) => {
       addressVerified: false,
     }).returning();
 
-    // Derive a unique TRC20 deposit address for this user (BIP44 m/44'/195'/0'/0/<userId>).
-    // Uses the same path as sweep key recovery — guaranteed consistent via hd-wallet.ts.
-    let depositAddress: string | null = null;
-    try {
-      const { deriveAddressFromEnv } = await import("../lib/hd-wallet.js");
-      depositAddress = deriveAddressFromEnv(user.id);
-    } catch {
-      // If derivation fails (no master key configured), wallet is created without address
-    }
-
     await db.insert(walletsTable).values({
       userId: user.id,
       availableBalance: "0.00",
       frozenBalance: "0.00",
-      depositAddress,
     });
 
     const token = signToken(user.id);

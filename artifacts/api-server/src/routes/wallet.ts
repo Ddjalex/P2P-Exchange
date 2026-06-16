@@ -62,50 +62,15 @@ router.get("/deposit-address", async (req, res) => {
   try {
     const minDeposit = await getSetting("minDeposit", "1");
 
-    if (network === "TRC20") {
-      const userId = (req as any).userId as number;
+    const settingKey = network === "BEP20" ? "bep20Address" : "trc20Address";
+    const address = await getSetting(settingKey, "");
 
-      // Find this user's wallet
-      const walletRows = await db.select().from(walletsTable).where(eq(walletsTable.userId, userId));
-      const wallet = walletRows[0];
-      let address = wallet?.depositAddress ?? null;
-
-      // Derive on-the-fly for existing users not yet assigned an address.
-      // Uses BIP44 m/44'/195'/0'/0/<userId> via hd-wallet.ts — identical path to sweep.
-      if (!address && wallet) {
-        try {
-          const { deriveAddressFromEnv } = await import("../lib/hd-wallet.js");
-          const derived = deriveAddressFromEnv(userId);
-          if (derived) {
-            address = derived;
-            await db.update(walletsTable)
-              .set({ depositAddress: address, updatedAt: new Date() })
-              .where(eq(walletsTable.id, wallet.id));
-          }
-        } catch {
-          // fall through to business address fallback
-        }
-      }
-
-      // Final fallback: shared business address (if HOT_WALLET_PRIVATE_KEY not configured)
-      if (!address) {
-        address = await getSetting("trc20Address", "");
-      }
-
-      if (!address) {
-        return res.status(503).json({ error: "Deposit address not configured yet. Please contact support." });
-      }
-
-      return res.json({ address, network, minDeposit });
-    }
-
-    // BEP20: use shared business address from settings
-    const address = await getSetting("bep20Address", "");
     if (!address) {
       return res.status(503).json({
         error: "Deposit address not configured yet. Please contact support.",
       });
     }
+
     res.json({ address, network, minDeposit });
   } catch (err) {
     req.log.error({ err }, "Failed to get deposit address");
