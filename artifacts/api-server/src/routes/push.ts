@@ -289,6 +289,16 @@ export const PushNotify = {
     });
   },
 
+  async depositReceived(userId: number, amount: string) {
+    await sendPush(userId, {
+      title: "💰 Deposit Received",
+      body: `${parseFloat(amount).toFixed(2)} USDT has been credited to your account.`,
+      type: "deposit_received",
+      url: "/wallet",
+      tag: `deposit-${Date.now()}`,
+    });
+  },
+
   async appealAdmin(orderId: number) {
     await sendPush(1, {
       title: "🚨 New Appeal Filed",

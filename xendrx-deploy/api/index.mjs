@@ -90146,6 +90146,15 @@ var PushNotify = {
       tag: "withdrawal-rejected"
     });
   },
+  async depositReceived(userId, amount) {
+    await sendPush(userId, {
+      title: "\u{1F4B0} Deposit Received",
+      body: `${parseFloat(amount).toFixed(2)} USDT has been credited to your account.`,
+      type: "deposit_received",
+      url: "/wallet",
+      tag: `deposit-${Date.now()}`
+    });
+  },
   async appealAdmin(orderId) {
     await sendPush(1, {
       title: "\u{1F6A8} New Appeal Filed",
@@ -93619,9 +93628,12 @@ var app_default = app;
 var POLL_INTERVAL_MS = 6e4;
 var monitorInterval = null;
 var isRunning = false;
+async function getSetting3(key) {
+  const rows = await db.select().from(systemSettingsTable).where(eq(systemSettingsTable.key, key));
+  return rows[0]?.value?.trim() ?? "";
+}
 async function getBusinessAddress() {
-  const rows = await db.select().from(systemSettingsTable).where(eq(systemSettingsTable.key, "trc20Address"));
-  const addr = rows[0]?.value?.trim();
+  const addr = await getSetting3("trc20Address");
   return addr || null;
 }
 async function getProcessedTxIds() {
@@ -93634,6 +93646,65 @@ async function getProcessedTxIds() {
   reviewedRows.forEach((r) => ids.add(r.txid));
   return ids;
 }
+async function sendDepositEmail(userId, username, email3, amount, txHash) {
+  try {
+    const apiKey = await getSetting3("brevoApiKey");
+    if (!apiKey) {
+      console.log("[Deposit] Brevo API key not configured \u2014 skipping email for user", userId);
+      return;
+    }
+    const senderEmail = await getSetting3("brevoSenderEmail") || "noreply@xendrx.com";
+    const senderName = await getSetting3("brevoSenderName") || "Xendrx";
+    const date6 = (/* @__PURE__ */ new Date()).toLocaleString("en-US", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: "UTC"
+    }) + " UTC";
+    const displayAmount = parseFloat(amount).toFixed(2);
+    const htmlContent = `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #0a0f1e; color: #ffffff; padding: 30px; border-radius: 12px;">
+  <div style="text-align: center; margin-bottom: 30px;">
+    <img src="https://xendrx.com/src/assets/logo-banner.svg" height="40" alt="Xendrx" />
+  </div>
+  <h2 style="color: #00D4FF; text-align: center;">Deposit Confirmed \u2705</h2>
+  <p>Dear <strong>${username}</strong>,</p>
+  <p>Your deposit has been successfully received and credited to your Xendrx wallet.</p>
+  <div style="background: #1a2035; padding: 20px; border-radius: 8px; margin: 20px 0;">
+    <p>\u{1F4B0} <strong>Amount:</strong> ${displayAmount} USDT</p>
+    <p>\u{1F517} <strong>Transaction:</strong> ${txHash}</p>
+    <p>\u{1F4C5} <strong>Date:</strong> ${date6}</p>
+    <p>\u2705 <strong>Status:</strong> Confirmed</p>
+  </div>
+  <p>Your available balance has been updated. You can now start trading on Xendrx P2P.</p>
+  <div style="text-align: center; margin: 30px 0;">
+    <a href="https://xendrx.com/wallet" style="background: #00D4FF; color: #000; padding: 12px 30px; border-radius: 8px; text-decoration: none; font-weight: bold;">View Wallet</a>
+  </div>
+  <p style="color: #888; font-size: 12px; text-align: center;">
+    This is an automated message from Xendrx. Do not reply to this email.
+  </p>
+</div>`;
+    const r = await fetch("https://api.brevo.com/v3/smtp/email", {
+      method: "POST",
+      headers: { "api-key": apiKey, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sender: { name: senderName, email: senderEmail },
+        to: [{ email: email3 }],
+        subject: `\u2705 Deposit Confirmed \u2014 ${displayAmount} USDT Received`,
+        htmlContent
+      })
+    });
+    if (r.ok) {
+      console.log(`[Deposit] Confirmation email sent to ${email3} (user ${userId})`);
+    } else {
+      const body = await r.text().catch(() => "");
+      console.warn(`[Deposit] Brevo email failed for user ${userId}: HTTP ${r.status} \u2014 ${body}`);
+    }
+  } catch (err2) {
+    console.warn("[Deposit] Email send error:", err2);
+  }
+}
 async function poll() {
   if (isRunning) return;
   isRunning = true;
@@ -93643,6 +93714,7 @@ async function poll() {
       logger.debug("No business TRC20 address configured in admin settings \u2014 skipping deposit poll");
       return;
     }
+    console.log("[Deposit] Checking TRC20 transactions for address:", businessAddress);
     const processed = await getProcessedTxIds();
     const since = Date.now() - 24 * 60 * 60 * 1e3;
     let txs;
@@ -93659,22 +93731,70 @@ async function poll() {
       const amountUsdt = rawToUsdt(tx.value);
       const amountFloat = parseFloat(amountUsdt);
       if (amountFloat <= 0) continue;
-      await db.insert(depositVerificationsTable).values({
-        userId: null,
-        txid: tx.txid,
-        amount: amountUsdt,
-        fromAddress: tx.from,
-        toAddress: businessAddress,
-        network: "TRC20",
-        status: "pending",
-        source: "monitor_failure",
-        adminNote: "Incoming deposit detected on-chain. Assign to the correct user to credit their balance."
-      }).onConflictDoNothing();
+      const matchingWallets = await db.select({
+        userId: walletsTable.userId,
+        walletId: walletsTable.id,
+        balance: walletsTable.availableBalance
+      }).from(walletsTable).where(eq(walletsTable.depositAddress, tx.to));
+      if (matchingWallets.length === 1) {
+        const { userId, walletId, balance } = matchingWallets[0];
+        const newBalance = (parseFloat(balance) + amountFloat).toFixed(6);
+        console.log(
+          `[Deposit] Found new transaction: ${tx.txid} amount: ${amountUsdt} crediting user: ${userId}`
+        );
+        await db.update(walletsTable).set({ availableBalance: newBalance, updatedAt: /* @__PURE__ */ new Date() }).where(eq(walletsTable.id, walletId));
+        await db.insert(transactionsTable).values({
+          userId,
+          type: "deposit",
+          amount: amountUsdt,
+          network: "TRC20",
+          status: "completed",
+          txid: tx.txid,
+          address: tx.from
+        });
+        await db.insert(depositVerificationsTable).values({
+          userId,
+          txid: tx.txid,
+          amount: amountUsdt,
+          fromAddress: tx.from,
+          toAddress: businessAddress,
+          network: "TRC20",
+          status: "completed",
+          source: "monitor_auto",
+          adminNote: `Auto-credited by deposit monitor. ${amountUsdt} USDT from ${tx.from}`
+        }).onConflictDoNothing();
+        PushNotify.depositReceived(userId, amountUsdt).catch((err2) => {
+          console.warn("[Deposit] Push notification failed:", err2);
+        });
+        db.select({
+          email: usersTable.email,
+          emailVerified: usersTable.emailVerified,
+          username: usersTable.username
+        }).from(usersTable).where(eq(usersTable.id, userId)).then(([user]) => {
+          if (user?.emailVerified && user.email) {
+            sendDepositEmail(userId, user.username, user.email, amountUsdt, tx.txid).catch(() => {
+            });
+          }
+        }).catch(() => {
+        });
+      } else {
+        await db.insert(depositVerificationsTable).values({
+          userId: null,
+          txid: tx.txid,
+          amount: amountUsdt,
+          fromAddress: tx.from,
+          toAddress: businessAddress,
+          network: "TRC20",
+          status: "pending",
+          source: "monitor_failure",
+          adminNote: "Incoming deposit detected on-chain. Assign to the correct user to credit their balance."
+        }).onConflictDoNothing();
+        logger.info(
+          { txid: tx.txid, amountUsdt, fromAddress: tx.from, matchCount: matchingWallets.length },
+          "Deposit detected \u2014 queued for admin assignment (no unique user match)"
+        );
+      }
       processed.add(tx.txid);
-      logger.info(
-        { txid: tx.txid, amountUsdt, fromAddress: tx.from },
-        "Deposit detected \u2014 queued for admin assignment"
-      );
     }
   } catch (err2) {
     logger.error({ err: err2 }, "Deposit monitor poll error");
