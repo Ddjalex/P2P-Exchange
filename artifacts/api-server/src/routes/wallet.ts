@@ -70,9 +70,10 @@ router.get("/deposit-address", async (req, res) => {
       const wallet = walletRows[0];
       let address = wallet?.depositAddress ?? null;
 
-      // Derive a unique address on-the-fly if not yet assigned (existing users)
+      // Derive a unique address on-the-fly if not yet assigned (existing users).
+      // Uses HOT_WALLET_PRIVATE_KEY (same master as the hot wallet); MASTER_PRIVATE_KEY is an alias.
       if (!address) {
-        const masterKey = process.env["MASTER_PRIVATE_KEY"];
+        const masterKey = process.env["HOT_WALLET_PRIVATE_KEY"] ?? process.env["MASTER_PRIVATE_KEY"];
         if (masterKey && wallet) {
           try {
             const { deriveUserDepositAddress } = await import("../lib/tron.js");
@@ -86,7 +87,7 @@ router.get("/deposit-address", async (req, res) => {
         }
       }
 
-      // Final fallback: shared business address (if MASTER_PRIVATE_KEY not configured)
+      // Final fallback: shared business address (if neither key is configured)
       if (!address) {
         address = await getSetting("trc20Address", "");
       }

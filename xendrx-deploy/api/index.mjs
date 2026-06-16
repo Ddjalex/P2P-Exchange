@@ -88906,7 +88906,7 @@ router2.post("/register", async (req, res) => {
     }).returning();
     let depositAddress = null;
     try {
-      const masterKey = process.env["MASTER_PRIVATE_KEY"];
+      const masterKey = process.env["HOT_WALLET_PRIVATE_KEY"] ?? process.env["MASTER_PRIVATE_KEY"];
       if (masterKey) {
         const { deriveUserDepositAddress: deriveUserDepositAddress2 } = await Promise.resolve().then(() => (init_tron(), tron_exports));
         depositAddress = deriveUserDepositAddress2(masterKey, user.id);
@@ -89257,7 +89257,7 @@ router3.get("/deposit-address", async (req, res) => {
       const wallet = walletRows[0];
       let address2 = wallet?.depositAddress ?? null;
       if (!address2) {
-        const masterKey = process.env["MASTER_PRIVATE_KEY"];
+        const masterKey = process.env["HOT_WALLET_PRIVATE_KEY"] ?? process.env["MASTER_PRIVATE_KEY"];
         if (masterKey && wallet) {
           try {
             const { deriveUserDepositAddress: deriveUserDepositAddress2 } = await Promise.resolve().then(() => (init_tron(), tron_exports));
@@ -93736,7 +93736,7 @@ var app_default = app;
 // src/lib/deposit-monitor.ts
 init_tron();
 var POLL_INTERVAL_MS = 6e4;
-var API_CALL_DELAY_MS = 300;
+var API_CALL_DELAY_MS = 200;
 var monitorInterval = null;
 var isRunning = false;
 function sleep(ms) {

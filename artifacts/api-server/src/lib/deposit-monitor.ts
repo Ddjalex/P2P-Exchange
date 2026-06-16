@@ -25,8 +25,8 @@ import { logger } from "./logger.js";
 import { PushNotify } from "../routes/push.js";
 
 const POLL_INTERVAL_MS = 60_000;
-/** Delay between successive TronGrid calls to avoid rate limiting */
-const API_CALL_DELAY_MS = 300;
+/** Delay between successive TronGrid calls — 200 ms = max 5 req/s */
+const API_CALL_DELAY_MS = 200;
 
 let monitorInterval: ReturnType<typeof setInterval> | null = null;
 let isRunning = false;
