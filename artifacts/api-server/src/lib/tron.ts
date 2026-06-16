@@ -252,66 +252,26 @@ export function rawToUsdt(raw: string): string {
 
 /** Build + sign + broadcast USDT TRC20 transfer. Returns txid on success. */
 export async function sendUsdt(
-  fromPrivKeyHex: string,
+  privateKey: string,
   toAddress: string,
-  amountUsdt: number,
+  amount: number,
 ): Promise<string> {
-  const privateKey = fromPrivKeyHex.replace(/^0x/, "");
-
-  // Derive fromAddress using TronWeb to guarantee consistency with signing
   const tronWeb = new TronWeb({
     fullHost: TRON_GRID,
-    headers: apiHeaders(),
+    headers: { "TRON-PRO-API-KEY": process.env["TRONGRID_API_KEY"] || "" },
     privateKey,
   });
-  const fromAddress = tronWeb.address.fromPrivateKey(privateKey);
-  console.log("[Withdraw] fromAddress derived from private key:", fromAddress);
 
-  if (!fromAddress) throw new Error("Could not derive TRON address from private key");
+  const amountInSun = Math.floor(amount * 1_000_000);
 
-  const amountSun = Math.round(amountUsdt * 10 ** USDT_DECIMALS); // sun = 1e-6 USDT
-
-  // ABI-encode transfer(address,uint256)
-  const toHex = tronAddressToHex(toAddress).slice(2); // remove 41 prefix, pad to 32 bytes
-  const toHexPadded = toHex.padStart(64, "0");
-  const amountHex = amountSun.toString(16).padStart(64, "0");
-  const parameter = toHexPadded + amountHex;
-
-  // 1. Build unsigned tx
-  const buildRes = await fetch(`${TRON_GRID}/wallet/triggersmartcontract`, {
-    method: "POST",
-    headers: apiHeaders(),
-    body: JSON.stringify({
-      owner_address: tronAddressToHex(fromAddress),
-      contract_address: tronAddressToHex(USDT_CONTRACT),
-      function_selector: "transfer(address,uint256)",
-      parameter,
-      fee_limit: 20_000_000, // 20 TRX max fee
-      call_value: 0,
-    }),
+  const contract = await tronWeb.contract().at(USDT_CONTRACT);
+  const result = await contract.transfer(toAddress, amountInSun).send({
+    feeLimit: 30_000_000,
+    shouldPollResponse: false,
   });
-  const buildData = await buildRes.json() as any;
-  if (buildData.result?.code && buildData.result.code !== "SUCCESS") {
-    throw new Error(`Build tx failed: ${buildData.result.message}`);
-  }
-  const unsignedTx = buildData.transaction;
-  if (!unsignedTx) throw new Error("No transaction returned from TronGrid");
 
-  // 2. Sign using TronWeb — handles SHA256 hashing internally
-  const signedTx = await tronWeb.trx.sign(unsignedTx, privateKey);
-
-  // 3. Broadcast
-  const broadcastRes = await fetch(`${TRON_GRID}/wallet/broadcasttransaction`, {
-    method: "POST",
-    headers: apiHeaders(),
-    body: JSON.stringify(signedTx),
-  });
-  const broadcastData = await broadcastRes.json() as any;
-  if (!broadcastData.result) {
-    throw new Error(`Broadcast failed: ${broadcastData.message ?? JSON.stringify(broadcastData)}`);
-  }
-
-  return unsignedTx.txID as string;
+  if (!result) throw new Error("No transaction ID returned");
+  return result as string;
 }
 
 /**

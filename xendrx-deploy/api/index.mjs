@@ -88980,20 +88980,6 @@ function base58Encode(bytes) {
   }
   return result;
 }
-function base58Decode(str) {
-  let num = 0n;
-  for (const ch of str) {
-    const idx = BASE58_ALPHABET.indexOf(ch);
-    if (idx < 0) throw new Error("Invalid base58 character");
-    num = num * 58n + BigInt(idx);
-  }
-  const hex = num.toString(16).padStart(2, "0");
-  const bytes = Buffer.from(hex.length % 2 ? "0" + hex : hex, "hex");
-  const leadingZeros = [...str].filter((c) => c === "1").length;
-  const result = new Uint8Array(leadingZeros + bytes.length);
-  result.set(bytes, leadingZeros);
-  return result;
-}
 function privateKeyToTronAddress(privateKeyHex) {
   const privBytes = Buffer.from(privateKeyHex.replace(/^0x/, ""), "hex");
   const pubKey = getPublicKey(privBytes, false);
@@ -89007,10 +88993,6 @@ function privateKeyToTronAddress(privateKeyHex) {
   full.set(addrBytes);
   full.set(checksum, 21);
   return base58Encode(full);
-}
-function tronAddressToHex(address) {
-  const decoded = base58Decode(address);
-  return Buffer.from(decoded.slice(0, 21)).toString("hex");
 }
 function hexToTronAddress(hex) {
   const bytes = Buffer.from(hex, "hex");
@@ -89044,51 +89026,20 @@ async function getTrc20Transactions(address, minTimestamp) {
 function rawToUsdt(raw) {
   return (parseInt(raw, 10) / 10 ** USDT_DECIMALS).toFixed(6);
 }
-async function sendUsdt(fromPrivKeyHex, toAddress, amountUsdt) {
-  const privateKey = fromPrivKeyHex.replace(/^0x/, "");
+async function sendUsdt(privateKey, toAddress, amount) {
   const tronWeb = new TronWeb({
     fullHost: TRON_GRID,
-    headers: apiHeaders(),
+    headers: { "TRON-PRO-API-KEY": process.env["TRONGRID_API_KEY"] || "" },
     privateKey
   });
-  const fromAddress = tronWeb.address.fromPrivateKey(privateKey);
-  console.log("[Withdraw] fromAddress derived from private key:", fromAddress);
-  if (!fromAddress) throw new Error("Could not derive TRON address from private key");
-  const amountSun = Math.round(amountUsdt * 10 ** USDT_DECIMALS);
-  const toHex = tronAddressToHex(toAddress).slice(2);
-  const toHexPadded = toHex.padStart(64, "0");
-  const amountHex = amountSun.toString(16).padStart(64, "0");
-  const parameter = toHexPadded + amountHex;
-  const buildRes = await fetch(`${TRON_GRID}/wallet/triggersmartcontract`, {
-    method: "POST",
-    headers: apiHeaders(),
-    body: JSON.stringify({
-      owner_address: tronAddressToHex(fromAddress),
-      contract_address: tronAddressToHex(USDT_CONTRACT),
-      function_selector: "transfer(address,uint256)",
-      parameter,
-      fee_limit: 2e7,
-      // 20 TRX max fee
-      call_value: 0
-    })
+  const amountInSun = Math.floor(amount * 1e6);
+  const contract = await tronWeb.contract().at(USDT_CONTRACT);
+  const result = await contract.transfer(toAddress, amountInSun).send({
+    feeLimit: 3e7,
+    shouldPollResponse: false
   });
-  const buildData = await buildRes.json();
-  if (buildData.result?.code && buildData.result.code !== "SUCCESS") {
-    throw new Error(`Build tx failed: ${buildData.result.message}`);
-  }
-  const unsignedTx = buildData.transaction;
-  if (!unsignedTx) throw new Error("No transaction returned from TronGrid");
-  const signedTx = await tronWeb.trx.sign(unsignedTx, privateKey);
-  const broadcastRes = await fetch(`${TRON_GRID}/wallet/broadcasttransaction`, {
-    method: "POST",
-    headers: apiHeaders(),
-    body: JSON.stringify(signedTx)
-  });
-  const broadcastData = await broadcastRes.json();
-  if (!broadcastData.result) {
-    throw new Error(`Broadcast failed: ${broadcastData.message ?? JSON.stringify(broadcastData)}`);
-  }
-  return unsignedTx.txID;
+  if (!result) throw new Error("No transaction ID returned");
+  return result;
 }
 function normalizeTronAddress(addr) {
   if (!addr) return "";
