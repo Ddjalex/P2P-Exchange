@@ -430,7 +430,7 @@ export default function AuthPage() {
                 const cur = modalCtx === "login" ? loginC : regC;
                 return (
                   <div key={c.code} className={`modal-item${cur.code === c.code ? " active" : ""}`} onClick={() => pickCountry(c.code)}>
-                    <span className="m-flag">{c.flag}</span>
+                    <img className="m-flag" src={`https://flagcdn.com/24x18/${c.code.toLowerCase()}.png`} alt={c.name} />
                     <div className="m-info"><div className="m-name">{c.name}</div><div className="m-iso">{c.code}</div></div>
                     <span className="m-dial">{c.dial}</span>
                     <i className="fa-solid fa-check m-check"></i>
@@ -474,7 +474,7 @@ export default function AuthPage() {
                     onClick={() => openPrefixDropdown("login")}
                     title="Change country"
                   >
-                    <span className="pf-flag">{loginC.flag}</span>
+                    <img className="pf-flag" src={`https://flagcdn.com/20x15/${loginC.code.toLowerCase()}.png`} alt={loginC.name} />
                     <span className="pf-code">{loginC.dial}</span>
                     <i className="fa-solid fa-chevron-down pf-caret"></i>
                   </div>
@@ -497,7 +497,7 @@ export default function AuthPage() {
                             className={`prefix-item${loginC.code === c.code ? " active" : ""}`}
                             onClick={() => pickPrefixCountry(c.code, "login")}
                           >
-                            <span className="pi-flag">{c.flag}</span>
+                            <img className="pi-flag" src={`https://flagcdn.com/20x15/${c.code.toLowerCase()}.png`} alt={c.name} />
                             <span className="pi-name">{c.name}</span>
                             <span className="pi-dial">{c.dial}</span>
                           </div>
@@ -601,7 +601,7 @@ export default function AuthPage() {
                         onClick={() => openPrefixDropdown("reg")}
                         title="Change country"
                       >
-                        <span className="pf-flag">{regC.flag}</span>
+                        <img className="pf-flag" src={`https://flagcdn.com/20x15/${regC.code.toLowerCase()}.png`} alt={regC.name} />
                         <span className="pf-code">{regC.dial}</span>
                         <i className="fa-solid fa-chevron-down pf-caret"></i>
                       </div>
@@ -624,7 +624,7 @@ export default function AuthPage() {
                                 className={`prefix-item${regC.code === c.code ? " active" : ""}`}
                                 onClick={() => pickPrefixCountry(c.code, "reg")}
                               >
-                                <span className="pi-flag">{c.flag}</span>
+                                <img className="pi-flag" src={`https://flagcdn.com/20x15/${c.code.toLowerCase()}.png`} alt={c.name} />
                                 <span className="pi-name">{c.name}</span>
                                 <span className="pi-dial">{c.dial}</span>
                               </div>
