@@ -67228,6 +67228,16 @@ var init_push = __esm({
           orderId,
           tag: `admin-appeal-${orderId}`
         });
+      },
+      async appealResolved(userId, orderId, won) {
+        await sendPush(userId, {
+          title: won ? "\u2705 Appeal Decided \u2014 You Won" : "\u274C Appeal Decided \u2014 Counterparty Won",
+          body: won ? `Your appeal on order #${orderId} was resolved in your favor.` : `The appeal on order #${orderId} was decided against you.`,
+          type: "appeal_resolved",
+          url: `/orders/${orderId}`,
+          orderId,
+          tag: `appeal-resolved-${orderId}-${userId}`
+        });
       }
     };
   }
@@ -91807,6 +91817,7 @@ router3.get("/", async (req, res) => {
     const frozen = parseFloat(wallet.frozenBalance);
     const total = avail + frozen;
     const etbRate = await getSetting2("etbRate", "0");
+    const minWithdrawal = await getSetting2("minWithdrawal", "10");
     const etbValue = (total * parseFloat(etbRate || "0")).toFixed(2);
     res.json({
       userId: wallet.userId,
@@ -91815,7 +91826,8 @@ router3.get("/", async (req, res) => {
       frozenBalance: wallet.frozenBalance,
       totalBalance: total.toFixed(2),
       etbValue,
-      etbRate
+      etbRate,
+      minWithdrawal
     });
   } catch (err2) {
     req.log.error({ err: err2 }, "Failed to get wallet");
@@ -91957,7 +91969,8 @@ router3.post("/withdraw", async (req, res) => {
     if (!address || !amount) return res.status(400).json({ error: "Invalid input" });
     if (network !== "TRC20") return res.status(400).json({ error: "Only TRC20 withdrawals are supported" });
     const amt = parseFloat(amount);
-    if (isNaN(amt) || amt < 1) return res.status(400).json({ error: "Minimum withdrawal is 1 USDT" });
+    const minWithdrawalSetting = parseFloat(await getSetting2("minWithdrawal", "10"));
+    if (isNaN(amt) || amt < minWithdrawalSetting) return res.status(400).json({ error: `Minimum withdrawal is ${minWithdrawalSetting} USDT` });
     const wallet = await getOrCreateWallet(userId);
     const avail = parseFloat(wallet.availableBalance);
     if (amt > avail) return res.status(400).json({ error: "Insufficient balance" });
@@ -94875,6 +94888,10 @@ router13.put("/disputes/:id/resolve", adminAuth, async (req, res) => {
           }
           await tx.update(appealsTable).set({ status: "resolved", adminDecision: decision, resolvedAt: now }).where(eq(appealsTable.id, id));
           await tx.update(ordersTable).set({ status: "cancelled", completedAt: now, adminNote: adminNote ?? null }).where(eq(ordersTable.id, order.id));
+          await tx.insert(transactionsTable).values([
+            { userId: order.sellerId, type: "p2p_sell", amount: grossUsdt.toFixed(8), status: "completed", note: `Dispute resolved (seller wins). ${grossUsdt.toFixed(8)} USDT returned to your balance.` },
+            { userId: order.buyerId, type: "p2p_buy", amount: grossUsdt.toFixed(8), status: "failed", note: `Dispute resolved (seller wins). Order #${order.id} closed against you.` }
+          ]);
         });
       }
     } else {
@@ -94885,6 +94902,8 @@ router13.put("/disputes/:id/resolve", adminAuth, async (req, res) => {
     await log(req.adminEmail, "resolve_dispute", "appeal", id, `${decision}: ${adminNote}`);
     if (order) {
       const buyerWins = decision === "buyer_wins";
+      PushNotify.appealResolved(order.buyerId, order.id, buyerWins).catch(console.error);
+      PushNotify.appealResolved(order.sellerId, order.id, !buyerWins).catch(console.error);
       TelegramNotify.appealResolved(order.buyerId, order.id, buyerWins).catch(console.error);
       TelegramNotify.appealResolved(order.sellerId, order.id, !buyerWins).catch(console.error);
     }
@@ -95628,7 +95647,10 @@ router13.patch("/fees", adminAuth, async (req, res) => {
     if (!isPercent && value > 1e3) {
       return res.status(400).json({ error: "Withdrawal fee cannot exceed 1000 USDT" });
     }
-    await db.update(feeSettingsTable).set({ value: String(value), updatedAt: /* @__PURE__ */ new Date() }).where(eq(feeSettingsTable.feeType, feeType));
+    await db.insert(feeSettingsTable).values({ feeType, value: String(value) }).onConflictDoUpdate({
+      target: feeSettingsTable.feeType,
+      set: { value: String(value), updatedAt: /* @__PURE__ */ new Date() }
+    });
     await log(req.adminEmail, "update_fee", "fee_settings", void 0, `Updated ${feeType} to ${value}`);
     return res.json({ message: "Fee updated successfully" });
   } catch (err2) {

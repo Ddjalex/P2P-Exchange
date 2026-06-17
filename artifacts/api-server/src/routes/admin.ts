@@ -741,6 +741,12 @@ router.put("/disputes/:id/resolve", adminAuth, async (req: any, res) => {
           await tx.update(ordersTable)
             .set({ status: "cancelled", completedAt: now, adminNote: adminNote ?? null })
             .where(eq(ordersTable.id, order.id));
+
+          // Transaction records so both users see the outcome in their history
+          await tx.insert(transactionsTable).values([
+            { userId: order.sellerId, type: "p2p_sell", amount: grossUsdt.toFixed(8), status: "completed", note: `Dispute resolved (seller wins). ${grossUsdt.toFixed(8)} USDT returned to your balance.` },
+            { userId: order.buyerId, type: "p2p_buy", amount: grossUsdt.toFixed(8), status: "failed", note: `Dispute resolved (seller wins). Order #${order.id} closed against you.` },
+          ]);
         });
       }
     } else {
@@ -757,6 +763,8 @@ router.put("/disputes/:id/resolve", adminAuth, async (req: any, res) => {
     await log(req.adminEmail, "resolve_dispute", "appeal", id, `${decision}: ${adminNote}`);
     if (order) {
       const buyerWins = decision === "buyer_wins";
+      PushNotify.appealResolved(order.buyerId, order.id, buyerWins).catch(console.error);
+      PushNotify.appealResolved(order.sellerId, order.id, !buyerWins).catch(console.error);
       TelegramNotify.appealResolved(order.buyerId, order.id, buyerWins).catch(console.error);
       TelegramNotify.appealResolved(order.sellerId, order.id, !buyerWins).catch(console.error);
     }
@@ -1646,9 +1654,12 @@ router.patch("/fees", adminAuth, async (req, res) => {
       return res.status(400).json({ error: "Withdrawal fee cannot exceed 1000 USDT" });
     }
 
-    await db.update(feeSettingsTable)
-      .set({ value: String(value), updatedAt: new Date() })
-      .where(eq(feeSettingsTable.feeType, feeType));
+    await db.insert(feeSettingsTable)
+      .values({ feeType, value: String(value) })
+      .onConflictDoUpdate({
+        target: feeSettingsTable.feeType,
+        set: { value: String(value), updatedAt: new Date() },
+      });
 
     await log(req.adminEmail, "update_fee", "fee_settings", undefined, `Updated ${feeType} to ${value}`);
 

@@ -36,6 +36,7 @@ router.get("/", async (req, res) => {
     const frozen = parseFloat(wallet.frozenBalance);
     const total = avail + frozen;
     const etbRate = await getSetting("etbRate", "0");
+    const minWithdrawal = await getSetting("minWithdrawal", "10");
     const etbValue = (total * parseFloat(etbRate || "0")).toFixed(2);
     res.json({
       userId: wallet.userId,
@@ -45,6 +46,7 @@ router.get("/", async (req, res) => {
       totalBalance: total.toFixed(2),
       etbValue,
       etbRate,
+      minWithdrawal,
     });
   } catch (err) {
     req.log.error({ err }, "Failed to get wallet");
@@ -228,7 +230,8 @@ router.post("/withdraw", async (req, res) => {
     if (network !== "TRC20") return res.status(400).json({ error: "Only TRC20 withdrawals are supported" });
 
     const amt = parseFloat(amount);
-    if (isNaN(amt) || amt < 1) return res.status(400).json({ error: "Minimum withdrawal is 1 USDT" });
+    const minWithdrawalSetting = parseFloat(await getSetting("minWithdrawal", "10"));
+    if (isNaN(amt) || amt < minWithdrawalSetting) return res.status(400).json({ error: `Minimum withdrawal is ${minWithdrawalSetting} USDT` });
 
     const wallet = await getOrCreateWallet(userId);
     const avail = parseFloat(wallet.availableBalance);

@@ -309,6 +309,19 @@ export const PushNotify = {
       tag: `admin-appeal-${orderId}`,
     });
   },
+
+  async appealResolved(userId: number, orderId: number, won: boolean) {
+    await sendPush(userId, {
+      title: won ? "✅ Appeal Decided — You Won" : "❌ Appeal Decided — Counterparty Won",
+      body: won
+        ? `Your appeal on order #${orderId} was resolved in your favor.`
+        : `The appeal on order #${orderId} was decided against you.`,
+      type: "appeal_resolved",
+      url: `/orders/${orderId}`,
+      orderId,
+      tag: `appeal-resolved-${orderId}-${userId}`,
+    });
+  },
 };
 
 export async function sendPushBroadcast(

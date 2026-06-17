@@ -250,10 +250,12 @@ function DepositModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
 
 function WithdrawModal({
   availableBalance,
+  minWithdrawal,
   onClose,
   onSuccess,
 }: {
   availableBalance: string;
+  minWithdrawal: number;
   onClose: () => void;
   onSuccess: () => void;
 }) {
@@ -277,7 +279,7 @@ function WithdrawModal({
     if (!address.trim()) { setError("Enter a destination wallet address"); return; }
     if (amt <= 0) { setError("Enter a valid amount"); return; }
     if (amt > avail) { setError("Insufficient available balance"); return; }
-    if (amt < 1) { setError("Minimum withdrawal is 1 USDT"); return; }
+    if (amt < minWithdrawal) { setError(`Minimum withdrawal is ${minWithdrawal} USDT`); return; }
 
     setLoading(true);
     try {
@@ -422,7 +424,7 @@ function WithdrawModal({
               </button>
 
               <p className="text-center text-xs text-muted-foreground pb-2">
-                Minimum withdrawal: 1 USDT · Processing time: ~30 minutes
+                Minimum withdrawal: {minWithdrawal} USDT · Processing time: ~30 minutes
               </p>
             </>
           )}
@@ -606,6 +608,7 @@ export default function WalletPage() {
       {showWithdraw && (
         <WithdrawModal
           availableBalance={wallet?.availableBalance ?? "0"}
+          minWithdrawal={parseFloat((wallet as any)?.minWithdrawal ?? "10")}
           onClose={() => setShowWithdraw(false)}
           onSuccess={handleWithdrawSuccess}
         />
