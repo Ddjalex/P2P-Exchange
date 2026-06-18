@@ -134,12 +134,22 @@ export default function AdminEmailPage() {
         "/email/send",
         { userIds: selected.map(u => u.id), subject: subject.trim(), body: body.trim() }
       );
-      if (data.success) {
-        setResult({ ok: true, msg: `Email sent to ${data.sent} recipient${data.sent !== 1 ? "s" : ""}${data.failed > 0 ? ` (${data.failed} failed)` : ""}.` });
+      if (data.success && data.sent > 0) {
+        setResult({
+          ok: true,
+          msg: `✅ Email sent to ${data.sent} recipient${data.sent !== 1 ? "s" : ""}${data.failed > 0 ? ` (${data.failed} failed)` : ""}.`,
+        });
         setSelected([]);
         setSubject("");
         setBody("");
         setHistoryLoaded(false);
+      } else if (data.sent === 0) {
+        setResult({
+          ok: false,
+          msg: data.error
+            ? `Brevo error: ${data.error}`
+            : "Email was not delivered. Check your Brevo API key and sender email in System Settings.",
+        });
       } else {
         setResult({ ok: false, msg: data.error ?? "Failed to send." });
       }

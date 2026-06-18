@@ -1899,6 +1899,7 @@ router.post("/email/send", adminAuth, async (req: any, res) => {
 
     let sent = 0;
     let failed = 0;
+    const errors: string[] = [];
 
     await Promise.allSettled(
       users.map(async (u: any) => {
@@ -1908,9 +1909,9 @@ router.post("/email/send", adminAuth, async (req: any, res) => {
         try {
           const r = await fetch("https://api.brevo.com/v3/smtp/email", {
             method: "POST",
-            headers: { "api-key": sm.brevoApiKey, "Content-Type": "application/json" },
+            headers: { "api-key": sm.brevoApiKey.trim(), "Content-Type": "application/json" },
             body: JSON.stringify({
-              sender: { name: senderName, email: senderEmail },
+              sender: { name: senderName, email: senderEmail.trim() },
               to: [{ email: u.email, name: u.username }],
               subject: subject.trim(),
               htmlContent,
@@ -1928,7 +1929,13 @@ router.post("/email/send", adminAuth, async (req: any, res) => {
             }).catch(() => {});
           } else {
             const errText = await r.text().catch(() => `HTTP ${r.status}`);
+            let errMsg = `HTTP ${r.status}`;
+            try {
+              const parsed = JSON.parse(errText);
+              errMsg = parsed.message || parsed.error || errText;
+            } catch { errMsg = errText; }
             failed++;
+            errors.push(`${u.email}: ${errMsg}`);
             await db.insert(adminEmailSendsTable).values({
               adminEmail: req.adminEmail,
               userId: u.id,
@@ -1936,11 +1943,13 @@ router.post("/email/send", adminAuth, async (req: any, res) => {
               subject: subject.trim(),
               body: body.trim(),
               status: "failed",
-              error: errText.slice(0, 500),
+              error: errMsg.slice(0, 500),
             }).catch(() => {});
           }
         } catch (e: any) {
           failed++;
+          const errMsg = e?.message ?? "network error";
+          errors.push(`${u.email}: ${errMsg}`);
           await db.insert(adminEmailSendsTable).values({
             adminEmail: req.adminEmail,
             userId: u.id,
@@ -1948,14 +1957,20 @@ router.post("/email/send", adminAuth, async (req: any, res) => {
             subject: subject.trim(),
             body: body.trim(),
             status: "failed",
-            error: e?.message?.slice(0, 500) ?? "unknown",
+            error: errMsg.slice(0, 500),
           }).catch(() => {});
         }
       })
     );
 
     await log(req.adminEmail, "send_user_email", "email", null, `${sent} sent, ${failed} failed — subject: ${subject.trim().slice(0, 80)}`);
-    res.json({ success: true, sent, failed });
+    const allFailed = sent === 0 && failed > 0;
+    res.json({
+      success: !allFailed,
+      sent,
+      failed,
+      error: allFailed ? errors[0] ?? "All emails failed to send" : undefined,
+    });
   } catch (err) {
     req.log.error({ err }, "Admin send user email failed");
     res.status(500).json({ error: "Internal server error" });
