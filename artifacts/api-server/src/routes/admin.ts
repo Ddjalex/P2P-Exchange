@@ -9,7 +9,7 @@ import {
   depositVerificationsTable, cardWaitlistTable, feeSettingsTable, platformWalletTable,
   feeTransactionsTable, addressVerificationsTable, adminEmailSendsTable,
 } from "@workspace/db";
-import { eq, desc, and, or, ilike, sql, ne, count } from "drizzle-orm";
+import { eq, desc, and, or, ilike, sql, ne, count, inArray } from "drizzle-orm";
 import { getFeePercents, calculateFees } from "../helpers/fees.js";
 import { PushNotify, sendPushBroadcast } from "./push.js";
 import { TelegramNotify } from "../telegram/notify.js";
@@ -1884,7 +1884,7 @@ router.post("/email/send", adminAuth, async (req: any, res) => {
     const senderName = sm.brevoSenderName || "Xendrx";
 
     const users = await db.select().from(usersTable).where(
-      sql`${usersTable.id} = ANY(${userIds})`
+      inArray(usersTable.id, userIds)
     );
 
     const htmlContent = `<div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;background:#080d18;color:#fff;border-radius:12px;padding:32px;">
