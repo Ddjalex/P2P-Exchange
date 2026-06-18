@@ -1,5 +1,17 @@
 import { pgTable, serial, integer, text, timestamp } from "drizzle-orm/pg-core";
 
+export const adminEmailSendsTable = pgTable("admin_email_sends", {
+  id: serial("id").primaryKey(),
+  adminEmail: text("admin_email").notNull(),
+  userId: integer("user_id"),
+  toEmail: text("to_email").notNull(),
+  subject: text("subject").notNull(),
+  body: text("body").notNull(),
+  status: text("status").notNull().default("sent"),
+  error: text("error"),
+  sentAt: timestamp("sent_at").notNull().defaultNow(),
+});
+
 export const adminLogsTable = pgTable("admin_logs", {
   id: serial("id").primaryKey(),
   adminEmail: text("admin_email").notNull(),

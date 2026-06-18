@@ -340,14 +340,10 @@ router.post("/login", loginLimiter, async (req, res) => {
     if (isPhone) {
       const fullPhone = `${dialCode ?? ""}${identifier}`;
       const allUsers = await db.select().from(usersTable);
-      req.log.info({ fullPhone, identifier, totalUsers: allUsers.length, usersWithPhone: allUsers.filter(u => u.phone).length }, "[DEBUG] phone login attempt");
       user = allUsers.find(u => u.phone && (u.phone === fullPhone || u.phone.endsWith(identifier)));
-      req.log.info({ found: !!user, username: user?.username ?? null }, "[DEBUG] user lookup result");
     } else {
-      const emailLower = String(identifier).toLowerCase();
       user = await db.select().from(usersTable)
-        .where(eq(usersTable.email, emailLower)).then(r => r[0]);
-      req.log.info({ email: emailLower, found: !!user, hasHash: !!user?.passwordHash }, "[DEBUG] email login attempt");
+        .where(eq(usersTable.email, String(identifier).toLowerCase())).then(r => r[0]);
     }
 
     if (!user || !user.passwordHash) return res.status(401).json({ error: "Invalid credentials" });

@@ -7,7 +7,7 @@ import {
   transactionsTable, walletsTable, messagesTable, notificationsTable,
   adminLogsTable, systemSettingsTable, notificationHistoryTable, fraudFlagsTable,
   depositVerificationsTable, cardWaitlistTable, feeSettingsTable, platformWalletTable,
-  feeTransactionsTable, addressVerificationsTable,
+  feeTransactionsTable, addressVerificationsTable, adminEmailSendsTable,
 } from "@workspace/db";
 import { eq, desc, and, or, ilike, sql, ne, count } from "drizzle-orm";
 import { getFeePercents, calculateFees } from "../helpers/fees.js";
@@ -1833,6 +1833,144 @@ router.post("/deposits/credit-missed", adminAuth, async (req: any, res) => {
   } catch (err: any) {
     req.log.error({ err }, "Admin manual deposit credit failed");
     return res.status(500).json({ error: err?.message || "Internal server error" });
+  }
+});
+
+// ─── EMAIL USERS ─────────────────────────────────────────────────────────────
+
+router.get("/email/users", adminAuth, async (req, res) => {
+  try {
+    const all = await db.select({
+      id: usersTable.id,
+      username: usersTable.username,
+      email: usersTable.email,
+      emailVerified: usersTable.emailVerified,
+      kycStatus: usersTable.kycStatus,
+    }).from(usersTable);
+    const filtered = all.filter((u: any) =>
+      u.email &&
+      !u.email.endsWith("@phone.xendrx.com") &&
+      !u.email.endsWith("@phone.ethiop2p.com")
+    );
+    res.json(filtered);
+  } catch (err) {
+    req.log.error({ err }, "Admin email users failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/email/send", adminAuth, async (req: any, res) => {
+  try {
+    const { userIds, subject, body } = req.body ?? {};
+    if (!Array.isArray(userIds) || userIds.length === 0)
+      return res.status(400).json({ error: "userIds array required" });
+    if (!subject?.trim() || !body?.trim())
+      return res.status(400).json({ error: "subject and body are required" });
+
+    const settingRows = await db.select().from(systemSettingsTable).where(
+      or(
+        eq(systemSettingsTable.key, "brevoApiKey"),
+        eq(systemSettingsTable.key, "brevoSenderEmail"),
+        eq(systemSettingsTable.key, "brevoSenderName")
+      )
+    ).catch(() => [] as any[]);
+    const sm: Record<string, string> = {};
+    for (const r of settingRows) sm[r.key] = r.value;
+
+    if (!sm.brevoApiKey)
+      return res.status(400).json({ error: "Brevo API key not configured in Settings." });
+
+    const senderEmail = sm.brevoSenderEmail || "noreply@xendrx.com";
+    const senderName = sm.brevoSenderName || "Xendrx";
+
+    const users = await db.select().from(usersTable).where(
+      sql`${usersTable.id} = ANY(${userIds})`
+    );
+
+    const htmlContent = `<div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;background:#080d18;color:#fff;border-radius:12px;padding:32px;">
+<div style="text-align:center;margin-bottom:24px;">
+  <span style="font-size:26px;font-weight:700;color:#00e5ff;">xen<span style="color:#fff;">drx</span></span>
+</div>
+<h2 style="margin:0 0 16px;font-size:20px;color:#fff;">${subject.trim()}</h2>
+<div style="color:rgba(255,255,255,.75);font-size:14px;line-height:1.7;white-space:pre-wrap;">${body.trim()}</div>
+<hr style="border:none;border-top:1px solid rgba(255,255,255,.1);margin:28px 0 16px;" />
+<p style="color:rgba(255,255,255,.35);font-size:11px;text-align:center;margin:0;">Xendrx P2P Exchange &mdash; This email was sent from the admin panel.</p>
+</div>`;
+
+    let sent = 0;
+    let failed = 0;
+
+    await Promise.allSettled(
+      users.map(async (u: any) => {
+        if (!u.email || u.email.endsWith("@phone.xendrx.com") || u.email.endsWith("@phone.ethiop2p.com")) {
+          return;
+        }
+        try {
+          const r = await fetch("https://api.brevo.com/v3/smtp/email", {
+            method: "POST",
+            headers: { "api-key": sm.brevoApiKey, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              sender: { name: senderName, email: senderEmail },
+              to: [{ email: u.email, name: u.username }],
+              subject: subject.trim(),
+              htmlContent,
+            }),
+          });
+          if (r.ok) {
+            sent++;
+            await db.insert(adminEmailSendsTable).values({
+              adminEmail: req.adminEmail,
+              userId: u.id,
+              toEmail: u.email,
+              subject: subject.trim(),
+              body: body.trim(),
+              status: "sent",
+            }).catch(() => {});
+          } else {
+            const errText = await r.text().catch(() => `HTTP ${r.status}`);
+            failed++;
+            await db.insert(adminEmailSendsTable).values({
+              adminEmail: req.adminEmail,
+              userId: u.id,
+              toEmail: u.email,
+              subject: subject.trim(),
+              body: body.trim(),
+              status: "failed",
+              error: errText.slice(0, 500),
+            }).catch(() => {});
+          }
+        } catch (e: any) {
+          failed++;
+          await db.insert(adminEmailSendsTable).values({
+            adminEmail: req.adminEmail,
+            userId: u.id,
+            toEmail: u.email,
+            subject: subject.trim(),
+            body: body.trim(),
+            status: "failed",
+            error: e?.message?.slice(0, 500) ?? "unknown",
+          }).catch(() => {});
+        }
+      })
+    );
+
+    await log(req.adminEmail, "send_user_email", "email", null, `${sent} sent, ${failed} failed — subject: ${subject.trim().slice(0, 80)}`);
+    res.json({ success: true, sent, failed });
+  } catch (err) {
+    req.log.error({ err }, "Admin send user email failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.get("/email/history", adminAuth, async (req, res) => {
+  try {
+    const rows = await db.select().from(adminEmailSendsTable)
+      .orderBy(desc(adminEmailSendsTable.sentAt))
+      .limit(100);
+    res.json(rows);
+  } catch (err) {
+    req.log.error({ err }, "Admin email history failed");
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
