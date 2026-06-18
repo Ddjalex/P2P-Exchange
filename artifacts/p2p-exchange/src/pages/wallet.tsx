@@ -251,11 +251,13 @@ function DepositModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
 function WithdrawModal({
   availableBalance,
   minWithdrawal,
+  withdrawalFeeTRC20,
   onClose,
   onSuccess,
 }: {
   availableBalance: string;
   minWithdrawal: number;
+  withdrawalFeeTRC20: number;
   onClose: () => void;
   onSuccess: () => void;
 }) {
@@ -269,8 +271,8 @@ function WithdrawModal({
 
   const avail = parseFloat(availableBalance || "0");
   const amt = parseFloat(amount || "0");
-  const fee = amt > 0 ? (amt * 0.001).toFixed(4) : "0";
-  const youGet = amt > 0 ? Math.max(0, amt - parseFloat(fee)).toFixed(4) : "0";
+  const fee = withdrawalFeeTRC20;
+  const youGet = amt > 0 ? Math.max(0, amt - fee).toFixed(4) : "0";
 
   const handleSetMax = () => setAmount(avail.toFixed(2));
 
@@ -394,8 +396,8 @@ function WithdrawModal({
               {amt > 0 && (
                 <div className="bg-secondary rounded-xl p-4 space-y-2 text-sm">
                   <div className="flex justify-between text-muted-foreground">
-                    <span>Network Fee (0.1%)</span>
-                    <span className="font-mono">{fee} USDT</span>
+                    <span>Network Fee (fixed)</span>
+                    <span className="font-mono">{fee.toFixed(4)} USDT</span>
                   </div>
                   <div className="flex justify-between font-semibold border-t border-border pt-2">
                     <span>You Receive</span>
@@ -609,6 +611,7 @@ export default function WalletPage() {
         <WithdrawModal
           availableBalance={wallet?.availableBalance ?? "0"}
           minWithdrawal={parseFloat((wallet as any)?.minWithdrawal ?? "10")}
+          withdrawalFeeTRC20={parseFloat((wallet as any)?.withdrawalFeeTRC20 ?? "2.5")}
           onClose={() => setShowWithdraw(false)}
           onSuccess={handleWithdrawSuccess}
         />

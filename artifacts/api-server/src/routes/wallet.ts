@@ -6,6 +6,7 @@ import { sendUsdt, privateKeyToTronAddress, getTrc20TxDetails } from "../lib/tro
 import { depositVerificationsTable } from "@workspace/db";
 import { getBscUsdtTx } from "../lib/bsc.js";
 import { emitToUser } from "../lib/sse.js";
+import { getFeePercents } from "../helpers/fees.js";
 
 const router = Router();
 
@@ -35,8 +36,11 @@ router.get("/", async (req, res) => {
     const avail = parseFloat(wallet.availableBalance);
     const frozen = parseFloat(wallet.frozenBalance);
     const total = avail + frozen;
-    const etbRate = await getSetting("etbRate", "0");
-    const minWithdrawal = await getSetting("minWithdrawal", "10");
+    const [etbRate, minWithdrawal, { withdrawalFeeTRC20, withdrawalFeeERC20 }] = await Promise.all([
+      getSetting("etbRate", "0"),
+      getSetting("minWithdrawal", "10"),
+      getFeePercents(),
+    ]);
     const etbValue = (total * parseFloat(etbRate || "0")).toFixed(2);
     res.json({
       userId: wallet.userId,
@@ -47,6 +51,8 @@ router.get("/", async (req, res) => {
       etbValue,
       etbRate,
       minWithdrawal,
+      withdrawalFeeTRC20,
+      withdrawalFeeERC20,
     });
   } catch (err) {
     req.log.error({ err }, "Failed to get wallet");
@@ -230,7 +236,10 @@ router.post("/withdraw", async (req, res) => {
     if (network !== "TRC20") return res.status(400).json({ error: "Only TRC20 withdrawals are supported" });
 
     const amt = parseFloat(amount);
-    const minWithdrawalSetting = parseFloat(await getSetting("minWithdrawal", "10"));
+    const [minWithdrawalSetting, { withdrawalFeeTRC20 }] = await Promise.all([
+      getSetting("minWithdrawal", "10").then(parseFloat),
+      getFeePercents(),
+    ]);
     if (isNaN(amt) || amt < minWithdrawalSetting) return res.status(400).json({ error: `Minimum withdrawal is ${minWithdrawalSetting} USDT` });
 
     const wallet = await getOrCreateWallet(userId);
@@ -247,7 +256,8 @@ router.post("/withdraw", async (req, res) => {
       return res.status(503).json({ error: "Withdrawal service not configured" });
     }
 
-    const fee = (amt * 0.001);
+    const fee = withdrawalFeeTRC20;
+    if (amt <= fee) return res.status(400).json({ error: `Amount must be greater than the withdrawal fee (${fee} USDT)` });
     const netAmount = amt - fee;
 
     // Deduct balance BEFORE broadcast to prevent double-spend
