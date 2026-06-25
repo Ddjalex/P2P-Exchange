@@ -64,7 +64,7 @@ export default function PhoneVerifyPage() {
     try {
       const res = await fetch("/api/auth/send-code", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
         body: JSON.stringify({ target: fullPhone, type: "phone" }),
       });
       const data = await res.json();

@@ -145,7 +145,10 @@ router.post("/send-code", sendCodeLimiter, async (req, res) => {
     if (!target || !type || !["phone", "email"].includes(type)) {
       return res.status(400).json({ error: "target and type (phone|email) are required" });
     }
-    if (!(await verifyTurnstile(turnstileToken, req.ip))) {
+    // Skip Turnstile for already-authenticated users (e.g. adding phone from settings)
+    const authHeader = req.headers.authorization;
+    const isAuthenticated = !!(authHeader?.startsWith("Bearer ") && verifyToken(authHeader.slice(7)));
+    if (!isAuthenticated && !(await verifyTurnstile(turnstileToken, req.ip))) {
       return res.status(400).json({ error: "Security check failed. Please try again." });
     }
 

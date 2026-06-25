@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { walletsTable, transactionsTable, systemSettingsTable, usersTable, internalTransfersTable, notificationsTable } from "@workspace/db";
 import { eq, and, desc, or } from "drizzle-orm";
-import { sendUsdt, privateKeyToTronAddress, getTrc20TxDetails } from "../lib/tron.js";
+import { sendUsdt, privateKeyToTronAddress, getTrc20TxDetails, getTrc20Balance } from "../lib/tron.js";
 import { depositVerificationsTable } from "@workspace/db";
 import { getBscUsdtTx } from "../lib/bsc.js";
 import { emitToUser } from "../lib/sse.js";
@@ -276,6 +276,37 @@ router.post("/withdraw", async (req, res) => {
       address,
       fee: fee.toFixed(6),
     }).returning();
+
+    // Check hot wallet USDT balance before broadcasting.
+    // If insufficient, leave as "pending" for admin to manually process — never attempt
+    // a doomed on-chain transaction that wastes energy and confuses the user.
+    let hotWalletBalance = 0;
+    try {
+      const hotAddress = privateKeyToTronAddress(privateKey.replace(/^0x/, ""));
+      const balStr = await getTrc20Balance(hotAddress);
+      hotWalletBalance = parseFloat(balStr);
+    } catch (balErr) {
+      req.log.warn({ balErr }, "Could not fetch hot wallet balance — proceeding with caution");
+    }
+
+    if (hotWalletBalance < netAmount) {
+      // Insufficient hot wallet funds — hold for admin approval
+      req.log.warn(
+        { hotWalletBalance, netAmount, txId: tx.id },
+        "Hot wallet insufficient — withdrawal held pending admin approval"
+      );
+      res.json({
+        id: tx.id,
+        status: "pending",
+        amount: amt.toFixed(6),
+        netAmount: netAmount.toFixed(6),
+        fee: fee.toFixed(6),
+        network: "TRC20",
+        address,
+        message: "Withdrawal is pending admin approval. You will be notified once processed.",
+      });
+      return;
+    }
 
     // Broadcast to blockchain — fire and forget.
     // On success: mark completed. On failure: leave as "pending" for admin review.
