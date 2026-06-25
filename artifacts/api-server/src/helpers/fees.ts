@@ -8,8 +8,7 @@ export async function getFeePercents() {
   return {
     makerFeePercent: feeMap["maker_fee_percent"] ?? 0.20,
     takerFeePercent: feeMap["taker_fee_percent"] ?? 0.10,
-    withdrawalFeeTRC20: feeMap["withdrawal_fee_trc20"] ?? 1.00,
-    withdrawalFeeERC20: feeMap["withdrawal_fee_erc20"] ?? 5.00,
+    withdrawalFeeBEP20: feeMap["withdrawal_fee_bep20"] ?? 1.00,
   };
 }
 

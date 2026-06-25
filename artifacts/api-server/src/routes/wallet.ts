@@ -2,9 +2,8 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { walletsTable, transactionsTable, systemSettingsTable, usersTable, internalTransfersTable, notificationsTable } from "@workspace/db";
 import { eq, and, desc, or } from "drizzle-orm";
-import { sendUsdt, privateKeyToTronAddress, getTrc20TxDetails, getTrc20Balance } from "../lib/tron.js";
 import { depositVerificationsTable } from "@workspace/db";
-import { getBscUsdtTx } from "../lib/bsc.js";
+import { getBscUsdtTx, getBscUsdtBalance, sendUsdtBsc } from "../lib/bsc.js";
 import { emitToUser } from "../lib/sse.js";
 import { getFeePercents } from "../helpers/fees.js";
 
@@ -36,7 +35,7 @@ router.get("/", async (req, res) => {
     const avail = parseFloat(wallet.availableBalance);
     const frozen = parseFloat(wallet.frozenBalance);
     const total = avail + frozen;
-    const [etbRate, minWithdrawal, { withdrawalFeeTRC20, withdrawalFeeERC20 }] = await Promise.all([
+    const [etbRate, minWithdrawal, { withdrawalFeeBEP20 }] = await Promise.all([
       getSetting("etbRate", "0"),
       getSetting("minWithdrawal", "10"),
       getFeePercents(),
@@ -51,8 +50,7 @@ router.get("/", async (req, res) => {
       etbValue,
       etbRate,
       minWithdrawal,
-      withdrawalFeeTRC20,
-      withdrawalFeeERC20,
+      withdrawalFeeBEP20,
     });
   } catch (err) {
     req.log.error({ err }, "Failed to get wallet");
@@ -60,18 +58,11 @@ router.get("/", async (req, res) => {
   }
 });
 
-// GET /api/wallet/deposit-address?network=TRC20|BEP20
+// GET /api/wallet/deposit-address?network=BEP20
 router.get("/deposit-address", async (req, res) => {
-  const network = (req.query.network as string)?.toUpperCase();
-  if (!["TRC20", "BEP20"].includes(network)) {
-    return res.status(400).json({ error: "Invalid network. Supported: TRC20, BEP20" });
-  }
-
   try {
     const minDeposit = await getSetting("minDeposit", "1");
-
-    const settingKey = network === "BEP20" ? "bep20Address" : "trc20Address";
-    const address = await getSetting(settingKey, "");
+    const address = await getSetting("bscAddress", "");
 
     if (!address) {
       return res.status(503).json({
@@ -79,37 +70,27 @@ router.get("/deposit-address", async (req, res) => {
       });
     }
 
-    res.json({ address, network, minDeposit });
+    res.json({ address, network: "BEP20", minDeposit });
   } catch (err) {
     req.log.error({ err }, "Failed to get deposit address");
     res.status(500).json({ error: "Internal server error" });
   }
 });
 
-// POST /api/wallet/deposit/verify — user submits TX hash; backend verifies on-chain and credits instantly
+// POST /api/wallet/deposit/verify — user submits BEP20 TX hash; backend verifies on-chain and credits instantly
 router.post("/deposit/verify", async (req, res) => {
   try {
-    const { txHash, network } = req.body;
+    const { txHash } = req.body;
     const userId = (req as any).userId;
 
     if (!txHash || typeof txHash !== "string" || txHash.trim().length < 10) {
       return res.status(400).json({ error: "A valid transaction hash is required." });
     }
-    if (network && !["TRC20", "BEP20", "AUTO"].includes((network as string).toUpperCase())) {
-      return res.status(400).json({ error: "Network must be TRC20, BEP20, or AUTO." });
-    }
 
     const cleanHash = txHash.trim();
 
-    // Auto-detect network from hash format if not specified or "AUTO"
-    const rawNet = (network as string).toUpperCase();
-    let net: string;
-    if (!rawNet || rawNet === "AUTO") {
-      if (/^0x[0-9a-fA-F]{64}$/.test(cleanHash)) net = "BEP20";
-      else if (/^[0-9a-fA-F]{64}$/.test(cleanHash)) net = "TRC20";
-      else return res.status(400).json({ error: "Could not detect network from this hash. Select TRC20 or BEP20 manually." });
-    } else {
-      net = rawNet;
+    if (!/^0x[0-9a-fA-F]{64}$/.test(cleanHash)) {
+      return res.status(400).json({ error: "Invalid BEP20 transaction hash format. It must start with 0x and be 66 characters long." });
     }
 
     // Check if this TX has already been credited
@@ -129,37 +110,18 @@ router.post("/deposit/verify", async (req, res) => {
       return res.status(409).json({ error: "This transaction has already been processed." });
     }
 
-    // Get the business deposit address for this network
-    const settingKey = net === "BEP20" ? "bep20Address" : "trc20Address";
-    const businessAddress = await getSetting(settingKey);
+    // Get the BSC hot wallet address
+    const businessAddress = await getSetting("bscAddress");
     if (!businessAddress) {
-      return res.status(503).json({ error: `${net} deposit address not configured. Please contact support.` });
+      return res.status(503).json({ error: "BEP20 deposit address not configured. Please contact support." });
     }
 
-    // Read TronGrid API key — DB setting takes priority, env var as fallback
-    // BEP20 uses free public BSC RPC — no key needed
-    const trongridKey = await getSetting("trongridApiKey");
-
-    // Verify transaction on the blockchain
-    let txDetails: { confirmed: boolean; from: string; to: string; amount: string } | null = null;
-
-    if (net === "BEP20") {
-      txDetails = await getBscUsdtTx(cleanHash).catch(() => null);
-    } else {
-      const tron = await getTrc20TxDetails(cleanHash, trongridKey || undefined).catch(() => null);
-      if (tron) {
-        txDetails = {
-          confirmed: tron.confirmed ?? true,
-          from: tron.from,
-          to: tron.to,
-          amount: tron.amount,
-        };
-      }
-    }
+    // Verify transaction on BSC
+    const txDetails = await getBscUsdtTx(cleanHash).catch(() => null);
 
     if (!txDetails) {
       return res.status(422).json({
-        error: "Transaction not found on blockchain. Make sure the TX hash is correct and matches the selected network.",
+        error: "Transaction not found on BSC. Make sure the TX hash is correct and uses the BEP20 (BSC) network.",
       });
     }
     if (!txDetails.confirmed) {
@@ -171,7 +133,7 @@ router.post("/deposit/verify", async (req, res) => {
     // Verify the USDT was sent TO our business address
     if (txDetails.to.toLowerCase() !== businessAddress.toLowerCase()) {
       return res.status(422).json({
-        error: "This transaction was not sent to our deposit address. Please check you selected the correct network.",
+        error: "This transaction was not sent to our deposit address. Make sure you are using the BEP20 (BSC) network.",
       });
     }
 
@@ -193,7 +155,7 @@ router.post("/deposit/verify", async (req, res) => {
       userId,
       type: "deposit",
       amount: txDetails.amount,
-      network: net,
+      network: "BEP20",
       status: "completed",
       txid: cleanHash,
       address: txDetails.from,
@@ -206,18 +168,18 @@ router.post("/deposit/verify", async (req, res) => {
       amount: txDetails.amount,
       fromAddress: txDetails.from,
       toAddress: businessAddress,
-      network: net,
+      network: "BEP20",
       status: "completed",
       source: "user_verify",
       adminNote: `Auto-credited via user TX hash verification. ${txDetails.amount} USDT from ${txDetails.from}`,
     }).onConflictDoNothing();
 
-    req.log.info({ userId, txHash: cleanHash, amount: txDetails.amount, net }, "Deposit verified and credited");
+    req.log.info({ userId, txHash: cleanHash, amount: txDetails.amount }, "BEP20 deposit verified and credited");
 
     res.json({
       success: true,
       amount: txDetails.amount,
-      network: net,
+      network: "BEP20",
       message: `${parseFloat(txDetails.amount).toFixed(2)} USDT has been added to your wallet!`,
     });
   } catch (err) {
@@ -226,17 +188,22 @@ router.post("/deposit/verify", async (req, res) => {
   }
 });
 
-// POST /api/wallet/withdraw — real TRC20 blockchain withdrawal
+// POST /api/wallet/withdraw — BEP20 blockchain withdrawal
 router.post("/withdraw", async (req, res) => {
   try {
     const { address, network, amount } = req.body;
     const userId = (req as any).userId;
 
     if (!address || !amount) return res.status(400).json({ error: "Invalid input" });
-    if (network !== "TRC20") return res.status(400).json({ error: "Only TRC20 withdrawals are supported" });
+    if (network && network !== "BEP20") return res.status(400).json({ error: "Only BEP20 (BSC) withdrawals are supported" });
+
+    // Validate BSC address format
+    if (!/^0x[0-9a-fA-F]{40}$/.test(address)) {
+      return res.status(400).json({ error: "Invalid BEP20 address format. Must start with 0x and be 42 characters." });
+    }
 
     const amt = parseFloat(amount);
-    const [minWithdrawalSetting, { withdrawalFeeTRC20 }] = await Promise.all([
+    const [minWithdrawalSetting, { withdrawalFeeBEP20 }] = await Promise.all([
       getSetting("minWithdrawal", "10").then(parseFloat),
       getFeePercents(),
     ]);
@@ -246,17 +213,12 @@ router.post("/withdraw", async (req, res) => {
     const avail = parseFloat(wallet.availableBalance);
     if (amt > avail) return res.status(400).json({ error: "Insufficient balance" });
 
-    // Validate destination address format (TRON addresses start with T, length 34)
-    if (!address.startsWith("T") || address.length !== 34) {
-      return res.status(400).json({ error: "Invalid TRON address format" });
-    }
-
-    const privateKey = process.env["HOT_WALLET_PRIVATE_KEY"];
+    const privateKey = process.env["BSC_HOT_WALLET_PRIVATE_KEY"];
     if (!privateKey) {
       return res.status(503).json({ error: "Withdrawal service not configured" });
     }
 
-    const fee = withdrawalFeeTRC20;
+    const fee = withdrawalFeeBEP20;
     if (amt <= fee) return res.status(400).json({ error: `Amount must be greater than the withdrawal fee (${fee} USDT)` });
     const netAmount = amt - fee;
 
@@ -266,41 +228,41 @@ router.post("/withdraw", async (req, res) => {
       .set({ availableBalance: newBalance, updatedAt: new Date() })
       .where(eq(walletsTable.id, wallet.id));
 
-    // Create pending tx record — always succeeds regardless of hot wallet state
+    // Create pending tx record
     const [tx] = await db.insert(transactionsTable).values({
       userId,
       type: "withdraw",
       amount: amt.toFixed(6),
-      network: "TRC20",
+      network: "BEP20",
       status: "pending",
       address,
       fee: fee.toFixed(6),
     }).returning();
 
     // Check hot wallet balance. If sufficient → auto-broadcast now.
-    // If insufficient or unreachable → leave as "pending" for admin to approve/reject manually.
+    // If insufficient or unreachable → leave as "pending" for admin to approve manually.
     let hotWalletBalance = 0;
     let hotBalanceFetched = false;
     try {
-      const hotAddress = privateKeyToTronAddress(privateKey.replace(/^0x/, ""));
-      const balStr = await getTrc20Balance(hotAddress);
+      const { ethers } = await import("ethers");
+      const hotWallet = new ethers.Wallet(privateKey);
+      const balStr = await getBscUsdtBalance(hotWallet.address);
       hotWalletBalance = parseFloat(balStr);
       hotBalanceFetched = true;
     } catch (balErr) {
-      req.log.warn({ balErr, txId: tx.id }, "Could not fetch hot wallet balance — withdrawal held for admin approval");
+      req.log.warn({ balErr, txId: tx.id }, "Could not fetch BSC hot wallet balance — withdrawal held for admin approval");
     }
 
     if (hotBalanceFetched && hotWalletBalance >= netAmount) {
-      // Hot wallet has enough — broadcast automatically, fire and forget
-      sendUsdt(privateKey, address, netAmount)
+      sendUsdtBsc(privateKey, address, netAmount)
         .then(async (txid) => {
           await db.update(transactionsTable)
             .set({ status: "completed", txid })
             .where(eq(transactionsTable.id, tx.id));
-          req.log.info({ txid, userId, amount: netAmount }, "Withdrawal broadcast successful");
+          req.log.info({ txid, userId, amount: netAmount }, "BSC withdrawal broadcast successful");
         })
         .catch(async (err) => {
-          req.log.error({ err, txId: tx.id }, "Withdrawal broadcast failed — leaving pending for admin review");
+          req.log.error({ err, txId: tx.id }, "BSC withdrawal broadcast failed — leaving pending for admin review");
         });
 
       return res.json({
@@ -309,15 +271,14 @@ router.post("/withdraw", async (req, res) => {
         amount: amt.toFixed(6),
         netAmount: netAmount.toFixed(6),
         fee: fee.toFixed(6),
-        network: "TRC20",
+        network: "BEP20",
         address,
         message: "Withdrawal submitted. Usually confirms within 1-3 minutes.",
       });
     }
 
-    // Hot wallet insufficient or unreachable — hold for admin approval
     req.log.warn({ hotWalletBalance, hotBalanceFetched, netAmount, txId: tx.id },
-      "Hot wallet insufficient or unreachable — withdrawal held pending admin approval");
+      "BSC hot wallet insufficient or unreachable — withdrawal held pending admin approval");
 
     res.json({
       id: tx.id,
@@ -325,7 +286,7 @@ router.post("/withdraw", async (req, res) => {
       amount: amt.toFixed(6),
       netAmount: netAmount.toFixed(6),
       fee: fee.toFixed(6),
-      network: "TRC20",
+      network: "BEP20",
       address,
       message: "Withdrawal received and is pending admin approval. You will be notified once processed.",
     });
@@ -484,7 +445,6 @@ router.post("/internal-transfer", async (req, res) => {
       });
     });
 
-    // Push real-time wallet balance update to both parties
     emitToUser(senderId, "wallet_update", {});
     emitToUser(receiver.id, "wallet_update", {});
 
@@ -537,10 +497,11 @@ router.get("/transfer-history", async (req, res) => {
 // GET /api/wallet/hot-wallet-info — for admin info
 router.get("/hot-wallet-info", async (req, res) => {
   try {
-    const privateKey = process.env["HOT_WALLET_PRIVATE_KEY"];
+    const privateKey = process.env["BSC_HOT_WALLET_PRIVATE_KEY"];
     if (!privateKey) return res.status(503).json({ error: "Not configured" });
-    const address = privateKeyToTronAddress(privateKey.replace(/^0x/, ""));
-    res.json({ address, network: "TRC20" });
+    const { ethers } = await import("ethers");
+    const hotWallet = new ethers.Wallet(privateKey);
+    res.json({ address: hotWallet.address, network: "BEP20" });
   } catch (err) {
     res.status(500).json({ error: "Failed to derive address" });
   }

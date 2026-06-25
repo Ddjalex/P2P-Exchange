@@ -7,3 +7,4 @@
 - [KycGate overlay z-index](kyc-gate-overlay.md) — overlay at z-40 (below bottom nav's z-50) lets nav stay clickable; modal uses z-[9999]; banner uses z-[51]
 - [Admin password DB override](admin-password-override.md) — login checks systemSettings key 'adminPassword' first, falls back to ADMIN_PASSWORD env var; PATCH /api/admin/change-password stores new value
 - [Build and package steps](build-package.md) — after frontend build, always copy logo SVGs before packaging
+- [BSC migration](bsc-migration.md) — platform fully migrated from TRC20 to BEP20; env var is BSC_HOT_WALLET_PRIVATE_KEY; fee type is withdrawal_fee_bep20; deposit setting key is bscAddress

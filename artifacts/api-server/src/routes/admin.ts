@@ -15,7 +15,7 @@ import { PushNotify, sendPushBroadcast } from "./push.js";
 import { TelegramNotify } from "../telegram/notify.js";
 import { telegramUsersTable } from "@workspace/db";
 import { sendTelegramMessage, restartBotWithToken, getBotStatus } from "../telegram/bot.js";
-import { sendUsdt, getTrc20Balance, privateKeyToTronAddress } from "../lib/tron.js";
+import { sendUsdtBsc, getBscUsdtBalance } from "../lib/bsc.js";
 
 const router = Router();
 
@@ -832,15 +832,16 @@ router.get("/wallet/overview", adminAuth, async (req, res) => {
     const totalFrozen = wallets.reduce((sum, w) => sum + parseFloat(w.frozenBalance || "0"), 0);
     const [pending] = await db.select({ c: count() }).from(transactionsTable).where(and(eq(transactionsTable.type, "withdraw"), eq(transactionsTable.status, "pending")));
 
-    // Fetch hot wallet USDT balance
+    // Fetch hot wallet USDT balance (BSC)
     let hotWalletBalance: string | null = null;
-    const privateKey = process.env["HOT_WALLET_PRIVATE_KEY"];
+    const privateKey = process.env["BSC_HOT_WALLET_PRIVATE_KEY"];
     if (privateKey) {
       try {
-        const hotAddress = privateKeyToTronAddress(privateKey.replace(/^0x/, ""));
-        hotWalletBalance = await getTrc20Balance(hotAddress);
+        const { ethers } = await import("ethers");
+        const hotWallet = new ethers.Wallet(privateKey);
+        hotWalletBalance = await getBscUsdtBalance(hotWallet.address);
       } catch (balErr) {
-        req.log.warn({ balErr }, "Could not fetch hot wallet balance for overview");
+        req.log.warn({ balErr }, "Could not fetch BSC hot wallet balance for overview");
       }
     }
 
@@ -904,17 +905,17 @@ router.put("/wallet/transactions/:id/approve", adminAuth, async (req: any, res) 
     const address = approvedTx.address;
     if (!address) return res.status(400).json({ error: "Withdrawal has no destination address" });
 
-    const privateKey = process.env["HOT_WALLET_PRIVATE_KEY"];
-    if (!privateKey) return res.status(503).json({ error: "HOT_WALLET_PRIVATE_KEY not configured" });
+    const privateKey = process.env["BSC_HOT_WALLET_PRIVATE_KEY"];
+    if (!privateKey) return res.status(503).json({ error: "BSC_HOT_WALLET_PRIVATE_KEY not configured" });
 
     const totalAmt = parseFloat(approvedTx.amount);
     const fee = parseFloat(approvedTx.fee ?? "0");
     const netAmount = totalAmt - fee;
 
-    console.log("[Withdraw] Admin approved txId:", id, "sending to:", address, "net:", netAmount, "USDT");
+    console.log("[Withdraw] BSC transfer to:", address, "amount:", netAmount, "USDT");
 
     try {
-      const txid = await sendUsdt(privateKey, address, netAmount);
+      const txid = await sendUsdtBsc(privateKey, address, netAmount);
       await db.update(transactionsTable)
         .set({ status: "completed", txid })
         .where(eq(transactionsTable.id, id));
@@ -1209,15 +1210,12 @@ const DEFAULT_SETTINGS: Record<string, string> = {
   requireKycForWithdrawal: "true",
   maxFailedLogins: "5",
   sessionTimeoutMinutes: "1440",
-  trc20Address: "",
-  erc20Address: "",
-  trc20Enabled: "true",
-  erc20Enabled: "true",
+  bscAddress: "0x24c3AaC7A62a37333885Bc9a8A82ca4fDe7321B3",
+  bep20Enabled: "true",
   fastsmsApiKey: "",
   brevoApiKey: "",
   brevoSenderEmail: "",
   brevoSenderName: "Xendrx",
-  trongridApiKey: "",
   bscscanApiKey: "",
   telegramBotToken: "",
   telegramBotUsername: process.env.TELEGRAM_BOT_USERNAME ?? "XendrxBot",
@@ -1343,42 +1341,16 @@ router.post("/test-email", adminAuth, async (req: any, res) => {
 router.post("/test-blockchain", adminAuth, async (req: any, res) => {
   try {
     const { provider, key } = req.body ?? {};
-    if (!provider || !["trongrid", "bscscan"].includes(provider)) {
-      return res.status(400).json({ ok: false, error: "provider must be 'trongrid' or 'bscscan'" });
-    }
-    if (!key || typeof key !== "string" || key.trim().length < 8) {
-      return res.status(400).json({ ok: false, error: "A valid API key is required." });
-    }
-    const apiKey = key.trim();
-
-    if (provider === "trongrid") {
-      // Use the USDT contract account as a known-good address to query
-      const r = await fetch("https://api.trongrid.io/v1/accounts/TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t", {
-        headers: { "TRON-PRO-API-KEY": apiKey, "Content-Type": "application/json" },
-        signal: AbortSignal.timeout(10_000),
-      });
-      const body = await r.json().catch(() => ({})) as any;
-      if (!r.ok) {
-        if (r.status === 401 || r.status === 403) {
-          return res.json({ ok: false, error: "Authentication failed — this API key is invalid or expired." });
-        }
-        return res.json({ ok: false, error: `TronGrid returned HTTP ${r.status}.` });
-      }
-      // TronGrid returns { data: [...], success: true } on success
-      if (body?.success === false) {
-        return res.json({ ok: false, error: body?.error?.message || "TronGrid rejected the request." });
-      }
-      return res.json({ ok: true, message: "TronGrid API key is valid and working." });
+    if (!provider || provider !== "bscscan") {
+      return res.status(400).json({ ok: false, error: "provider must be 'bscscan'" });
     }
 
-    if (provider === "bscscan") {
-      // BEP20 uses free public BSC RPC — no API key needed
-      const { pingBscRpc } = await import("../lib/bsc.js");
-      const result = await pingBscRpc();
-      if (!result.ok) return res.json({ ok: false, error: "Could not reach BSC RPC node. Check server connectivity." });
-      const block = result.blockNumber ? ` (block ${parseInt(result.blockNumber, 16).toLocaleString()})` : "";
-      return res.json({ ok: true, message: `BSC public RPC reachable${block} — no API key needed.` });
-    }
+    // BEP20 uses free public BSC RPC — no API key needed
+    const { pingBscRpc } = await import("../lib/bsc.js");
+    const result = await pingBscRpc();
+    if (!result.ok) return res.json({ ok: false, error: "Could not reach BSC RPC node. Check server connectivity." });
+    const block = result.blockNumber ? ` (block ${parseInt(result.blockNumber, 16).toLocaleString()})` : "";
+    return res.json({ ok: true, message: `BSC public RPC reachable${block} — no API key needed.` });
   } catch (err: any) {
     if (err?.name === "TimeoutError") return res.json({ ok: false, error: "Request timed out — API may be unreachable." });
     res.status(500).json({ ok: false, error: err?.message || "Internal error" });
@@ -1657,7 +1629,7 @@ router.patch("/fees", adminAuth, async (req, res) => {
   try {
     const { feeType, value } = req.body;
 
-    const validTypes = ["maker_fee_percent", "taker_fee_percent", "withdrawal_fee_trc20", "withdrawal_fee_erc20"];
+    const validTypes = ["maker_fee_percent", "taker_fee_percent", "withdrawal_fee_bep20"];
     if (!validTypes.includes(feeType)) {
       return res.status(400).json({ error: "Invalid fee type" });
     }

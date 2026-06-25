@@ -15,12 +15,9 @@ export default function AdminSettingsPage() {
   const [loading, setLoading] = useState(true);
   const [showFastsms, setShowFastsms] = useState(false);
   const [showBrevo, setShowBrevo] = useState(false);
-  const [showTrongrid, setShowTrongrid] = useState(false);
   const [showBscscan, setShowBscscan] = useState(false);
   const [showTgToken, setShowTgToken] = useState(false);
-  const [trongridTestStatus, setTrongridTestStatus] = useState<{ ok: boolean; msg: string } | null>(null);
   const [bscscanTestStatus, setBscscanTestStatus] = useState<{ ok: boolean; msg: string } | null>(null);
-  const [trongridTestLoading, setTrongridTestLoading] = useState(false);
   const [bscscanTestLoading, setBscscanTestLoading] = useState(false);
 
   const [testPhone, setTestPhone] = useState("");
@@ -117,20 +114,16 @@ export default function AdminSettingsPage() {
     }
   };
 
-  const testBlockchain = async (provider: "trongrid" | "bscscan") => {
-    const key = settings[provider === "trongrid" ? "trongridApiKey" : "bscscanApiKey"] ?? "";
-    if (!key.trim()) return;
-    const setLoading = provider === "trongrid" ? setTrongridTestLoading : setBscscanTestLoading;
-    const setStatus = provider === "trongrid" ? setTrongridTestStatus : setBscscanTestStatus;
-    setLoading(true);
-    setStatus(null);
+  const testBlockchain = async () => {
+    setBscscanTestLoading(true);
+    setBscscanTestStatus(null);
     try {
-      const data = await adminPost<{ ok: boolean; message?: string; error?: string }>("/test-blockchain", { provider, key: key.trim() });
-      setStatus({ ok: data.ok, msg: data.ok ? (data.message ?? "OK") : (data.error ?? "Failed") });
+      const data = await adminPost<{ ok: boolean; message?: string; error?: string }>("/test-blockchain", { provider: "bscscan" });
+      setBscscanTestStatus({ ok: data.ok, msg: data.ok ? (data.message ?? "OK") : (data.error ?? "Failed") });
     } catch {
-      setStatus({ ok: false, msg: "Network error" });
+      setBscscanTestStatus({ ok: false, msg: "Network error" });
     } finally {
-      setLoading(false);
+      setBscscanTestLoading(false);
     }
   };
 
@@ -310,42 +303,6 @@ export default function AdminSettingsPage() {
             </p>
 
             <div className="space-y-4">
-              {/* TronGrid */}
-              <div className="border border-border rounded-lg p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium">⛓ TronGrid</span>
-                    <span className="text-xs text-muted-foreground">— TRC20 (TRON) verification</span>
-                  </div>
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${settings["trongridApiKey"] ? "bg-success/10 text-success" : "bg-warning/10 text-warning"}`}>
-                    {settings["trongridApiKey"] ? "Configured" : "Not set"}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between gap-4">
-                  <label className="text-sm text-muted-foreground flex-shrink-0 w-28">API Key</label>
-                  <SecretInput k="trongridApiKey" show={showTrongrid} onToggle={() => setShowTrongrid(v => !v)} />
-                </div>
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => testBlockchain("trongrid")}
-                    disabled={trongridTestLoading || !settings["trongridApiKey"]?.trim()}
-                    className="text-xs px-3 py-1.5 rounded-lg border border-primary/40 text-primary hover:bg-primary/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    {trongridTestLoading ? "Testing…" : "Test Connection"}
-                  </button>
-                  {trongridTestStatus && (
-                    <span className={`text-xs font-medium ${trongridTestStatus.ok ? "text-success" : "text-destructive"}`}>
-                      {trongridTestStatus.ok ? "✓" : "✗"} {trongridTestStatus.msg}
-                    </span>
-                  )}
-                </div>
-                <div className="text-xs text-muted-foreground/60">
-                  Free tier: 2,000 req/day · Get your key at{" "}
-                  <a href="https://www.trongrid.io" target="_blank" rel="noreferrer" className="text-primary hover:underline">trongrid.io</a>
-                  {" "}→ Sign up → Dashboard → Create API Key
-                </div>
-              </div>
-
               {/* BSC — no key needed */}
               <div className="border border-border rounded-lg p-4 space-y-3">
                 <div className="flex items-center justify-between">
@@ -362,7 +319,7 @@ export default function AdminSettingsPage() {
                 </p>
                 <div className="flex items-center gap-3">
                   <button
-                    onClick={() => testBlockchain("bscscan")}
+                    onClick={() => testBlockchain()}
                     disabled={bscscanTestLoading}
                     className="text-xs px-3 py-1.5 rounded-lg border border-primary/40 text-primary hover:bg-primary/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                   >
@@ -482,7 +439,7 @@ export default function AdminSettingsPage() {
           <div className="bg-card border border-border rounded-xl p-5">
             <h3 className="font-semibold mb-4">Supported Networks</h3>
             <div className="space-y-3">
-              {[{ label: "BEP20 (BSC)", key: "bep20Enabled" }, { label: "TRC20 (TRON)", key: "trc20Enabled" }].map(n => (
+              {[{ label: "BEP20 (BSC)", key: "bep20Enabled" }].map(n => (
                 <div key={n.key} className="flex items-center justify-between">
                   <span className="text-sm">{n.label}</span>
                   <Toggle k={n.key} />
@@ -522,8 +479,7 @@ export default function AdminSettingsPage() {
             <p className="text-xs text-muted-foreground mb-4">Users deposit USDT to these addresses. They verify their TX hash to get credited automatically.</p>
             <div className="space-y-4">
               {[
-                { label: "BEP20 Address (BSC)", key: "bep20Address", placeholder: "0x..." },
-                { label: "TRC20 Address (TRON)", key: "trc20Address", placeholder: "T..." },
+                { label: "BEP20 Address (BSC)", key: "bscAddress", placeholder: "0x..." },
               ].map(f => (
                 <div key={f.key}>
                   <label className="text-xs text-muted-foreground block mb-1">{f.label}</label>

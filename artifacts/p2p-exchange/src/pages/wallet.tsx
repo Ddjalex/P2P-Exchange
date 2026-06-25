@@ -17,22 +17,8 @@ function getToken() { return localStorage.getItem(TOKEN_KEY); }
 
 // ─── Deposit Modal ───────────────────────────────────────────────────────────
 
-type DepositNetwork = "TRC20" | "BEP20";
-
-/** Detect blockchain from tx hash format:
- *  - 0x + 64 hex chars → BEP20 (EVM / BSC)
- *  - 64 hex chars, no 0x prefix → TRC20 (TRON)
- */
-function detectNetwork(hash: string): DepositNetwork | null {
-  const h = hash.trim();
-  if (/^0x[0-9a-fA-F]{64}$/.test(h)) return "BEP20";
-  if (/^[0-9a-fA-F]{64}$/.test(h)) return "TRC20";
-  return null;
-}
-
 function DepositModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
-  const [network, setNetwork] = useState<DepositNetwork>("BEP20");
-  const [autoDetected, setAutoDetected] = useState<DepositNetwork | null>(null);
+  const network = "BEP20";
   const [address, setAddress] = useState("");
   const [minDeposit, setMinDeposit] = useState("1");
   const [addrLoading, setAddrLoading] = useState(false);
@@ -46,12 +32,12 @@ function DepositModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
 
   const { toast } = useToast();
 
-  const fetchAddress = async (net: DepositNetwork) => {
+  const fetchAddress = async () => {
     setAddrLoading(true);
     setAddrError("");
     setAddress("");
     try {
-      const res = await fetch(`/api/wallet/deposit-address?network=${net}`, {
+      const res = await fetch(`/api/wallet/deposit-address?network=${network}`, {
         headers: { Authorization: `Bearer ${getToken()}` },
       });
       const data = await res.json();
@@ -65,7 +51,7 @@ function DepositModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
     }
   };
 
-  useEffect(() => { fetchAddress(network); }, [network]);
+  useEffect(() => { fetchAddress(); }, []);
 
   const copyAddress = async () => {
     if (!address) return;
@@ -78,12 +64,6 @@ function DepositModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
   const handleTxHashChange = (val: string) => {
     setTxHash(val);
     setVerifyError("");
-    const detected = detectNetwork(val);
-    setAutoDetected(detected);
-    if (detected && detected !== network) {
-      setNetwork(detected);
-      setVerified(null);
-    }
   };
 
   const handleVerify = async () => {
@@ -110,8 +90,8 @@ function DepositModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
     }
   };
 
-  const networkLabel = network === "BEP20" ? "BEP20 (BSC)" : "TRC20 (TRON)";
-  const networkExplorer = network === "BEP20" ? "bscscan.com" : "tronscan.org";
+  const networkLabel = "BEP20 (BSC)";
+  const networkExplorer = "bscscan.com";
 
   return createPortal(
     <div className="fixed inset-0 z-[100] flex items-end justify-center" onClick={onClose}>
@@ -131,26 +111,11 @@ function DepositModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
 
         {/* Scrollable body */}
         <div className="overflow-y-auto flex-1 px-6 pb-8 space-y-5" style={{ WebkitOverflowScrolling: "touch" }}>
-          {/* Network selector */}
+          {/* Network badge */}
           <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-xs text-muted-foreground">Select Network</label>
-              {autoDetected && (
-                <span className="text-xs font-medium text-success bg-success/10 px-2 py-0.5 rounded-full">
-                  ✓ Auto-detected: {autoDetected === "BEP20" ? "BEP20 (BSC)" : "TRC20 (TRON)"}
-                </span>
-              )}
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              {(["BEP20", "TRC20"] as const).map(net => (
-                <button
-                  key={net}
-                  onClick={() => { setNetwork(net); setAutoDetected(null); setVerified(null); setVerifyError(""); setTxHash(""); }}
-                  className={`py-2.5 rounded-xl text-sm font-semibold border transition-colors ${network === net ? "bg-primary/10 border-primary text-primary" : "bg-secondary border-border text-muted-foreground hover:bg-secondary/80"}`}
-                >
-                  {net === "BEP20" ? "BEP20 (BSC)" : "TRC20 (TRON)"}
-                </button>
-              ))}
+            <label className="text-xs text-muted-foreground block mb-2">Network</label>
+            <div className="py-2.5 px-4 rounded-xl text-sm font-semibold border bg-primary/10 border-primary text-primary w-fit">
+              BEP20 (BSC)
             </div>
           </div>
 
@@ -186,9 +151,9 @@ function DepositModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
             <div className="bg-warning/10 border border-warning/20 rounded-xl p-3 space-y-1">
               <p className="text-xs font-semibold text-warning">⚠️ Important</p>
               <ul className="text-xs text-muted-foreground space-y-0.5 list-disc list-inside">
-                <li>Only send <strong>USDT ({network})</strong> — other tokens will be lost</li>
+                <li>Only send <strong>USDT (BEP20)</strong> — other tokens will be lost</li>
                 <li>Minimum deposit: <strong>{minDeposit} USDT</strong></li>
-                <li>Use the <strong>correct network</strong> ({networkLabel})</li>
+                <li>Use the <strong>BNB Smart Chain (BSC)</strong> network only</li>
               </ul>
             </div>
           </div>
@@ -215,7 +180,7 @@ function DepositModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
                     placeholder="Paste TX hash — network auto-detected"
                     className="w-full px-3 py-3 bg-secondary border border-border rounded-xl text-sm font-mono outline-none focus:border-primary transition-colors placeholder:text-muted-foreground/60"
                   />
-                  {txHash && !autoDetected && txHash.trim().length >= 10 && (
+                  {txHash && !/^0x[0-9a-fA-F]{64}$/.test(txHash.trim()) && txHash.trim().length >= 10 && (
                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-warning">
                       ?
                     </span>
@@ -251,18 +216,18 @@ function DepositModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
 function WithdrawModal({
   availableBalance,
   minWithdrawal,
-  withdrawalFeeTRC20,
+  withdrawalFeeBEP20,
   onClose,
   onSuccess,
 }: {
   availableBalance: string;
   minWithdrawal: number;
-  withdrawalFeeTRC20: number;
+  withdrawalFeeBEP20: number;
   onClose: () => void;
   onSuccess: () => void;
 }) {
   const [mode, setMode] = useState<"external" | "internal">("external");
-  const [network] = useState<"TRC20">("TRC20");
+  const network = "BEP20";
   const [address, setAddress] = useState("");
   const [amount, setAmount] = useState("");
   const [loading, setLoading] = useState(false);
@@ -271,7 +236,7 @@ function WithdrawModal({
 
   const avail = parseFloat(availableBalance || "0");
   const amt = parseFloat(amount || "0");
-  const fee = withdrawalFeeTRC20;
+  const fee = withdrawalFeeBEP20;
   const youGet = amt > 0 ? Math.max(0, amt - fee).toFixed(4) : "0";
 
   const handleSetMax = () => setAmount(avail.toFixed(2));
@@ -279,6 +244,7 @@ function WithdrawModal({
   const handleWithdraw = async () => {
     setError("");
     if (!address.trim()) { setError("Enter a destination wallet address"); return; }
+    if (!/^0x[0-9a-fA-F]{40}$/.test(address.trim())) { setError("Enter a valid BEP20 (BSC) address starting with 0x"); return; }
     if (amt <= 0) { setError("Enter a valid amount"); return; }
     if (amt > avail) { setError("Insufficient available balance"); return; }
     if (amt < minWithdrawal) { setError(`Minimum withdrawal is ${minWithdrawal} USDT`); return; }
@@ -351,15 +317,15 @@ function WithdrawModal({
               <div>
                 <label className="text-xs text-muted-foreground mb-2 block">Network</label>
                 <div className="py-2.5 px-4 rounded-xl text-sm font-semibold border bg-primary/10 border-primary text-primary w-fit">
-                  TRC20 (TRON)
+                  BEP20 (BSC)
                 </div>
               </div>
 
               <div>
-                <label className="text-xs text-muted-foreground mb-2 block">Destination Address (TRC20)</label>
+                <label className="text-xs text-muted-foreground mb-2 block">Destination Address (BEP20)</label>
                 <input
                   type="text"
-                  placeholder="T... (TRON address)"
+                  placeholder="0x... (BSC address)"
                   value={address}
                   onChange={e => setAddress(e.target.value)}
                   className="w-full bg-secondary border border-border rounded-xl px-4 py-3 text-sm font-mono focus:outline-none focus:border-primary placeholder:text-muted-foreground"
@@ -618,7 +584,7 @@ export default function WalletPage() {
         <WithdrawModal
           availableBalance={wallet?.availableBalance ?? "0"}
           minWithdrawal={parseFloat((wallet as any)?.minWithdrawal ?? "10")}
-          withdrawalFeeTRC20={parseFloat((wallet as any)?.withdrawalFeeTRC20 ?? "2.5")}
+          withdrawalFeeBEP20={parseFloat((wallet as any)?.withdrawalFeeBEP20 ?? "2.5")}
           onClose={() => setShowWithdraw(false)}
           onSuccess={handleWithdrawSuccess}
         />

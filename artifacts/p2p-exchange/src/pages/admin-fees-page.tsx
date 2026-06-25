@@ -6,8 +6,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 const FEE_CONFIG = [
   { key: "maker_fee_percent", label: "Maker Fee (ad poster)", unit: "%", description: "Charged to the user who posted the ad" },
   { key: "taker_fee_percent", label: "Taker Fee (order placer)", unit: "%", description: "Charged to the user who placed the order" },
-  { key: "withdrawal_fee_trc20", label: "Withdrawal Fee TRC20", unit: "USDT", description: "Fixed fee for TRC20 withdrawals" },
-  { key: "withdrawal_fee_erc20", label: "Withdrawal Fee ERC20", unit: "USDT", description: "Fixed fee for ERC20 withdrawals" },
+  { key: "withdrawal_fee_bep20", label: "Withdrawal Fee BEP20 (BSC)", unit: "USDT", description: "Fixed fee for BEP20 (BSC) withdrawals" },
 ];
 
 function getAdminToken() {

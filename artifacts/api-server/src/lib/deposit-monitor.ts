@@ -1,16 +1,6 @@
 /**
- * Background deposit monitor — polls TronGrid every 60s for incoming USDT TRC20
- * deposits to the ONE shared business address (trc20Address in system_settings).
- *
- * This monitor does NOT auto-credit users because all users share one address
- * and ownership cannot be determined automatically.
- *
- * Crediting happens in two ways:
- *   1. User pastes TX hash → POST /api/wallet/deposit/verify (instant)
- *   2. Admin manually credits → POST /api/admin/deposits/credit-missed
- *
- * The monitor logs every new detected deposit so admins can see incoming funds
- * in server logs and cross-reference with user-submitted verifications.
+ * Background deposit monitor — polls BSCScan every 60s for incoming USDT BEP20
+ * deposits to the hot wallet address (bscAddress in system_settings).
  *
  * creditUserDeposit() is exported for use by the admin credit-missed endpoint.
  */
@@ -24,16 +14,15 @@ import {
   usersTable,
 } from "@workspace/db";
 import { eq, and, isNotNull } from "drizzle-orm";
-import { getTrc20Transactions, rawToUsdt } from "./tron.js";
+import { getBscScanUsdtTxs, rawBscToUsdt } from "./bsc.js";
 import { logger } from "./logger.js";
 import { PushNotify } from "../routes/push.js";
 
 const POLL_INTERVAL_MS = 60_000;
-const POLL_OVERLAP_MS = 30_000;
 
 let monitorInterval: ReturnType<typeof setInterval> | null = null;
 let isRunning = false;
-let lastChecked: number | null = null;
+let lastBlock = 0;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -54,8 +43,8 @@ async function getProcessedTxIds(): Promise<Set<string>> {
     db.select({ txid: depositVerificationsTable.txid }).from(depositVerificationsTable),
   ]);
   const ids = new Set<string>();
-  completedRows.forEach((r) => r.txid && ids.add(r.txid));
-  reviewedRows.forEach((r) => ids.add(r.txid));
+  completedRows.forEach((r) => r.txid && ids.add(r.txid.toLowerCase()));
+  reviewedRows.forEach((r) => ids.add(r.txid.toLowerCase()));
   return ids;
 }
 
@@ -87,6 +76,7 @@ async function sendDepositEmail(
     <p>🔗 <strong>Transaction:</strong> ${txHash}</p>
     <p>📅 <strong>Date:</strong> ${date}</p>
     <p>✅ <strong>Status:</strong> Confirmed</p>
+    <p>🌐 <strong>Network:</strong> BEP20 (BNB Smart Chain)</p>
   </div>
   <p>Your available balance has been updated. You can now start trading on Xendrx P2P.</p>
   <div style="text-align:center;margin:30px 0;">
@@ -140,7 +130,7 @@ export async function creditUserDeposit(
     userId,
     type: "deposit",
     amount: amountUsdt,
-    network: "TRC20",
+    network: "BEP20",
     status: "completed",
     txid: tx.txid,
     address: tx.from,
@@ -154,19 +144,17 @@ export async function creditUserDeposit(
       amount: amountUsdt,
       fromAddress: tx.from,
       toAddress: tx.to,
-      network: "TRC20",
+      network: "BEP20",
       status: "completed",
       source: "admin_manual",
       adminNote: `Manually credited by admin. ${amountUsdt} USDT from ${tx.from}`,
     })
     .onConflictDoNothing();
 
-  // Push notification (fire-and-forget)
   PushNotify.depositReceived(userId, amountUsdt).catch((err) => {
     console.warn("[Deposit] Push notification failed:", err);
   });
 
-  // Brevo email — only to verified email users
   db.select({
     email: usersTable.email,
     emailVerified: usersTable.emailVerified,
@@ -190,44 +178,41 @@ async function poll() {
   if (isRunning) return;
   isRunning = true;
   try {
-    const businessAddress = await getSetting("trc20Address");
+    const businessAddress = await getSetting("bscAddress");
     if (!businessAddress) {
-      logger.debug("[Deposit] trc20Address not configured in system_settings — skipping poll");
+      logger.debug("[Deposit] bscAddress not configured in system_settings — skipping poll");
       return;
     }
 
-    const since = lastChecked
-      ? lastChecked - POLL_OVERLAP_MS
-      : Date.now() - 24 * 60 * 60 * 1000;
+    const apiKey = (await getSetting("bscscanApiKey")) || "YourApiKeyToken";
 
-    console.log(`[Deposit] Polling business address ${businessAddress} for new TRC20 deposits`);
+    console.log(`[Deposit] Polling BSC address ${businessAddress} for new BEP20 USDT deposits`);
 
-    let txs: Awaited<ReturnType<typeof getTrc20Transactions>>;
+    let txs: Awaited<ReturnType<typeof getBscScanUsdtTxs>>;
     try {
-      txs = await getTrc20Transactions(businessAddress, since);
+      txs = await getBscScanUsdtTxs(businessAddress, lastBlock, apiKey);
     } catch (err) {
-      logger.error({ err, address: businessAddress }, "Error fetching TRC20 transactions");
+      logger.error({ err, address: businessAddress }, "Error fetching BEP20 transactions");
       return;
     }
-
-    lastChecked = Date.now();
 
     if (txs.length === 0) return;
 
     const processed = await getProcessedTxIds();
 
     for (const tx of txs) {
-      if (!tx.confirmed) continue;
-      if (processed.has(tx.txid)) continue;
+      // Track highest block seen so we don't re-check old ones
+      const blockNum = parseInt(tx.blockNumber, 10);
+      if (blockNum > lastBlock) lastBlock = blockNum;
+
+      if (processed.has(tx.hash.toLowerCase())) continue;
       if (tx.to.toLowerCase() !== businessAddress.toLowerCase()) continue;
 
-      const amountUsdt = rawToUsdt(tx.value);
+      const amountUsdt = rawBscToUsdt(tx.value);
       if (parseFloat(amountUsdt) <= 0) continue;
 
-      // Log detected deposit so admins can see it in server logs.
-      // Actual crediting requires user TX hash verification or admin manual credit.
       console.log(
-        `[Deposit] Detected unprocessed deposit: ${amountUsdt} USDT from ${tx.from} (txid: ${tx.txid})`
+        `[Deposit] Detected unprocessed BEP20 deposit: ${amountUsdt} USDT from ${tx.from} (txHash: ${tx.hash})`
       );
     }
   } catch (err) {
@@ -242,7 +227,7 @@ async function poll() {
 export function startDepositMonitor() {
   if (monitorInterval) return;
   logger.info(
-    "Starting TRC20 deposit monitor — watching business address (60s interval)"
+    "Starting BEP20 deposit monitor — watching BSC address (60s interval)"
   );
   poll();
   monitorInterval = setInterval(poll, POLL_INTERVAL_MS);
@@ -252,6 +237,6 @@ export function stopDepositMonitor() {
   if (monitorInterval) {
     clearInterval(monitorInterval);
     monitorInterval = null;
-    logger.info("TRC20 deposit monitor stopped");
+    logger.info("BEP20 deposit monitor stopped");
   }
 }

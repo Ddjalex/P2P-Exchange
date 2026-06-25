@@ -1,0 +1,90 @@
+Switch platform from TRC20 (TRON) to BEP20 (BSC) completely
+Replace all TRON/TronWeb code with BSC/ethers.js. Here are the exact details:
+New BSC hot wallet:
+
+Address: 0x24c3AaC7A62a37333885Bc9a8A82ca4fDe7321B3
+Add to .env.example as BSC_HOT_WALLET_PRIVATE_KEY
+
+Changes needed:
+1. lib/bsc.ts (new file — replaces lib/tron.ts):
+typescriptimport { ethers } from 'ethers';
+
+const BSC_RPC = 'https://bsc-dataseed.binance.org';
+const USDT_CONTRACT = '0x55d398326f99059fF775485246999027B3197955';
+const USDT_ABI = ['function transfer(address to, uint256 amount) returns (bool)'];
+
+export async function sendUsdtBsc(privateKey: string, toAddress: string, amount: number) {
+  const provider = new ethers.JsonRpcProvider(BSC_RPC);
+  const wallet = new ethers.Wallet(privateKey, provider);
+  const usdt = new ethers.Contract(USDT_CONTRACT, USDT_ABI, wallet);
+  const amountInWei = ethers.parseUnits(amount.toFixed(6), 18);
+  const tx = await usdt.transfer(toAddress, amountInWei);
+  const receipt = await tx.wait();
+  console.log('[BSC] Transfer successful txid:', receipt.hash);
+  return receipt.hash;
+}
+
+export async function getBnbBalance(address: string): Promise<number> {
+  const provider = new ethers.JsonRpcProvider(BSC_RPC);
+  const balance = await provider.getBalance(address);
+  return parseFloat(ethers.formatEther(balance));
+}
+2. lib/deposit-monitor.ts — rewrite for BSC:
+
+Poll BSCScan API every 60 seconds for incoming USDT transfers to hot wallet address
+API endpoint: https://api.bscscan.com/api?module=account&action=tokentx&contractaddress=0x55d398326f99059fF775485246999027B3197955&address=0x24c3AaC7A62a37333885Bc9a8A82ca4fDe7321B3&sort=desc&apikey=YourApiKeyToken
+No BSCScan API key needed for basic polling (use apikey=YourApiKeyToken as default)
+Detect new incoming USDT transactions
+Credit user balance automatically
+Prevent duplicates via TX hash in deposit_verifications table
+Send push notification + Brevo email on successful credit
+Log: [Deposit] Polling BSC address 0x24c3... for new BEP20 USDT deposits
+
+3. routes/admin.ts — withdrawal approve:
+
+Replace sendUsdt() from tronweb with sendUsdtBsc() from lib/bsc.ts
+Read BSC_HOT_WALLET_PRIVATE_KEY from environment
+Log: [Withdraw] BSC transfer to: address amount: X USDT
+
+4. Frontend deposit page:
+
+Change network label from TRC20 (TRON) to BEP20 (BSC)
+Change deposit address to: 0x24c3AaC7A62a37333885Bc9a8A82ca4fDe7321B3
+Update deposit address in system_settings table: key bscAddress value 0x24c3AaC7A62a37333885Bc9a8A82ca4fDe7321B3
+Show warning: "Only send USDT on BNB Smart Chain (BEP20) network"
+
+5. Frontend withdrawal page:
+
+Change network label from TRC20 to BEP20 (BSC)
+Validate that withdrawal address starts with 0x (BSC address format)
+Remove TRC20 address validation (starts with T)
+
+6. Admin system settings:
+
+Replace trc20Address with bscAddress in system_settings
+Seed default value: 0x24c3AaC7A62a37333885Bc9a8A82ca4fDe7321B3
+
+7. Install dependencies:
+bashnpm install ethers
+8. Remove:
+
+All TronWeb imports and usage
+All TronGrid API calls
+lib/tron.ts or rename to lib/tron.ts.bak
+TRONGRID_API_KEY references
+
+9. Keep everything else unchanged:
+
+P2P trading system
+KYC verification
+Push notifications
+Broadcast system
+Admin panel
+All other features
+
+Verification test — run before packaging:
+typescriptimport { ethers } from 'ethers';
+const wallet = new ethers.Wallet('d22779414cad0f1e992eb29ad373c6c65f82b8b455d22b39f6d1b92c50fc2585');
+console.log('Address:', wallet.address);
+// Must print: 0x24c3AaC7A62a37333885Bc9a8A82ca4fDe7321B3
+Rebuild both frontend and API, repackage.
