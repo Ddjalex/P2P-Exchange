@@ -573,7 +573,11 @@ export default function WalletPage() {
 
         <div>
           <h2 className="text-lg font-semibold mb-3">Assets</h2>
-          <Link href="/wallet/usdt" className="flex items-center justify-between p-4 rounded-xl bg-card border border-card-border hover:bg-muted/50 transition-colors">
+          <div
+            role="button"
+            onClick={() => setLocation("/wallet/usdt")}
+            className="flex items-center justify-between p-4 rounded-xl bg-card border border-card-border hover:bg-muted/50 transition-colors cursor-pointer"
+          >
             <div className="flex items-center space-x-3">
               <div className="w-10 h-10 rounded-full bg-[#26A17B]/20 flex items-center justify-center">
                 <span className="text-[#26A17B] font-bold text-sm">₮</span>
@@ -591,13 +595,16 @@ export default function WalletPage() {
                 <div className="text-xs text-muted-foreground">
                   {showBalance
                     ? Number(wallet?.frozenBalance || 0) > 0
-                      ? <Link href="/orders" className="text-warning/80 hover:text-warning hover:underline underline-offset-2 transition-colors" onClick={e => e.stopPropagation()}>🔒 {Number(wallet?.frozenBalance || 0).toLocaleString()} frozen</Link>
+                      ? <span
+                          className="text-warning/80 hover:text-warning hover:underline underline-offset-2 transition-colors"
+                          onClick={e => { e.stopPropagation(); setLocation("/orders"); }}
+                        >🔒 {Number(wallet?.frozenBalance || 0).toLocaleString()} frozen</span>
                       : `≈ ${(Number(wallet?.totalBalance || 0) * Number(wallet?.etbRate || 0)).toLocaleString()} Br`
                     : "***"}
                 </div>
               )}
             </div>
-          </Link>
+          </div>
         </div>
       </div>
 

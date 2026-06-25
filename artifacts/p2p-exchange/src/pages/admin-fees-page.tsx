@@ -31,8 +31,10 @@ function FeeRow({
   const startEdit = () => { setValue(String(currentValue ?? "")); setEditing(true); };
   const cancel = () => setEditing(false);
   const save = async () => {
+    const parsed = parseFloat(value);
+    if (isNaN(parsed) || parsed < 0) return;
     setSaving(true);
-    await onSave(feeKey, parseFloat(value));
+    await onSave(feeKey, parsed);
     setEditing(false);
     setSaving(false);
   };
