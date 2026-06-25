@@ -27,69 +27,87 @@ function FeeRow({
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState("");
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
 
-  const startEdit = () => { setValue(String(currentValue ?? "")); setEditing(true); };
-  const cancel = () => setEditing(false);
+  const startEdit = () => { setValue(String(currentValue ?? "0")); setEditing(true); setSaveError(""); };
+  const cancel = () => { setEditing(false); setSaveError(""); };
   const save = async () => {
     const parsed = parseFloat(value);
-    if (isNaN(parsed) || parsed < 0) return;
+    if (isNaN(parsed) || parsed < 0) {
+      setSaveError("Enter a valid non-negative number");
+      return;
+    }
     setSaving(true);
-    await onSave(feeKey, parsed);
-    setEditing(false);
-    setSaving(false);
+    setSaveError("");
+    try {
+      await onSave(feeKey, parsed);
+      setEditing(false);
+    } catch {
+      setSaveError("Failed to save — please try again");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
-    <tr className="border-b border-border/50">
-      <td className="px-5 py-4">
-        <div className="text-sm font-medium text-foreground">{label}</div>
-        <div className="text-xs text-muted-foreground mt-0.5">{description}</div>
-      </td>
-      <td className="px-5 py-4">
-        {editing ? (
-          <input
-            type="number"
-            value={value}
-            onChange={e => setValue(e.target.value)}
-            step="0.01"
-            min="0"
-            max="10"
-            autoFocus
-            className="w-28 px-2 py-1 bg-background border border-primary rounded text-sm outline-none font-mono"
-          />
-        ) : (
-          <span className="font-mono font-semibold text-primary">
-            {currentValue !== undefined ? currentValue : "—"}{unit}
-          </span>
-        )}
-      </td>
-      <td className="px-5 py-4">
-        {editing ? (
-          <div className="flex space-x-2">
+    <>
+      <tr className="border-b border-border/50">
+        <td className="px-5 py-4">
+          <div className="text-sm font-medium text-foreground">{label}</div>
+          <div className="text-xs text-muted-foreground mt-0.5">{description}</div>
+        </td>
+        <td className="px-5 py-4">
+          {editing ? (
+            <input
+              type="number"
+              value={value}
+              onChange={e => { setValue(e.target.value); setSaveError(""); }}
+              onKeyDown={e => { if (e.key === "Enter") save(); if (e.key === "Escape") cancel(); }}
+              step="0.01"
+              min="0"
+              autoFocus
+              className={`w-28 px-2 py-1 bg-background border rounded text-sm outline-none font-mono ${saveError ? "border-destructive" : "border-primary"}`}
+            />
+          ) : (
+            <span className="font-mono font-semibold text-primary">
+              {currentValue !== undefined ? currentValue : "—"}{unit}
+            </span>
+          )}
+        </td>
+        <td className="px-5 py-4">
+          {editing ? (
+            <div className="flex space-x-2">
+              <button
+                onClick={save}
+                disabled={saving}
+                className="p-1.5 rounded bg-success/20 text-success hover:bg-success/30 transition-colors disabled:opacity-50"
+              >
+                {saving ? <span className="w-4 h-4 block border-2 border-success border-t-transparent rounded-full animate-spin" /> : <Check className="w-4 h-4" />}
+              </button>
+              <button
+                onClick={cancel}
+                disabled={saving}
+                className="p-1.5 rounded bg-destructive/20 text-destructive hover:bg-destructive/30 transition-colors disabled:opacity-50"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          ) : (
             <button
-              onClick={save}
-              disabled={saving}
-              className="p-1.5 rounded bg-success/20 text-success hover:bg-success/30 transition-colors disabled:opacity-50"
+              onClick={startEdit}
+              className="p-1.5 rounded hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground"
             >
-              <Check className="w-4 h-4" />
+              <Pencil className="w-4 h-4" />
             </button>
-            <button
-              onClick={cancel}
-              className="p-1.5 rounded bg-destructive/20 text-destructive hover:bg-destructive/30 transition-colors"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        ) : (
-          <button
-            onClick={startEdit}
-            className="p-1.5 rounded hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground"
-          >
-            <Pencil className="w-4 h-4" />
-          </button>
-        )}
-      </td>
-    </tr>
+          )}
+        </td>
+      </tr>
+      {editing && saveError && (
+        <tr className="border-b border-border/50 bg-destructive/5">
+          <td colSpan={3} className="px-5 py-2 text-xs text-destructive">{saveError}</td>
+        </tr>
+      )}
+    </>
   );
 }
 
