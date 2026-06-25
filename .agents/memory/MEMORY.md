@@ -8,3 +8,4 @@
 - [Admin password DB override](admin-password-override.md) — login checks systemSettings key 'adminPassword' first, falls back to ADMIN_PASSWORD env var; PATCH /api/admin/change-password stores new value
 - [Build and package steps](build-package.md) — after frontend build, always copy logo SVGs before packaging
 - [BSC migration](bsc-migration.md) — platform fully migrated from TRC20 to BEP20; env var is BSC_HOT_WALLET_PRIVATE_KEY; fee type is withdrawal_fee_bep20; deposit setting key is bscAddress
+- [Per-user HD deposit addresses](hd-deposit-addresses.md) — BSC_HOT_WALLET_PRIVATE_KEY doubles as HD seed; path m/44'/60'/0'/0/<userId>; monitor uses topics[2] OR filter for all users in one getLogs call

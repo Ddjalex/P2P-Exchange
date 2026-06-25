@@ -1,9 +1,17 @@
 /**
  * Background deposit monitor — polls BSC RPC every 60s using ethers.js provider.getLogs()
- * to watch for incoming USDT BEP20 transfers to the hot wallet address.
+ * to watch for incoming USDT BEP20 transfers to per-user HD deposit addresses.
  *
- * No API key required — uses public BSC RPC directly (bsc-dataseed.binance.org primary).
- * Batching is disabled (batchMaxCount: 1) to avoid -32005 rate limit errors on dataseed nodes.
+ * When DEPOSIT_MASTER_KEY (or BSC_HOT_WALLET_PRIVATE_KEY used as seed) is set:
+ *   - Loads all wallets that have a depositAddress from the DB
+ *   - Passes them as topics[2] OR filter → one getLogs call covers all users
+ *   - Auto-credits deposits directly — no admin intervention required
+ *
+ * Falls back to the legacy single hot-wallet (bscAddress system setting) when no
+ * per-user addresses are registered yet.
+ *
+ * No API key required — uses public BSC RPC endpoints.
+ * batchMaxCount: 1 disables batching to avoid -32005 rate-limit errors.
  *
  * creditUserDeposit() is exported for the admin "manual credit" flow.
  */
@@ -23,8 +31,7 @@ import { PushNotify } from "../routes/push.js";
 
 const POLL_INTERVAL_MS = 60_000;
 
-// bsc-dataseed nodes are used for getBlockNumber() only — they don't support eth_getLogs.
-// The endpoints below support full eth_getLogs queries with no API key.
+// bsc-dataseed nodes used for getBlockNumber() only — don't support eth_getLogs.
 const BSC_BLOCK_NUMBER_ENDPOINTS = [
   "https://bsc-dataseed.binance.org",
   "https://bsc-dataseed1.binance.org",
@@ -33,8 +40,8 @@ const BSC_BLOCK_NUMBER_ENDPOINTS = [
   "https://bsc-dataseed4.binance.org",
 ];
 
-// These endpoints confirmed to support eth_getLogs on the free tier.
-// 1rpc allows ≤50 blocks; nodies allows ≤250 blocks — MAX_BLOCKS_PER_QUERY is set to 50.
+// These endpoints support eth_getLogs with no API key.
+// 1rpc allows ≤50 blocks; nodies allows ≤250 blocks — MAX_BLOCKS_PER_QUERY is 50.
 const BSC_GETLOGS_ENDPOINTS = [
   "https://1rpc.io/bnb",
   "https://bsc-pokt.nodies.app",
@@ -51,7 +58,6 @@ const TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a
 // On first run look back ~15 min worth of blocks (~20 blocks/min on BSC)
 const INITIAL_LOOKBACK_BLOCKS = 300;
 // Hard limit per getLogs query — 1rpc.io free tier allows max 50 blocks.
-// On first start we run multiple 50-block queries to cover the full catch-up window.
 const MAX_BLOCKS_PER_QUERY = 50;
 
 let monitorInterval: ReturnType<typeof setInterval> | null = null;
@@ -60,11 +66,6 @@ let lastProcessedBlock = 0;
 
 // ── Provider helpers ──────────────────────────────────────────────────────────
 
-/**
- * Make a non-batching JsonRpcProvider for a given URL.
- * staticNetwork skips the eth_chainId detection call.
- * batchMaxCount:1 ensures every request is sent individually (no batching).
- */
 function makeProvider(url: string): ethers.JsonRpcProvider {
   return new ethers.JsonRpcProvider(url, BSC_NETWORK, {
     staticNetwork: BSC_NETWORK,
@@ -72,9 +73,6 @@ function makeProvider(url: string): ethers.JsonRpcProvider {
   });
 }
 
-/**
- * Try each RPC endpoint in order and return the first successful result.
- */
 async function withFallback<T>(
   endpoints: string[],
   fn: (provider: ethers.JsonRpcProvider) => Promise<T>,
@@ -83,8 +81,7 @@ async function withFallback<T>(
   for (const url of endpoints) {
     const p = makeProvider(url);
     try {
-      const result = await fn(p);
-      return result;
+      return await fn(p);
     } catch (err: any) {
       console.warn(`[Deposit] RPC call failed on ${url}: ${err?.message ?? err}`);
       lastErr = err;
@@ -103,7 +100,10 @@ async function getSetting(key: string): Promise<string> {
   return rows[0]?.value?.trim() ?? "";
 }
 
-/** Parse an ethers Log → { from, to, amount } */
+function padAddress(addr: string): string {
+  return "0x" + addr.toLowerCase().replace(/^0x/, "").padStart(64, "0");
+}
+
 function parseTransferLog(log: ethers.Log): { from: string; to: string; amount: string } | null {
   try {
     if (!log.topics || log.topics.length < 3) return null;
@@ -114,8 +114,7 @@ function parseTransferLog(log: ethers.Log): { from: string; to: string; amount: 
     const whole    = rawValue / divisor;
     const frac     = rawValue % divisor;
     const fracStr  = frac.toString().padStart(USDT_DECIMALS, "0").slice(0, 6);
-    const amount   = `${whole}.${fracStr}`;
-    return { from, to, amount };
+    return { from, to, amount: `${whole}.${fracStr}` };
   } catch {
     return null;
   }
@@ -194,6 +193,8 @@ async function sendDepositEmail(
 /**
  * Credit a user's wallet and fire push + email notifications.
  * Exported for use by the admin manual-credit endpoint.
+ * source defaults to "auto_monitor" for monitor-detected deposits;
+ * pass "admin_manual" when called from the admin panel.
  */
 export async function creditUserDeposit(
   userId: number,
@@ -201,11 +202,12 @@ export async function creditUserDeposit(
   currentBalance: string,
   amountUsdt: string,
   tx: { txid: string; from: string; to: string },
+  source: "auto_monitor" | "admin_manual" = "auto_monitor",
 ): Promise<boolean> {
   const amountFloat = parseFloat(amountUsdt);
   const newBalance  = (parseFloat(currentBalance) + amountFloat).toFixed(6);
 
-  console.log(`[Deposit] Crediting user ${userId}: ${amountUsdt} USDT (txid: ${tx.txid})`);
+  console.log(`[Deposit] Crediting user ${userId}: ${amountUsdt} USDT (txid: ${tx.txid}, source: ${source})`);
 
   await db
     .update(walletsTable)
@@ -222,6 +224,10 @@ export async function creditUserDeposit(
     address: tx.from,
   });
 
+  const adminNote = source === "admin_manual"
+    ? `Manually credited by admin. ${amountUsdt} USDT from ${tx.from}`
+    : `Auto-credited by deposit monitor. ${amountUsdt} USDT from ${tx.from} to ${tx.to}`;
+
   await db
     .insert(depositVerificationsTable)
     .values({
@@ -232,8 +238,8 @@ export async function creditUserDeposit(
       toAddress: tx.to,
       network: "BEP20",
       status: "completed",
-      source: "admin_manual",
-      adminNote: `Manually credited by admin. ${amountUsdt} USDT from ${tx.from}`,
+      source,
+      adminNote,
     })
     .onConflictDoNothing();
 
@@ -254,17 +260,72 @@ export async function creditUserDeposit(
   return true;
 }
 
+// ── Address map ───────────────────────────────────────────────────────────────
+
+interface WalletInfo {
+  walletId: number;
+  userId: number;
+  balance: string;
+}
+
+/**
+ * Load all wallets that have a per-user depositAddress assigned.
+ * Returns a map of lowercase address → wallet info.
+ */
+async function loadUserDepositAddresses(): Promise<Map<string, WalletInfo>> {
+  const rows = await db
+    .select({
+      id: walletsTable.id,
+      userId: walletsTable.userId,
+      availableBalance: walletsTable.availableBalance,
+      depositAddress: walletsTable.depositAddress,
+    })
+    .from(walletsTable)
+    .where(and(eq(walletsTable.asset, "USDT"), isNotNull(walletsTable.depositAddress)));
+
+  const map = new Map<string, WalletInfo>();
+  for (const row of rows) {
+    if (row.depositAddress) {
+      map.set(row.depositAddress.toLowerCase(), {
+        walletId: row.id,
+        userId: row.userId,
+        balance: row.availableBalance,
+      });
+    }
+  }
+  return map;
+}
+
 // ── Poll ──────────────────────────────────────────────────────────────────────
 
 async function poll() {
   if (isRunning) return;
   isRunning = true;
   try {
-    const hotWalletAddress = await getSetting("bscAddress");
-    if (!hotWalletAddress) {
-      logger.debug("[Deposit] bscAddress not configured in system_settings — skipping poll");
-      return;
+    // Load per-user deposit addresses from DB
+    const userAddressMap = await loadUserDepositAddresses();
+    const hasUserAddresses = userAddressMap.size > 0;
+
+    // Determine which addresses to watch
+    let watchAddresses: string[] = []; // lowercase, with 0x
+    let legacyHotWallet = "";
+
+    if (hasUserAddresses) {
+      watchAddresses = [...userAddressMap.keys()];
+      console.log(`[Deposit] Watching ${watchAddresses.length} per-user deposit address(es)`);
+    } else {
+      // Fall back to single hot wallet from system_settings
+      legacyHotWallet = await getSetting("bscAddress");
+      if (!legacyHotWallet) {
+        logger.debug("[Deposit] No per-user deposit addresses or bscAddress configured — skipping poll");
+        return;
+      }
+      watchAddresses = [legacyHotWallet.toLowerCase()];
+      console.log(`[Deposit] Watching legacy hot wallet: ${legacyHotWallet}`);
     }
+
+    // Pad all watch addresses for topic[2] OR filtering
+    const paddedTopics = watchAddresses.map(padAddress);
 
     let currentBlock: number;
     try {
@@ -274,10 +335,6 @@ async function poll() {
       return;
     }
 
-    // Determine start of the scan window.
-    // On first run: look back INITIAL_LOOKBACK_BLOCKS and iterate through ALL
-    // pending chunks (each ≤ MAX_BLOCKS_PER_QUERY) before returning.
-    // On subsequent runs: there is only one small chunk to process.
     let chunkStart = lastProcessedBlock > 0
       ? lastProcessedBlock + 1
       : Math.max(0, currentBlock - INITIAL_LOOKBACK_BLOCKS);
@@ -287,37 +344,33 @@ async function poll() {
       return;
     }
 
-    // Pad hot wallet address once — reused for every chunk
-    const paddedAddress = "0x" + hotWalletAddress.toLowerCase().replace(/^0x/, "").padStart(64, "0");
-
-    // Load already-processed hashes once; we extend the set as we go
     const processedHashes = await getProcessedTxHashes();
 
-    // Iterate through all pending 50-block chunks in a single poll call.
-    // On steady-state there is only one chunk (~20 new blocks per 60s).
-    // On first start there are up to ceil(300/50) = 6 chunks.
+    // Iterate through all pending 50-block chunks.
+    // On steady-state: one chunk (~20 new blocks per 60s).
+    // On first start: up to ceil(300/50) = 6 chunks.
     while (chunkStart <= currentBlock) {
       const chunkEnd = Math.min(chunkStart + MAX_BLOCKS_PER_QUERY - 1, currentBlock);
 
-      console.log(`[Deposit] Scanning blocks ${chunkStart}–${chunkEnd} for USDT transfers to ${hotWalletAddress}`);
+      console.log(
+        `[Deposit] Scanning blocks ${chunkStart}–${chunkEnd}` +
+        (hasUserAddresses ? ` (${watchAddresses.length} user addresses)` : ` (hot wallet: ${legacyHotWallet})`),
+      );
 
       let logs: ethers.Log[];
       try {
+        // topics[2] is a single string or array — ethers handles OR matching for arrays
+        const topic2 = paddedTopics.length === 1 ? paddedTopics[0] : paddedTopics;
         logs = await withFallback(BSC_GETLOGS_ENDPOINTS, (p) =>
           p.getLogs({
             fromBlock: chunkStart,
             toBlock:   chunkEnd,
             address: USDT_CONTRACT,
-            topics: [
-              TRANSFER_TOPIC,
-              null,           // any sender
-              paddedAddress,  // to = our hot wallet
-            ],
+            topics: [TRANSFER_TOPIC, null, topic2],
           }),
         );
       } catch (err) {
         logger.error({ err, chunkStart, chunkEnd }, "[Deposit] provider.getLogs() failed — stopping catch-up at this chunk");
-        // Record how far we got so next poll continues from here
         lastProcessedBlock = chunkStart - 1;
         return;
       }
@@ -331,7 +384,6 @@ async function poll() {
 
         for (const log of logs) {
           const txHash = log.transactionHash.toLowerCase();
-
           if (processedHashes.has(txHash)) {
             console.log(`[Deposit] Already processed: ${txHash}`);
             continue;
@@ -343,30 +395,58 @@ async function poll() {
             continue;
           }
 
-          if (parsed.to.toLowerCase() !== hotWalletAddress.toLowerCase()) continue;
-
           const amountFloat = parseFloat(parsed.amount);
           if (isNaN(amountFloat) || amountFloat <= 0) continue;
 
-          console.log(
-            `[Deposit] New BEP20 deposit: ${parsed.amount} USDT from ${parsed.from} ` +
-            `(block ${log.blockNumber}, txHash: ${txHash})`,
-          );
+          const toLower = parsed.to.toLowerCase();
 
-          await db
-            .insert(depositVerificationsTable)
-            .values({
-              userId: 0,
-              txid: log.transactionHash,
-              amount: parsed.amount,
-              fromAddress: parsed.from,
-              toAddress: parsed.to,
-              network: "BEP20",
-              status: "pending",
-              source: "auto_monitor",
-              adminNote: `Auto-detected by BSC RPC monitor at block ${log.blockNumber}. Sender: ${parsed.from}. Assign to user manually.`,
-            })
-            .onConflictDoNothing();
+          if (hasUserAddresses) {
+            // Per-user mode: look up which user owns this deposit address and auto-credit
+            const walletInfo = userAddressMap.get(toLower);
+            if (!walletInfo) continue; // shouldn't happen given topics filter, but be safe
+
+            console.log(
+              `[Deposit] Auto-crediting user ${walletInfo.userId}: ${parsed.amount} USDT ` +
+              `from ${parsed.from} (block ${log.blockNumber}, tx: ${txHash})`,
+            );
+
+            await creditUserDeposit(
+              walletInfo.userId,
+              walletInfo.walletId,
+              walletInfo.balance,
+              parsed.amount,
+              { txid: log.transactionHash, from: parsed.from, to: parsed.to },
+              "auto_monitor",
+            );
+
+            // Update the balance in our in-memory map so concurrent deposits in the same
+            // chunk are accumulated correctly without an extra DB round-trip
+            walletInfo.balance = (parseFloat(walletInfo.balance) + amountFloat).toFixed(6);
+
+          } else {
+            // Legacy mode: flag deposit as pending for admin to assign manually
+            if (toLower !== legacyHotWallet.toLowerCase()) continue;
+
+            console.log(
+              `[Deposit] New deposit to hot wallet: ${parsed.amount} USDT from ${parsed.from} ` +
+              `(block ${log.blockNumber}, tx: ${txHash})`,
+            );
+
+            await db
+              .insert(depositVerificationsTable)
+              .values({
+                userId: 0,
+                txid: log.transactionHash,
+                amount: parsed.amount,
+                fromAddress: parsed.from,
+                toAddress: parsed.to,
+                network: "BEP20",
+                status: "pending",
+                source: "auto_monitor",
+                adminNote: `Auto-detected by BSC RPC monitor at block ${log.blockNumber}. Sender: ${parsed.from}. Assign to user manually.`,
+              })
+              .onConflictDoNothing();
+          }
 
           processedHashes.add(txHash);
         }
@@ -385,7 +465,7 @@ async function poll() {
 
 export function startDepositMonitor() {
   if (monitorInterval) return;
-  logger.info("Starting BEP20 deposit monitor — ethers.js provider.getLogs() via bsc-dataseed.binance.org (60s interval, no API key needed)");
+  logger.info("Starting BEP20 deposit monitor — per-user HD addresses via ethers.js getLogs (60s interval)");
   poll();
   monitorInterval = setInterval(poll, POLL_INTERVAL_MS);
 }

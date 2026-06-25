@@ -1,9 +1,9 @@
 /**
  * Per-user BEP20 deposit address derivation.
- * Derives a unique BEP20 address for each userId using BIP-44 HD path:
- *   m/44'/60'/0'/0/<userId>
+ * Reuses BSC_HOT_WALLET_PRIVATE_KEY as the HD master seed — same key,
+ * two purposes (signing withdrawals + deriving per-user deposit addresses).
  *
- * Requires DEPOSIT_MASTER_KEY env var — a 64-hex-char master seed.
+ * HD path: m/44'/60'/0'/0/<userId>
  */
 
 import { ethers } from "ethers";
@@ -15,12 +15,12 @@ let masterKey: HDKey | null = null;
 
 function getMasterKey(): HDKey {
   if (masterKey) return masterKey;
-  const hex = process.env["DEPOSIT_MASTER_KEY"];
-  if (!hex || hex.length !== 64) {
-    throw new Error("DEPOSIT_MASTER_KEY is not set or invalid (must be 64 hex chars)");
-  }
-  const seed = Buffer.from(hex, "hex");
-  masterKey = HDKey.fromMasterSeed(seed);
+  const raw = process.env["BSC_HOT_WALLET_PRIVATE_KEY"];
+  if (!raw) throw new Error("BSC_HOT_WALLET_PRIVATE_KEY is not set");
+  // Strip optional 0x prefix, use the 32-byte private key as the HD seed
+  const hex = raw.startsWith("0x") || raw.startsWith("0X") ? raw.slice(2) : raw;
+  if (hex.length !== 64) throw new Error("BSC_HOT_WALLET_PRIVATE_KEY must be 32 bytes (64 hex chars)");
+  masterKey = HDKey.fromMasterSeed(Buffer.from(hex, "hex"));
   return masterKey;
 }
 
@@ -31,14 +31,18 @@ function getMasterKey(): HDKey {
 export function deriveDepositAddress(userId: number): string {
   const child = getMasterKey().derive(`${DERIVATION_PATH_PREFIX}${userId}`);
   if (!child.privateKey) throw new Error(`Failed to derive key for userId ${userId}`);
-  const privateKey = Buffer.from(child.privateKey).toString("hex");
-  return new ethers.Wallet(privateKey).address;
+  return new ethers.Wallet(Buffer.from(child.privateKey).toString("hex")).address;
 }
 
 /**
- * Returns true if DEPOSIT_MASTER_KEY is configured.
+ * Returns true when BSC_HOT_WALLET_PRIVATE_KEY is set and the HD key
+ * can be initialised (i.e. per-user deposit addresses are available).
  */
 export function isHdConfigured(): boolean {
-  const hex = process.env["DEPOSIT_MASTER_KEY"];
-  return typeof hex === "string" && hex.length === 64;
+  try {
+    getMasterKey();
+    return true;
+  } catch {
+    return false;
+  }
 }

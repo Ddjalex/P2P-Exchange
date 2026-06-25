@@ -6,6 +6,7 @@ import { depositVerificationsTable } from "@workspace/db";
 import { getBscUsdtTx, getBscUsdtBalance, sendUsdtBsc } from "../lib/bsc.js";
 import { emitToUser } from "../lib/sse.js";
 import { getFeePercents } from "../helpers/fees.js";
+import { deriveDepositAddress, isHdConfigured } from "../lib/bsc-hd.js";
 
 const router = Router();
 
@@ -61,15 +62,33 @@ router.get("/", async (req, res) => {
 // GET /api/wallet/deposit-address?network=BEP20
 router.get("/deposit-address", async (req, res) => {
   try {
+    const userId = (req as any).userId;
     const minDeposit = await getSetting("minDeposit", "1");
-    const address = await getSetting("bscAddress", "");
 
+    if (isHdConfigured()) {
+      // Per-user HD address mode: derive unique address for this user
+      const wallet = await getOrCreateWallet(userId);
+
+      let depositAddress = wallet.depositAddress;
+      if (!depositAddress) {
+        // Derive and persist the address on first request
+        depositAddress = deriveDepositAddress(userId);
+        await db
+          .update(walletsTable)
+          .set({ depositAddress, updatedAt: new Date() })
+          .where(eq(walletsTable.id, wallet.id));
+      }
+
+      return res.json({ address: depositAddress, network: "BEP20", minDeposit });
+    }
+
+    // Legacy fallback: single hot-wallet address from system_settings
+    const address = await getSetting("bscAddress", "");
     if (!address) {
       return res.status(503).json({
         error: "Deposit address not configured yet. Please contact support.",
       });
     }
-
     res.json({ address, network: "BEP20", minDeposit });
   } catch (err) {
     req.log.error({ err }, "Failed to get deposit address");
