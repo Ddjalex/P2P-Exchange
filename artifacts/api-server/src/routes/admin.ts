@@ -15,7 +15,7 @@ import { PushNotify, sendPushBroadcast } from "./push.js";
 import { TelegramNotify } from "../telegram/notify.js";
 import { telegramUsersTable } from "@workspace/db";
 import { sendTelegramMessage, restartBotWithToken, getBotStatus } from "../telegram/bot.js";
-import { sendUsdt } from "../lib/tron.js";
+import { sendUsdt, getTrc20Balance, privateKeyToTronAddress } from "../lib/tron.js";
 
 const router = Router();
 
@@ -831,7 +831,26 @@ router.get("/wallet/overview", adminAuth, async (req, res) => {
     const totalAvailable = wallets.reduce((sum, w) => sum + parseFloat(w.availableBalance || "0"), 0);
     const totalFrozen = wallets.reduce((sum, w) => sum + parseFloat(w.frozenBalance || "0"), 0);
     const [pending] = await db.select({ c: count() }).from(transactionsTable).where(and(eq(transactionsTable.type, "withdraw"), eq(transactionsTable.status, "pending")));
-    res.json({ totalAvailable: totalAvailable.toFixed(2), totalFrozen: totalFrozen.toFixed(2), totalUsdt: (totalAvailable + totalFrozen).toFixed(2), pendingWithdrawals: Number(pending.c) });
+
+    // Fetch hot wallet USDT balance
+    let hotWalletBalance: string | null = null;
+    const privateKey = process.env["HOT_WALLET_PRIVATE_KEY"];
+    if (privateKey) {
+      try {
+        const hotAddress = privateKeyToTronAddress(privateKey.replace(/^0x/, ""));
+        hotWalletBalance = await getTrc20Balance(hotAddress);
+      } catch (balErr) {
+        req.log.warn({ balErr }, "Could not fetch hot wallet balance for overview");
+      }
+    }
+
+    res.json({
+      totalAvailable: totalAvailable.toFixed(2),
+      totalFrozen: totalFrozen.toFixed(2),
+      totalUsdt: (totalAvailable + totalFrozen).toFixed(2),
+      pendingWithdrawals: Number(pending.c),
+      hotWalletBalance,
+    });
   } catch (err) {
     req.log.error({ err }, "Admin wallet overview failed");
     res.status(500).json({ error: "Internal server error" });

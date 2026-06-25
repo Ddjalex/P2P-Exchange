@@ -3,6 +3,8 @@ import { useLocation } from "wouter";
 import { AdminLayout, AdminGuard } from "@/components/admin-layout";
 import { adminGet, adminPut, adminPost } from "@/lib/admin-api";
 
+const HOT_WALLET_ADDRESS = "TLBskP2mS6hDDxaRxUCeLwCzznBDkMs1P5";
+
 export default function AdminWalletPage() {
   const [, navigate] = useLocation();
   const [overview, setOverview] = useState<any>(null);
@@ -48,11 +50,15 @@ export default function AdminWalletPage() {
 
   const totalPages = Math.ceil(total / 20);
 
+  const pendingCount = Number(overview?.pendingWithdrawals ?? 0);
+  const hotBalance = parseFloat(overview?.hotWalletBalance ?? "0");
+  const hotBalanceLow = pendingCount > 0 && overview?.hotWalletBalance != null && hotBalance < 50;
+
   return (
     <AdminGuard>
       <AdminLayout title="Wallet & Transactions">
         {/* Overview cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
           {[
             { label: "Total Available USDT", value: overview?.totalAvailable ?? "—" },
             { label: "Total Frozen USDT", value: overview?.totalFrozen ?? "—" },
@@ -64,6 +70,39 @@ export default function AdminWalletPage() {
               <div className="text-xl font-bold font-mono">{c.value}</div>
             </div>
           ))}
+        </div>
+
+        {/* Hot Wallet Balance — always visible, highlighted when pending withdrawals exist */}
+        <div className={`rounded-xl border p-4 mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 ${
+          hotBalanceLow
+            ? "bg-destructive/10 border-destructive/40"
+            : pendingCount > 0
+              ? "bg-warning/10 border-warning/40"
+              : "bg-card border-border"
+        }`}>
+          <div className="flex items-start gap-3">
+            <div className={`mt-0.5 text-lg ${hotBalanceLow ? "text-destructive" : pendingCount > 0 ? "text-warning" : "text-muted-foreground"}`}>
+              {hotBalanceLow ? "⚠️" : pendingCount > 0 ? "🔶" : "🔑"}
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground mb-0.5">Hot Wallet Balance (TRC20 USDT)</div>
+              <div className={`text-2xl font-bold font-mono ${hotBalanceLow ? "text-destructive" : pendingCount > 0 ? "text-warning" : ""}`}>
+                {overview?.hotWalletBalance != null ? `${parseFloat(overview.hotWalletBalance).toFixed(2)} USDT` : "—"}
+              </div>
+              <div className="text-xs text-muted-foreground mt-0.5 font-mono break-all">{HOT_WALLET_ADDRESS}</div>
+            </div>
+          </div>
+          {pendingCount > 0 && (
+            <div className={`text-xs font-medium px-3 py-1.5 rounded-lg ${
+              hotBalanceLow
+                ? "bg-destructive/20 text-destructive"
+                : "bg-warning/20 text-warning"
+            }`}>
+              {hotBalanceLow
+                ? `⚠ Low balance — ${pendingCount} withdrawal${pendingCount > 1 ? "s" : ""} pending`
+                : `${pendingCount} withdrawal${pendingCount > 1 ? "s" : ""} awaiting payout`}
+            </div>
+          )}
         </div>
 
         {/* Fix Frozen Balances */}
