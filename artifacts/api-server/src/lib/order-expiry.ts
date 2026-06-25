@@ -1,0 +1,136 @@
+/**
+ * Order expiry monitor — runs every 60s and auto-cancels unpaid orders
+ * whose payment window has elapsed. Returns frozen USDT to the seller,
+ * restores ad balance, and notifies both parties.
+ */
+
+import { db } from "@workspace/db";
+import {
+  ordersTable,
+  adsTable,
+  walletsTable,
+  messagesTable,
+} from "@workspace/db";
+import { eq, and, lt, sql } from "drizzle-orm";
+import { logger } from "./logger.js";
+import { notify } from "./notify.js";
+import { PushNotify } from "../routes/push.js";
+import { TelegramNotify } from "../telegram/notify.js";
+import { emitToUser } from "./sse.js";
+
+let expiryInterval: ReturnType<typeof setInterval> | null = null;
+
+async function returnUsdtToSeller(sellerId: number, amountUsdt: string) {
+  const amount = parseFloat(amountUsdt);
+  const [wallet] = await db
+    .select()
+    .from(walletsTable)
+    .where(eq(walletsTable.userId, sellerId));
+  if (!wallet) return;
+  const available = parseFloat(wallet.availableBalance);
+  const frozen = parseFloat(wallet.frozenBalance);
+  await db.update(walletsTable).set({
+    availableBalance: (available + amount).toFixed(4),
+    frozenBalance: Math.max(0, frozen - amount).toFixed(4),
+  }).where(eq(walletsTable.userId, sellerId));
+}
+
+async function pollExpiredOrders() {
+  try {
+    // Find unpaid orders where createdAt + paymentTimeLimit minutes < now
+    const expired = await db
+      .select()
+      .from(ordersTable)
+      .where(
+        and(
+          eq(ordersTable.status, "unpaid"),
+          lt(
+            sql`${ordersTable.createdAt} + (${ordersTable.paymentTimeLimit} * interval '1 minute')`,
+            sql`now()`,
+          ),
+        ),
+      );
+
+    if (expired.length === 0) return;
+
+    logger.info({ count: expired.length }, "[OrderExpiry] Auto-cancelling expired unpaid orders");
+
+    for (const order of expired) {
+      try {
+        // 1. Mark cancelled
+        await db.update(ordersTable)
+          .set({ status: "cancelled", cancelReason: "Payment time limit expired" })
+          .where(eq(ordersTable.id, order.id));
+
+        // 2. Return frozen USDT to seller
+        await returnUsdtToSeller(order.sellerId, order.amountUsdt);
+
+        // 3. Restore ad balance
+        const [ad] = await db.select().from(adsTable).where(eq(adsTable.id, order.adId));
+        if (ad) {
+          const restored = parseFloat(ad.availableAmount) + parseFloat(order.amountUsdt);
+          const cap = parseFloat(ad.totalAmount);
+          await db.update(adsTable)
+            .set({ availableAmount: Math.min(restored, cap).toFixed(4) })
+            .where(eq(adsTable.id, order.adId));
+        }
+
+        // 4. System chat message
+        await db.insert(messagesTable).values({
+          orderId: order.id,
+          senderId: 0,
+          receiverId: order.buyerId,
+          content: "Order was automatically cancelled because the payment was not made within the time limit. The seller's funds have been returned.",
+          type: "system",
+          isRead: false,
+        });
+
+        // 5. Notify both parties
+        await notify({
+          userId: order.buyerId,
+          type: "order_cancelled",
+          title: "⏰ Order Expired",
+          message: `Order #${order.id} was cancelled because payment was not made within ${order.paymentTimeLimit} minutes.`,
+          relatedOrderId: order.id,
+        });
+        await notify({
+          userId: order.sellerId,
+          type: "order_cancelled",
+          title: "⏰ Order Expired",
+          message: `Order #${order.id} was auto-cancelled due to buyer non-payment. Your ${parseFloat(order.amountUsdt).toFixed(4)} USDT has been returned.`,
+          relatedOrderId: order.id,
+        });
+
+        PushNotify.orderCancelled(order.buyerId, order.id).catch(() => {});
+        PushNotify.orderCancelled(order.sellerId, order.id).catch(() => {});
+        TelegramNotify.orderCancelled(order.sellerId, order.id).catch(() => {});
+
+        emitToUser(order.buyerId, "order_update", { orderId: order.id, status: "cancelled", type: "order_expired" });
+        emitToUser(order.sellerId, "order_update", { orderId: order.id, status: "cancelled", type: "order_expired" });
+        emitToUser(order.sellerId, "wallet_update", {});
+
+        logger.info({ orderId: order.id, sellerId: order.sellerId, amountUsdt: order.amountUsdt },
+          "[OrderExpiry] Order auto-cancelled, USDT returned to seller");
+      } catch (err) {
+        logger.error({ err, orderId: order.id }, "[OrderExpiry] Failed to auto-cancel order");
+      }
+    }
+  } catch (err) {
+    logger.error({ err }, "[OrderExpiry] Poll error");
+  }
+}
+
+export function startOrderExpiryMonitor() {
+  if (expiryInterval) return;
+  logger.info("[OrderExpiry] Starting order expiry monitor (60s interval)");
+  pollExpiredOrders();
+  expiryInterval = setInterval(pollExpiredOrders, 60_000);
+}
+
+export function stopOrderExpiryMonitor() {
+  if (expiryInterval) {
+    clearInterval(expiryInterval);
+    expiryInterval = null;
+    logger.info("[OrderExpiry] Order expiry monitor stopped");
+  }
+}

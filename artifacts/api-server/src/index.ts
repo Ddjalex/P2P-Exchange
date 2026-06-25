@@ -1,6 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { startDepositMonitor } from "./lib/deposit-monitor";
+import { startOrderExpiryMonitor, stopOrderExpiryMonitor } from "./lib/order-expiry";
 import { startBot, stopBot } from "./telegram/bot.js";
 import { db } from "@workspace/db";
 import { pushSubscriptions } from "@workspace/db";
@@ -31,6 +32,9 @@ app.listen(port, (err) => {
   // Start blockchain deposit monitor
   startDepositMonitor();
 
+  // Start 15-minute order expiry monitor
+  startOrderExpiryMonitor();
+
   // Start Telegram bot (no-op if TELEGRAM_BOT_TOKEN not set)
   startBot();
 
@@ -45,5 +49,5 @@ app.listen(port, (err) => {
     });
 });
 
-process.once("SIGTERM", stopBot);
-process.once("SIGINT", stopBot);
+process.once("SIGTERM", () => { stopBot(); stopOrderExpiryMonitor(); });
+process.once("SIGINT",  () => { stopBot(); stopOrderExpiryMonitor(); });
