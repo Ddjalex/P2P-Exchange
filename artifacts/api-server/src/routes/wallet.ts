@@ -260,6 +260,25 @@ router.post("/withdraw", async (req, res) => {
     if (amt <= fee) return res.status(400).json({ error: `Amount must be greater than the withdrawal fee (${fee} USDT)` });
     const netAmount = amt - fee;
 
+    // Check hot wallet balance BEFORE touching the user's balance or creating any record.
+    // Reject immediately if funds are insufficient — no pending records, no balance deduction.
+    let hotWalletBalance = 0;
+    try {
+      const hotAddress = privateKeyToTronAddress(privateKey.replace(/^0x/, ""));
+      const balStr = await getTrc20Balance(hotAddress);
+      hotWalletBalance = parseFloat(balStr);
+    } catch (balErr) {
+      req.log.warn({ balErr }, "Could not fetch hot wallet balance — blocking withdrawal");
+      return res.status(503).json({ error: "Could not verify hot wallet balance. Please try again shortly." });
+    }
+
+    if (hotWalletBalance < netAmount) {
+      req.log.warn({ hotWalletBalance, netAmount }, "Hot wallet insufficient — rejecting withdrawal request");
+      return res.status(503).json({
+        error: `Withdrawal service temporarily unavailable. Please try again later or contact support.`,
+      });
+    }
+
     // Deduct balance BEFORE broadcast to prevent double-spend
     const newBalance = (avail - amt).toFixed(6);
     await db.update(walletsTable)
@@ -276,37 +295,6 @@ router.post("/withdraw", async (req, res) => {
       address,
       fee: fee.toFixed(6),
     }).returning();
-
-    // Check hot wallet USDT balance before broadcasting.
-    // If insufficient, leave as "pending" for admin to manually process — never attempt
-    // a doomed on-chain transaction that wastes energy and confuses the user.
-    let hotWalletBalance = 0;
-    try {
-      const hotAddress = privateKeyToTronAddress(privateKey.replace(/^0x/, ""));
-      const balStr = await getTrc20Balance(hotAddress);
-      hotWalletBalance = parseFloat(balStr);
-    } catch (balErr) {
-      req.log.warn({ balErr }, "Could not fetch hot wallet balance — proceeding with caution");
-    }
-
-    if (hotWalletBalance < netAmount) {
-      // Insufficient hot wallet funds — hold for admin approval
-      req.log.warn(
-        { hotWalletBalance, netAmount, txId: tx.id },
-        "Hot wallet insufficient — withdrawal held pending admin approval"
-      );
-      res.json({
-        id: tx.id,
-        status: "pending",
-        amount: amt.toFixed(6),
-        netAmount: netAmount.toFixed(6),
-        fee: fee.toFixed(6),
-        network: "TRC20",
-        address,
-        message: "Withdrawal is pending admin approval. You will be notified once processed.",
-      });
-      return;
-    }
 
     // Broadcast to blockchain — fire and forget.
     // On success: mark completed. On failure: leave as "pending" for admin review.
