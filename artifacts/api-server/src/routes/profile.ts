@@ -31,6 +31,24 @@ async function getProfileData(userId: number) {
 
   const firstOrder = allOrders.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())[0];
 
+  // Avg. Release Time: seller perspective — time from paidAt to releasedAt
+  const sellerCompleted = allOrders.filter(
+    o => o.sellerId === userId && o.status === "completed" && o.paidAt && o.releasedAt
+  );
+  const avgReleaseMs = sellerCompleted.length > 0
+    ? sellerCompleted.reduce((sum, o) => sum + (o.releasedAt!.getTime() - o.paidAt!.getTime()), 0) / sellerCompleted.length
+    : 0;
+  const avgReleaseMin = (avgReleaseMs / 60000).toFixed(2);
+
+  // Avg. Pay Time: buyer perspective — time from createdAt to paidAt
+  const buyerPaid = allOrders.filter(
+    o => o.buyerId === userId && o.paidAt
+  );
+  const avgPayMs = buyerPaid.length > 0
+    ? buyerPaid.reduce((sum, o) => sum + (o.paidAt!.getTime() - o.createdAt.getTime()), 0) / buyerPaid.length
+    : 0;
+  const avgPayMin = (avgPayMs / 60000).toFixed(2);
+
   return {
     id: user.id,
     username: user.username,
@@ -44,8 +62,8 @@ async function getProfileData(userId: number) {
     addressVerified: user.addressVerified,
     trades30d: recent.length,
     completionRate30d: `${completionRate30d}%`,
-    avgReleaseTime: "0.83 m",
-    avgPayTime: "1.20 m",
+    avgReleaseTime: `${avgReleaseMin} m`,
+    avgPayTime: `${avgPayMin} m`,
     totalTrades: allOrders.length,
     positiveFeedbackPct: `${positivePct}%`,
     negativeFeedbackPct: `${negativePct}%`,
