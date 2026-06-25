@@ -493,15 +493,25 @@ export default function ProfilePage() {
               </div>
               <div className="space-y-1">
                 <div className="text-xs text-muted-foreground">30d Completion Rate</div>
-                <div className="font-bold font-mono">{profile?.completionRate30d ?? "0.00%"}</div>
+                <div className="font-bold font-mono">
+                  {profile?.completionRate30d ?? <span className="text-muted-foreground text-sm">N/A</span>}
+                </div>
               </div>
               <div className="space-y-1">
                 <div className="text-xs text-muted-foreground">Avg. Release Time</div>
-                <div className="font-bold font-mono">{profile?.avgReleaseTime ?? "0.00"} Min</div>
+                <div className="font-bold font-mono">
+                  {profile?.avgReleaseTime === "0.00 m"
+                    ? <span className="text-muted-foreground text-sm">N/A</span>
+                    : <>{profile?.avgReleaseTime} Min</>}
+                </div>
               </div>
               <div className="space-y-1">
                 <div className="text-xs text-muted-foreground">Avg. Pay Time</div>
-                <div className="font-bold font-mono">{profile?.avgPayTime ?? "0.00"} Min</div>
+                <div className="font-bold font-mono">
+                  {profile?.avgPayTime === "0.00 m"
+                    ? <span className="text-muted-foreground text-sm">N/A</span>
+                    : <>{profile?.avgPayTime} Min</>}
+                </div>
               </div>
             </>
           )}

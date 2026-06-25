@@ -20,7 +20,7 @@ async function getProfileData(userId: number) {
   const completedRecent = recent.filter(o => o.status === "completed");
   const completionRate30d = recent.length > 0
     ? ((completedRecent.length / recent.length) * 100).toFixed(2)
-    : "100.00";
+    : null;
 
   const allFeedback = await db.select().from(feedbackTable).where(eq(feedbackTable.toUserId, userId));
   const positive = allFeedback.filter(f => f.type === "positive").length;
@@ -61,7 +61,7 @@ async function getProfileData(userId: number) {
     smsVerified: user.smsVerified,
     addressVerified: user.addressVerified,
     trades30d: recent.length,
-    completionRate30d: `${completionRate30d}%`,
+    completionRate30d: completionRate30d !== null ? `${completionRate30d}%` : null,
     avgReleaseTime: `${avgReleaseMin} m`,
     avgPayTime: `${avgPayMin} m`,
     totalTrades: allOrders.length,
