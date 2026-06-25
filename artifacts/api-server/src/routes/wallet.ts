@@ -260,32 +260,13 @@ router.post("/withdraw", async (req, res) => {
     if (amt <= fee) return res.status(400).json({ error: `Amount must be greater than the withdrawal fee (${fee} USDT)` });
     const netAmount = amt - fee;
 
-    // Check hot wallet balance BEFORE touching the user's balance or creating any record.
-    // Reject immediately if funds are insufficient — no pending records, no balance deduction.
-    let hotWalletBalance = 0;
-    try {
-      const hotAddress = privateKeyToTronAddress(privateKey.replace(/^0x/, ""));
-      const balStr = await getTrc20Balance(hotAddress);
-      hotWalletBalance = parseFloat(balStr);
-    } catch (balErr) {
-      req.log.warn({ balErr }, "Could not fetch hot wallet balance — blocking withdrawal");
-      return res.status(503).json({ error: "Could not verify hot wallet balance. Please try again shortly." });
-    }
-
-    if (hotWalletBalance < netAmount) {
-      req.log.warn({ hotWalletBalance, netAmount }, "Hot wallet insufficient — rejecting withdrawal request");
-      return res.status(503).json({
-        error: `Withdrawal service temporarily unavailable. Please try again later or contact support.`,
-      });
-    }
-
-    // Deduct balance BEFORE broadcast to prevent double-spend
+    // Deduct user balance BEFORE broadcast to prevent double-spend
     const newBalance = (avail - amt).toFixed(6);
     await db.update(walletsTable)
       .set({ availableBalance: newBalance, updatedAt: new Date() })
       .where(eq(walletsTable.id, wallet.id));
 
-    // Create pending tx record
+    // Create pending tx record — always succeeds regardless of hot wallet state
     const [tx] = await db.insert(transactionsTable).values({
       userId,
       type: "withdraw",
@@ -296,22 +277,47 @@ router.post("/withdraw", async (req, res) => {
       fee: fee.toFixed(6),
     }).returning();
 
-    // Broadcast to blockchain — fire and forget.
-    // On success: mark completed. On failure: leave as "pending" for admin review.
-    // Never auto-refund — admin manually approves or rejects via the admin panel.
-    sendUsdt(privateKey, address, netAmount)
-      .then(async (txid) => {
-        await db.update(transactionsTable)
-          .set({ status: "completed", txid })
-          .where(eq(transactionsTable.id, tx.id));
-        req.log.info({ txid, userId, amount: netAmount }, "Withdrawal broadcast successful");
-      })
-      .catch(async (err) => {
-        req.log.error({ err, txId: tx.id }, "Withdrawal broadcast failed — leaving pending for admin review");
-        await db.update(transactionsTable)
-          .set({ status: "pending" })
-          .where(eq(transactionsTable.id, tx.id));
+    // Check hot wallet balance. If sufficient → auto-broadcast now.
+    // If insufficient or unreachable → leave as "pending" for admin to approve/reject manually.
+    let hotWalletBalance = 0;
+    let hotBalanceFetched = false;
+    try {
+      const hotAddress = privateKeyToTronAddress(privateKey.replace(/^0x/, ""));
+      const balStr = await getTrc20Balance(hotAddress);
+      hotWalletBalance = parseFloat(balStr);
+      hotBalanceFetched = true;
+    } catch (balErr) {
+      req.log.warn({ balErr, txId: tx.id }, "Could not fetch hot wallet balance — withdrawal held for admin approval");
+    }
+
+    if (hotBalanceFetched && hotWalletBalance >= netAmount) {
+      // Hot wallet has enough — broadcast automatically, fire and forget
+      sendUsdt(privateKey, address, netAmount)
+        .then(async (txid) => {
+          await db.update(transactionsTable)
+            .set({ status: "completed", txid })
+            .where(eq(transactionsTable.id, tx.id));
+          req.log.info({ txid, userId, amount: netAmount }, "Withdrawal broadcast successful");
+        })
+        .catch(async (err) => {
+          req.log.error({ err, txId: tx.id }, "Withdrawal broadcast failed — leaving pending for admin review");
+        });
+
+      return res.json({
+        id: tx.id,
+        status: "pending",
+        amount: amt.toFixed(6),
+        netAmount: netAmount.toFixed(6),
+        fee: fee.toFixed(6),
+        network: "TRC20",
+        address,
+        message: "Withdrawal submitted. Usually confirms within 1-3 minutes.",
       });
+    }
+
+    // Hot wallet insufficient or unreachable — hold for admin approval
+    req.log.warn({ hotWalletBalance, hotBalanceFetched, netAmount, txId: tx.id },
+      "Hot wallet insufficient or unreachable — withdrawal held pending admin approval");
 
     res.json({
       id: tx.id,
@@ -321,7 +327,7 @@ router.post("/withdraw", async (req, res) => {
       fee: fee.toFixed(6),
       network: "TRC20",
       address,
-      message: "Withdrawal submitted to blockchain. Usually confirms within 1-3 minutes.",
+      message: "Withdrawal received and is pending admin approval. You will be notified once processed.",
     });
   } catch (err) {
     req.log.error({ err }, "Failed to withdraw");
