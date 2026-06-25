@@ -1,8 +1,16 @@
 #!/bin/bash
 set -e
 
-# Clear any stale process on the API port (artifact workflow may have grabbed it)
+# Bootstrap dependencies if node_modules are missing
+if [ ! -d "/home/runner/workspace/node_modules/.pnpm" ]; then
+  echo "node_modules missing — running pnpm install..."
+  pnpm install --frozen-lockfile
+fi
+
+# Clear any stale processes on both ports
+echo "Clearing ports..."
 fuser -k ${API_PORT:-8080}/tcp 2>/dev/null || true
+fuser -k ${PORT:-5000}/tcp 2>/dev/null || true
 
 # Build and start the API server in the background
 echo "Building API server..."

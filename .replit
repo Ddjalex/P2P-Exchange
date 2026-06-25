@@ -54,9 +54,10 @@ API_PORT = "8080"
 VAPID_EMAIL = "support@xendrx.com"
 VITE_VAPID_PUBLIC_KEY = "BDuv1syriVHJkK_ffTGAOZmpnOUDbKR1jDdH9vNbj2e6GK32-1yrZKGEQG_YUAt7EwDRkooXvxdn1OxER-n_sVc"
 APP_URL = "https://273cfb7d-0114-4e1e-99a5-d200982d29b3-00-n6vkad0m5w3g.spock.replit.dev"
-VAPID_PUBLIC_KEY = "BLmNvrREYIu57En84KBWFimJDMQdHUvOgaZokih-8N0gEFeZ54G5wXQyDg0T6eL8-b1CmQDEiWHH_f7RtFuN6G0"
+VAPID_PUBLIC_KEY = "BDuv1syriVHJkK_ffTGAOZmpnOUDbKR1jDdH9vNbj2e6GK32-1yrZKGEQG_YUAt7EwDRkooXvxdn1OxER-n_sVc"
 VAPID_PRIVATE_KEY = "LQeljwDbd_p9BjFJufByQftP_nUghHm3-X0udBqgxUc"
 VITE_TURNSTILE_SITE_KEY = "0x4AAAAAADfw5Ve1Ks9-MMzT"
+NEON_DATABASE_URL = "postgresql://postgres:password@helium/heliumdb?sslmode=disable"
 
 [nix]
 channel = "stable-25_05"
