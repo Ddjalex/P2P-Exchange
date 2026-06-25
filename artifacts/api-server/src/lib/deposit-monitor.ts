@@ -1,12 +1,14 @@
 /**
- * Background deposit monitor — polls BSC RPC every 60s using ethers.js getLogs()
+ * Background deposit monitor — polls BSC RPC every 60s using ethers.js provider.getLogs()
  * to watch for incoming USDT BEP20 transfers to the hot wallet address.
  *
- * No API key required — uses free public BSC RPC nodes directly.
+ * No API key required — uses public BSC RPC directly (bsc-dataseed.binance.org primary).
+ * Batching is disabled (batchMaxCount: 1) to avoid -32005 rate limit errors on dataseed nodes.
  *
  * creditUserDeposit() is exported for the admin "manual credit" flow.
  */
 
+import { ethers } from "ethers";
 import { db } from "@workspace/db";
 import {
   transactionsTable,
@@ -20,72 +22,75 @@ import { logger } from "./logger.js";
 import { PushNotify } from "../routes/push.js";
 
 const POLL_INTERVAL_MS = 60_000;
-// Public BSC RPC nodes that support eth_getLogs (dataseed nodes do NOT)
-const BSC_RPC_ENDPOINTS = [
-  "https://rpc.ankr.com/bsc",
-  "https://bsc-rpc.publicnode.com",
-  "https://1rpc.io/bnb",
-  "https://bsc.drpc.org",
+
+// bsc-dataseed nodes are used for getBlockNumber() only — they don't support eth_getLogs.
+// The endpoints below support full eth_getLogs queries with no API key.
+const BSC_BLOCK_NUMBER_ENDPOINTS = [
+  "https://bsc-dataseed.binance.org",
+  "https://bsc-dataseed1.binance.org",
+  "https://bsc-dataseed2.binance.org",
+  "https://bsc-dataseed3.binance.org",
+  "https://bsc-dataseed4.binance.org",
 ];
+
+// These endpoints confirmed to support eth_getLogs on the free tier.
+// 1rpc allows ≤50 blocks; nodies allows ≤250 blocks — MAX_BLOCKS_PER_QUERY is set to 50.
+const BSC_GETLOGS_ENDPOINTS = [
+  "https://1rpc.io/bnb",
+  "https://bsc-pokt.nodies.app",
+];
+
+const BSC_NETWORK = ethers.Network.from(56); // BNB Smart Chain, avoids eth_chainId probe
+
 const USDT_CONTRACT = "0x55d398326f99059fF775485246999027B3197955";
 const USDT_DECIMALS = 18;
 
 // Transfer(address indexed from, address indexed to, uint256 value)
 const TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
 
-// On first run, look back 300 blocks (~15 minutes on BSC, ~3s/block)
+// On first run look back ~15 min worth of blocks
 const INITIAL_LOOKBACK_BLOCKS = 300;
-// Max blocks per getLogs query (BSC public RPC handles up to ~5000 but we keep it conservative)
-const MAX_BLOCKS_PER_QUERY = 500;
+// Stay within 1rpc.io's free-tier limit of 50 blocks per query.
+// BSC produces ~20 blocks/min so 50 blocks covers each 60s poll window easily.
+const MAX_BLOCKS_PER_QUERY = 50;
 
 let monitorInterval: ReturnType<typeof setInterval> | null = null;
 let isRunning = false;
 let lastProcessedBlock = 0;
 
-// ── Raw JSON-RPC helpers (no batching — avoids -32005 rate limit errors) ─────
+// ── Provider helpers ──────────────────────────────────────────────────────────
 
-interface RpcLog {
-  transactionHash: string;
-  blockNumber: string;
-  address: string;
-  topics: string[];
-  data: string;
+/**
+ * Make a non-batching JsonRpcProvider for a given URL.
+ * staticNetwork skips the eth_chainId detection call.
+ * batchMaxCount:1 ensures every request is sent individually (no batching).
+ */
+function makeProvider(url: string): ethers.JsonRpcProvider {
+  return new ethers.JsonRpcProvider(url, BSC_NETWORK, {
+    staticNetwork: BSC_NETWORK,
+    batchMaxCount: 1,
+  });
 }
 
-async function rpcCall<T>(method: string, params: unknown[]): Promise<T> {
-  const body = JSON.stringify({ jsonrpc: "2.0", id: 1, method, params });
-  for (const endpoint of BSC_RPC_ENDPOINTS) {
+/**
+ * Try each RPC endpoint in order and return the first successful result.
+ */
+async function withFallback<T>(
+  endpoints: string[],
+  fn: (provider: ethers.JsonRpcProvider) => Promise<T>,
+): Promise<T> {
+  let lastErr: unknown;
+  for (const url of endpoints) {
+    const p = makeProvider(url);
     try {
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body,
-        signal: AbortSignal.timeout(15_000),
-      });
-      if (!res.ok) continue;
-      const json = await res.json() as { result?: T; error?: { code: number; message: string } };
-      if (json.error) throw new Error(`RPC error ${json.error.code}: ${json.error.message}`);
-      if (json.result === undefined) throw new Error("RPC returned no result");
-      return json.result as T;
+      const result = await fn(p);
+      return result;
     } catch (err: any) {
-      console.warn(`[Deposit] RPC ${method} failed on ${endpoint}: ${err.message}`);
+      console.warn(`[Deposit] RPC call failed on ${url}: ${err?.message ?? err}`);
+      lastErr = err;
     }
   }
-  throw new Error(`All BSC RPC endpoints failed for ${method}`);
-}
-
-async function getBlockNumber(): Promise<number> {
-  const hex = await rpcCall<string>("eth_blockNumber", []);
-  return parseInt(hex, 16);
-}
-
-async function getLogs(fromBlock: number, toBlock: number, address: string, topics: (string | null)[]): Promise<RpcLog[]> {
-  return rpcCall<RpcLog[]>("eth_getLogs", [{
-    fromBlock: "0x" + fromBlock.toString(16),
-    toBlock:   "0x" + toBlock.toString(16),
-    address,
-    topics,
-  }]);
+  throw lastErr ?? new Error("All BSC RPC endpoints failed");
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -98,18 +103,18 @@ async function getSetting(key: string): Promise<string> {
   return rows[0]?.value?.trim() ?? "";
 }
 
-/** Parse a raw BEP20 Transfer log → { from, to, amount } */
-function parseTransferLog(log: RpcLog): { from: string; to: string; amount: string } | null {
+/** Parse an ethers Log → { from, to, amount } */
+function parseTransferLog(log: ethers.Log): { from: string; to: string; amount: string } | null {
   try {
     if (!log.topics || log.topics.length < 3) return null;
     const from = "0x" + log.topics[1].slice(-40);
     const to   = "0x" + log.topics[2].slice(-40);
     const rawValue = BigInt(log.data);
-    const divisor = BigInt(10 ** USDT_DECIMALS);
-    const whole = rawValue / divisor;
-    const frac  = rawValue % divisor;
-    const fracStr = frac.toString().padStart(USDT_DECIMALS, "0").slice(0, 6);
-    const amount = `${whole}.${fracStr}`;
+    const divisor  = BigInt(10 ** USDT_DECIMALS);
+    const whole    = rawValue / divisor;
+    const frac     = rawValue % divisor;
+    const fracStr  = frac.toString().padStart(USDT_DECIMALS, "0").slice(0, 6);
+    const amount   = `${whole}.${fracStr}`;
     return { from, to, amount };
   } catch {
     return null;
@@ -135,7 +140,7 @@ async function sendDepositEmail(
   username: string,
   email: string,
   amount: string,
-  txHash: string
+  txHash: string,
 ): Promise<void> {
   try {
     const apiKey = await getSetting("brevoApiKey");
@@ -261,16 +266,14 @@ async function poll() {
       return;
     }
 
-    // Get current block via raw RPC (no batching)
     let currentBlock: number;
     try {
-      currentBlock = await getBlockNumber();
+      currentBlock = await withFallback(BSC_BLOCK_NUMBER_ENDPOINTS, (p) => p.getBlockNumber());
     } catch (err) {
       logger.error({ err }, "[Deposit] Could not fetch BSC block number — skipping poll");
       return;
     }
 
-    // On first run, look back INITIAL_LOOKBACK_BLOCKS; otherwise continue from where we left off
     const fromBlock = lastProcessedBlock > 0
       ? lastProcessedBlock + 1
       : Math.max(0, currentBlock - INITIAL_LOOKBACK_BLOCKS);
@@ -280,23 +283,29 @@ async function poll() {
       return;
     }
 
-    // Cap per-query range to avoid RPC limits
     const toBlock = Math.min(fromBlock + MAX_BLOCKS_PER_QUERY - 1, currentBlock);
 
     console.log(`[Deposit] Scanning blocks ${fromBlock}–${toBlock} for USDT transfers to ${hotWalletAddress}`);
 
-    // Pad hot wallet to 32-byte topic value
+    // Pad hot wallet address to 32-byte topic
     const paddedAddress = "0x" + hotWalletAddress.toLowerCase().replace(/^0x/, "").padStart(64, "0");
 
-    let logs: RpcLog[];
+    let logs: ethers.Log[];
     try {
-      logs = await getLogs(fromBlock, toBlock, USDT_CONTRACT, [
-        TRANSFER_TOPIC,
-        null,           // any sender
-        paddedAddress,  // to = our hot wallet
-      ]);
+      logs = await withFallback(BSC_GETLOGS_ENDPOINTS, (p) =>
+        p.getLogs({
+          fromBlock,
+          toBlock,
+          address: USDT_CONTRACT,
+          topics: [
+            TRANSFER_TOPIC,
+            null,           // any sender
+            paddedAddress,  // to = our hot wallet
+          ],
+        }),
+      );
     } catch (err) {
-      logger.error({ err, fromBlock, toBlock }, "[Deposit] getLogs failed — skipping this range");
+      logger.error({ err, fromBlock, toBlock }, "[Deposit] provider.getLogs() failed on all endpoints — skipping this range");
       return;
     }
 
@@ -332,14 +341,13 @@ async function poll() {
 
       console.log(
         `[Deposit] New unmatched BEP20 deposit: ${parsed.amount} USDT from ${parsed.from} ` +
-        `(block ${log.blockNumber}, txHash: ${txHash})`
+        `(block ${log.blockNumber}, txHash: ${txHash})`,
       );
 
-      // Record as a pending verification for admin review
       await db
         .insert(depositVerificationsTable)
         .values({
-          userId: 0,           // unknown until admin assigns it
+          userId: 0,
           txid: log.transactionHash,
           amount: parsed.amount,
           fromAddress: parsed.from,
@@ -351,7 +359,7 @@ async function poll() {
         })
         .onConflictDoNothing();
 
-      processedHashes.add(txHash); // prevent double-insert within this batch
+      processedHashes.add(txHash);
     }
   } catch (err) {
     logger.error({ err }, "[Deposit] poll error");
@@ -364,7 +372,7 @@ async function poll() {
 
 export function startDepositMonitor() {
   if (monitorInterval) return;
-  logger.info("Starting BEP20 deposit monitor via BSC RPC getLogs (60s interval, no API key needed)");
+  logger.info("Starting BEP20 deposit monitor — ethers.js provider.getLogs() via bsc-dataseed.binance.org (60s interval, no API key needed)");
   poll();
   monitorInterval = setInterval(poll, POLL_INTERVAL_MS);
 }
