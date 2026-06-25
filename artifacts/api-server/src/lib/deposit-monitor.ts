@@ -48,10 +48,10 @@ const USDT_DECIMALS = 18;
 // Transfer(address indexed from, address indexed to, uint256 value)
 const TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
 
-// On first run look back ~15 min worth of blocks
+// On first run look back ~15 min worth of blocks (~20 blocks/min on BSC)
 const INITIAL_LOOKBACK_BLOCKS = 300;
-// Stay within 1rpc.io's free-tier limit of 50 blocks per query.
-// BSC produces ~20 blocks/min so 50 blocks covers each 60s poll window easily.
+// Hard limit per getLogs query — 1rpc.io free tier allows max 50 blocks.
+// On first start we run multiple 50-block queries to cover the full catch-up window.
 const MAX_BLOCKS_PER_QUERY = 50;
 
 let monitorInterval: ReturnType<typeof setInterval> | null = null;
@@ -274,92 +274,105 @@ async function poll() {
       return;
     }
 
-    const fromBlock = lastProcessedBlock > 0
+    // Determine start of the scan window.
+    // On first run: look back INITIAL_LOOKBACK_BLOCKS and iterate through ALL
+    // pending chunks (each ≤ MAX_BLOCKS_PER_QUERY) before returning.
+    // On subsequent runs: there is only one small chunk to process.
+    let chunkStart = lastProcessedBlock > 0
       ? lastProcessedBlock + 1
       : Math.max(0, currentBlock - INITIAL_LOOKBACK_BLOCKS);
 
-    if (fromBlock > currentBlock) {
+    if (chunkStart > currentBlock) {
       lastProcessedBlock = currentBlock;
       return;
     }
 
-    const toBlock = Math.min(fromBlock + MAX_BLOCKS_PER_QUERY - 1, currentBlock);
-
-    console.log(`[Deposit] Scanning blocks ${fromBlock}–${toBlock} for USDT transfers to ${hotWalletAddress}`);
-
-    // Pad hot wallet address to 32-byte topic
+    // Pad hot wallet address once — reused for every chunk
     const paddedAddress = "0x" + hotWalletAddress.toLowerCase().replace(/^0x/, "").padStart(64, "0");
 
-    let logs: ethers.Log[];
-    try {
-      logs = await withFallback(BSC_GETLOGS_ENDPOINTS, (p) =>
-        p.getLogs({
-          fromBlock,
-          toBlock,
-          address: USDT_CONTRACT,
-          topics: [
-            TRANSFER_TOPIC,
-            null,           // any sender
-            paddedAddress,  // to = our hot wallet
-          ],
-        }),
-      );
-    } catch (err) {
-      logger.error({ err, fromBlock, toBlock }, "[Deposit] provider.getLogs() failed on all endpoints — skipping this range");
-      return;
-    }
-
-    lastProcessedBlock = toBlock;
-
-    if (logs.length === 0) {
-      console.log(`[Deposit] No new USDT transfers found in blocks ${fromBlock}–${toBlock}`);
-      return;
-    }
-
-    console.log(`[Deposit] Found ${logs.length} USDT transfer(s) to hot wallet`);
-
+    // Load already-processed hashes once; we extend the set as we go
     const processedHashes = await getProcessedTxHashes();
 
-    for (const log of logs) {
-      const txHash = log.transactionHash.toLowerCase();
+    // Iterate through all pending 50-block chunks in a single poll call.
+    // On steady-state there is only one chunk (~20 new blocks per 60s).
+    // On first start there are up to ceil(300/50) = 6 chunks.
+    while (chunkStart <= currentBlock) {
+      const chunkEnd = Math.min(chunkStart + MAX_BLOCKS_PER_QUERY - 1, currentBlock);
 
-      if (processedHashes.has(txHash)) {
-        console.log(`[Deposit] Already processed: ${txHash}`);
-        continue;
+      console.log(`[Deposit] Scanning blocks ${chunkStart}–${chunkEnd} for USDT transfers to ${hotWalletAddress}`);
+
+      let logs: ethers.Log[];
+      try {
+        logs = await withFallback(BSC_GETLOGS_ENDPOINTS, (p) =>
+          p.getLogs({
+            fromBlock: chunkStart,
+            toBlock:   chunkEnd,
+            address: USDT_CONTRACT,
+            topics: [
+              TRANSFER_TOPIC,
+              null,           // any sender
+              paddedAddress,  // to = our hot wallet
+            ],
+          }),
+        );
+      } catch (err) {
+        logger.error({ err, chunkStart, chunkEnd }, "[Deposit] provider.getLogs() failed — stopping catch-up at this chunk");
+        // Record how far we got so next poll continues from here
+        lastProcessedBlock = chunkStart - 1;
+        return;
       }
 
-      const parsed = parseTransferLog(log);
-      if (!parsed) {
-        console.warn(`[Deposit] Could not parse log for txHash ${txHash}`);
-        continue;
+      lastProcessedBlock = chunkEnd;
+
+      if (logs.length === 0) {
+        console.log(`[Deposit] No USDT transfers in blocks ${chunkStart}–${chunkEnd}`);
+      } else {
+        console.log(`[Deposit] Found ${logs.length} USDT transfer(s) in blocks ${chunkStart}–${chunkEnd}`);
+
+        for (const log of logs) {
+          const txHash = log.transactionHash.toLowerCase();
+
+          if (processedHashes.has(txHash)) {
+            console.log(`[Deposit] Already processed: ${txHash}`);
+            continue;
+          }
+
+          const parsed = parseTransferLog(log);
+          if (!parsed) {
+            console.warn(`[Deposit] Could not parse log for txHash ${txHash}`);
+            continue;
+          }
+
+          if (parsed.to.toLowerCase() !== hotWalletAddress.toLowerCase()) continue;
+
+          const amountFloat = parseFloat(parsed.amount);
+          if (isNaN(amountFloat) || amountFloat <= 0) continue;
+
+          console.log(
+            `[Deposit] New BEP20 deposit: ${parsed.amount} USDT from ${parsed.from} ` +
+            `(block ${log.blockNumber}, txHash: ${txHash})`,
+          );
+
+          await db
+            .insert(depositVerificationsTable)
+            .values({
+              userId: 0,
+              txid: log.transactionHash,
+              amount: parsed.amount,
+              fromAddress: parsed.from,
+              toAddress: parsed.to,
+              network: "BEP20",
+              status: "pending",
+              source: "auto_monitor",
+              adminNote: `Auto-detected by BSC RPC monitor at block ${log.blockNumber}. Sender: ${parsed.from}. Assign to user manually.`,
+            })
+            .onConflictDoNothing();
+
+          processedHashes.add(txHash);
+        }
       }
 
-      if (parsed.to.toLowerCase() !== hotWalletAddress.toLowerCase()) continue;
-
-      const amountFloat = parseFloat(parsed.amount);
-      if (isNaN(amountFloat) || amountFloat <= 0) continue;
-
-      console.log(
-        `[Deposit] New unmatched BEP20 deposit: ${parsed.amount} USDT from ${parsed.from} ` +
-        `(block ${log.blockNumber}, txHash: ${txHash})`,
-      );
-
-      await db
-        .insert(depositVerificationsTable)
-        .values({
-          userId: 0,
-          txid: log.transactionHash,
-          amount: parsed.amount,
-          fromAddress: parsed.from,
-          toAddress: parsed.to,
-          network: "BEP20",
-          status: "pending",
-          source: "auto_monitor",
-          adminNote: `Auto-detected by BSC RPC monitor at block ${log.blockNumber}. Sender: ${parsed.from}. Assign to user manually.`,
-        })
-        .onConflictDoNothing();
-
-      processedHashes.add(txHash);
+      chunkStart = chunkEnd + 1;
     }
   } catch (err) {
     logger.error({ err }, "[Deposit] poll error");
