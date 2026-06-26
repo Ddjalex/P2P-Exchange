@@ -14,11 +14,16 @@ const router = Router();
 
 const STRO_BASE = "https://strowallet.com/api/bitvcard";
 
+// Strip all whitespace (spaces, newlines, etc.) from a key value
+function cleanKey(k: string | undefined): string {
+  return (k || "").replace(/\s+/g, "");
+}
+
 // GET requests: keys go in query string
 function stroUrl(path: string) {
-  const key = process.env.STROWALLET_PUBLIC_KEY;
-  const secret = process.env.STROWALLET_SECRET_KEY;
-  let url = `${STRO_BASE}/${path}?public_key=${encodeURIComponent(key || "")}`;
+  const key = cleanKey(process.env.STROWALLET_PUBLIC_KEY);
+  const secret = cleanKey(process.env.STROWALLET_SECRET_KEY);
+  let url = `${STRO_BASE}/${path}?public_key=${encodeURIComponent(key)}`;
   if (secret) url += `&secret_key=${encodeURIComponent(secret)}`;
   return url;
 }
@@ -26,8 +31,8 @@ function stroUrl(path: string) {
 // POST requests: keys go in the request body
 function stroKeys() {
   return {
-    public_key: process.env.STROWALLET_PUBLIC_KEY || "",
-    secret_key: process.env.STROWALLET_SECRET_KEY || "",
+    public_key: cleanKey(process.env.STROWALLET_PUBLIC_KEY),
+    secret_key: cleanKey(process.env.STROWALLET_SECRET_KEY),
   };
 }
 
@@ -167,7 +172,7 @@ router.post("/create", userAuth, async (req: any, res) => {
       city: "N/A",
       state: "N/A",
       postal_code: "00000",
-      country: process.env.STROWALLET_COUNTRY ?? "US",
+      country: (req.body?.country ?? process.env.STROWALLET_COUNTRY ?? "ETH").replace(/\s+/g, ""),
       amount_usd: "3",
       mode: "live",
     };

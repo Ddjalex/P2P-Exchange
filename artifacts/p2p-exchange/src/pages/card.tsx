@@ -210,6 +210,7 @@ export default function CardPage() {
   const queryClient = useQueryClient();
   const [modal, setModal] = useState<"fund" | "withdraw" | "freeze" | "confirm-create" | null>(null);
   const [amount, setAmount] = useState("");
+  const [country, setCountry] = useState("ETH");
   const [showHistory, setShowHistory] = useState(false);
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
 
@@ -236,7 +237,7 @@ export default function CardPage() {
   };
 
   const createMutation = useMutation({
-    mutationFn: () => apiFetch("/api/cards/create", { method: "POST" }),
+    mutationFn: () => apiFetch("/api/cards/create", { method: "POST", body: JSON.stringify({ country }) }),
     onSuccess: () => { invalidate(); setModal(null); showToast("Card created! It will be ready in a few minutes."); },
     onError: (e: any) => { setModal(null); showToast(e.message, false); },
   });
@@ -434,13 +435,41 @@ export default function CardPage() {
 
       {modal === "confirm-create" && (
         <Modal title="Create Your Xendrx Card" onClose={() => setModal(null)}>
-          <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "20px" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "16px" }}>
             {[["Card for", kycName], ["Creation fee", "$2 USDT deducted"], ["Auto-loaded", "$3 USDT on card"], ["Your balance", `$${walletBalance.toFixed(2)} USDT`]].map(([l, v]) => (
               <div key={l} style={{ display: "flex", justifyContent: "space-between", padding: "10px 14px", background: "rgba(0,229,255,0.05)", borderRadius: "10px" }}>
                 <span style={{ color: "#8899aa", fontSize: "13px" }}>{l}</span>
                 <span style={{ color: "#fff", fontSize: "13px", fontWeight: 600 }}>{v}</span>
               </div>
             ))}
+          </div>
+          <div style={{ marginBottom: "20px" }}>
+            <label style={{ color: "#8899aa", fontSize: "12px", display: "block", marginBottom: "6px" }}>🌍 Your Country</label>
+            <select
+              value={country}
+              onChange={(e) => setCountry(e.target.value)}
+              style={{ width: "100%", padding: "11px 14px", background: "#0d1428", border: "1px solid rgba(0,229,255,0.25)", borderRadius: "10px", color: "#fff", fontSize: "14px", fontFamily: "Poppins, sans-serif", outline: "none", cursor: "pointer" }}
+            >
+              {[
+                ["ETH", "🇪🇹 Ethiopia"],
+                ["NGA", "🇳🇬 Nigeria"],
+                ["GHA", "🇬🇭 Ghana"],
+                ["KEN", "🇰🇪 Kenya"],
+                ["TZA", "🇹🇿 Tanzania"],
+                ["UGA", "🇺🇬 Uganda"],
+                ["ZAF", "🇿🇦 South Africa"],
+                ["EGY", "🇪🇬 Egypt"],
+                ["MAR", "🇲🇦 Morocco"],
+                ["USA", "🇺🇸 United States"],
+                ["GBR", "🇬🇧 United Kingdom"],
+                ["CAN", "🇨🇦 Canada"],
+                ["DEU", "🇩🇪 Germany"],
+                ["FRA", "🇫🇷 France"],
+                ["IND", "🇮🇳 India"],
+              ].map(([code, label]) => (
+                <option key={code} value={code}>{label}</option>
+              ))}
+            </select>
           </div>
           <div style={{ display: "flex", gap: "10px" }}>
             <Btn variant="secondary" onClick={() => setModal(null)}>Cancel</Btn>
