@@ -263,7 +263,6 @@ export default function CardPage() {
   const isFrozen = card?.cardStatus === "inactive" || card?.cardStatus === "frozen";
   const isProcessing = card?.cardStatus === "processing";
   const isActive = card?.cardStatus === "active";
-  const isDemo = card?.cardStatus === "demo";
   const mutBusy = createMutation.isPending || fundMutation.isPending || withdrawMutation.isPending || freezeMutation.isPending;
 
   return (
@@ -361,33 +360,7 @@ export default function CardPage() {
           </>
         )}
 
-        {/* STATE 4 — Demo card */}
-        {kycStatus === "verified" && card && isDemo && (
-          <>
-            <div style={{ width: "100%", maxWidth: "380px", marginBottom: "12px" }}>
-              <CardVisual
-                holderName={card.nameOnCard ?? kycName}
-                cardNumber={card.cardNumber}
-                last4={card.last4}
-                cvv={card.cvv}
-                expiry={card.expiry}
-                balance={card.balance}
-                status="active"
-              />
-            </div>
-            <div style={{ width: "100%", maxWidth: "380px", marginBottom: "16px", padding: "10px 14px", borderRadius: "10px", background: "rgba(255,170,0,0.1)", border: "1px solid rgba(255,170,0,0.35)", display: "flex", alignItems: "flex-start", gap: "10px" }}>
-              <span style={{ fontSize: "16px", marginTop: "1px" }}>🧪</span>
-              <div>
-                <div style={{ color: "#ffaa00", fontSize: "12px", fontWeight: 700, marginBottom: "3px" }}>Demo Card</div>
-                <div style={{ color: "#aa8800", fontSize: "11px", lineHeight: 1.5 }}>
-                  This is a sandbox card for testing the UI. Real virtual cards will be issued once your StroWallet merchant account has supported countries configured.
-                </div>
-              </div>
-            </div>
-          </>
-        )}
-
-        {/* STATES 5 & 6 — Active / Frozen */}
+        {/* STATES 4 & 5 — Active / Frozen */}
         {kycStatus === "verified" && card && (isActive || isFrozen) && (
           <>
             <div style={{ width: "100%", maxWidth: "380px", marginBottom: "16px" }}>

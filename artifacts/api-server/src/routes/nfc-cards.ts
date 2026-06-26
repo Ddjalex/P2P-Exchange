@@ -133,8 +133,15 @@ router.post("/create", userAuth, async (req: any, res) => {
       note: "Card creation fee",
     });
 
+    if (!process.env.STROWALLET_PUBLIC_KEY) {
+      // Refund the fee before returning the error
+      await db.update(walletsTable).set({ availableBalance: avail.toFixed(6), updatedAt: new Date() }).where(eq(walletsTable.userId, userId));
+      return res.status(503).json({ error: "Card service not configured. Please contact support." });
+    }
+
     console.log(`[Card] Creating card for user: ${userId} name: ${fullName}`);
     console.log(`[Card] KYC data retrieved: ${firstName}, ${lastName}, ${idType}`);
+    console.log('[Card] Calling real StroWallet API with key:', process.env.STROWALLET_PUBLIC_KEY?.substring(0, 8));
 
     let stroRes: any;
     let stroOk = false;
@@ -164,56 +171,33 @@ router.post("/create", userAuth, async (req: any, res) => {
       });
       stroRes = await response.json();
       stroOk = response.ok && (stroRes?.status === true || stroRes?.success === true || stroRes?.card_id);
-      console.log(`[Card] StroWallet response: ${stroOk ? "success" : "failed"} — ${JSON.stringify(stroRes)?.slice(0, 200)}`);
+      console.log(`[Card] StroWallet response: ${stroOk ? "success" : "failed"} — ${JSON.stringify(stroRes)?.slice(0, 300)}`);
     } catch (fetchErr) {
       console.error("[Card] StroWallet fetch error:", fetchErr);
+      // Refund the fee on network error
+      await db.update(walletsTable).set({ availableBalance: avail.toFixed(6), updatedAt: new Date() }).where(eq(walletsTable.userId, userId));
+      return res.status(502).json({ error: "Could not reach card service. Your balance has been refunded. Please try again." });
     }
 
-    // If StroWallet failed, fall back to a sandbox demo card so the full UX works.
-    // The $2 fee is kept — it will fund the real card once StroWallet is configured.
-    let cardId: string;
-    let cardUserId: string | null;
-    let customerId: string | null;
-    let nameOnCard: string;
-    let cardNumber: string | null;
-    let last4: string | null;
-    let cvv: string | null;
-    let expiry: string | null;
-    let cardBalance: string;
-    let cardStatus: string;
-
-    if (stroOk) {
-      const cardData = stroRes?.data ?? stroRes;
-      cardId = cardData?.card_id ?? cardData?.cardId ?? String(userId);
-      cardUserId = cardData?.user_id ?? cardData?.userId ?? null;
-      customerId = cardData?.customer_id ?? cardData?.customerId ?? null;
-      nameOnCard = cardData?.name_on_card ?? fullName.toUpperCase();
-      cardNumber = cardData?.card_number ?? null;
-      last4 = cardData?.last4 ?? (cardNumber ? cardNumber.slice(-4) : null);
-      cvv = cardData?.cvv ?? null;
-      expiry = cardData?.expiry ?? null;
-      cardBalance = String(cardData?.balance ?? "3.00");
-      cardStatus = cardData?.card_status ?? "active";
-    } else {
-      // Demo card fallback — realistic Visa numbers, clearly marked "demo"
-      const stroErr = stroErrMsg(stroRes, "StroWallet unavailable");
-      console.warn(`[Card] StroWallet failed (${stroErr}) — issuing demo card for user ${userId}`);
-      const rnd = (n: number) => Math.floor(Math.random() * n);
-      const pan = `4${Array.from({ length: 15 }, () => rnd(10)).join("")}`;
-      const now = new Date();
-      const expMonth = String(now.getMonth() + 1).padStart(2, "0");
-      const expYear = String((now.getFullYear() + 3) % 100).padStart(2, "0");
-      cardId = `demo-${userId}-${Date.now()}`;
-      cardUserId = null;
-      customerId = null;
-      nameOnCard = fullName.toUpperCase();
-      cardNumber = pan;
-      last4 = pan.slice(-4);
-      cvv = String(100 + rnd(900));
-      expiry = `${expMonth}/${expYear}`;
-      cardBalance = "3.00";
-      cardStatus = "demo";
+    if (!stroOk) {
+      const errMsg = stroErrMsg(stroRes, "Card creation failed. Please try again.");
+      console.error(`[Card] StroWallet rejected card creation for user ${userId}: ${errMsg}`);
+      // Refund the $2 fee — no card was created
+      await db.update(walletsTable).set({ availableBalance: avail.toFixed(6), updatedAt: new Date() }).where(eq(walletsTable.userId, userId));
+      return res.status(422).json({ error: errMsg });
     }
+
+    const cardData = stroRes?.data ?? stroRes;
+    const cardId: string = cardData?.card_id ?? cardData?.cardId ?? String(userId);
+    const cardUserId: string | null = cardData?.user_id ?? cardData?.userId ?? null;
+    const customerId: string | null = cardData?.customer_id ?? cardData?.customerId ?? null;
+    const nameOnCard: string = cardData?.name_on_card ?? fullName.toUpperCase();
+    const cardNumber: string | null = cardData?.card_number ?? null;
+    const last4: string | null = cardData?.last4 ?? (cardNumber ? cardNumber.slice(-4) : null);
+    const cvv: string | null = cardData?.cvv ?? null;
+    const expiry: string | null = cardData?.expiry ?? null;
+    const cardBalance: string = String(cardData?.balance ?? "3.00");
+    const cardStatus: string = cardData?.card_status ?? "active";
 
     const [saved] = await db
       .insert(cardsTable)
