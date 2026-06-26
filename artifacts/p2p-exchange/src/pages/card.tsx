@@ -262,7 +262,7 @@ export default function CardPage() {
   const kycName = (meData as any)?.kycFullName ?? (meData as any)?.username ?? "YOUR NAME";
   const isFrozen = card?.cardStatus === "inactive" || card?.cardStatus === "frozen";
   const isProcessing = card?.cardStatus === "processing";
-  const isActive = card?.cardStatus === "active";
+  const isActive = card && !isFrozen && !isProcessing;
   const mutBusy = createMutation.isPending || fundMutation.isPending || withdrawMutation.isPending || freezeMutation.isPending;
 
   return (
