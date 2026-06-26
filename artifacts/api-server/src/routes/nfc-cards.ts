@@ -152,7 +152,7 @@ router.post("/create", userAuth, async (req: any, res) => {
         note: "Card creation fee refund",
       });
       return res.status(502).json({
-        error: stroRes?.message ?? "Card creation failed. Your $2 fee has been refunded.",
+        error: String(stroRes?.message ?? "Card creation failed. Your $2 fee has been refunded."),
       });
     }
 
