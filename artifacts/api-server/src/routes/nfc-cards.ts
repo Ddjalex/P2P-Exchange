@@ -205,22 +205,66 @@ router.post("/create", userAuth, async (req: any, res) => {
     if (!stroOk) {
       const errMsg = stroErrMsg(stroRes, "Card creation failed. Please try again.");
       console.error(`[Card] StroWallet rejected card creation for user ${userId}: ${errMsg}`);
-      // Refund the $2 fee — no card was created
       await db.update(walletsTable).set({ availableBalance: avail.toFixed(6), updatedAt: new Date() }).where(eq(walletsTable.userId, userId));
       return res.status(422).json({ error: errMsg });
     }
 
-    const cardData = stroRes?.data ?? stroRes;
-    const cardId: string = cardData?.card_id ?? cardData?.cardId ?? String(userId);
-    const cardUserId: string | null = cardData?.user_id ?? cardData?.userId ?? null;
-    const customerId: string | null = cardData?.customer_id ?? cardData?.customerId ?? null;
-    const nameOnCard: string = cardData?.name_on_card ?? fullName.toUpperCase();
-    const cardNumber: string | null = cardData?.card_number ?? null;
-    const last4: string | null = cardData?.last4 ?? (cardNumber ? cardNumber.slice(-4) : null);
-    const cvv: string | null = cardData?.cvv ?? null;
-    const expiry: string | null = cardData?.expiry ?? null;
-    const cardBalance: string = String(cardData?.balance ?? "3.00");
-    const cardStatus: string = cardData?.card_status ?? "active";
+    // StroWallet may nest data under .data, .card, or at the root level — try all paths
+    const d0 = stroRes?.data ?? stroRes?.card ?? stroRes;
+    const d1 = d0?.card ?? d0; // some responses nest further under .card
+
+    function pick(...vals: any[]): any {
+      for (const v of vals) if (v !== undefined && v !== null && v !== "") return v;
+      return null;
+    }
+
+    const cardId: string = String(
+      pick(d1?.card_id, d1?.cardId, d1?.id, d0?.card_id, d0?.cardId, d0?.id, stroRes?.card_id)
+      ?? userId
+    );
+    const cardUserId: string | null = pick(d1?.user_id, d1?.userId, d0?.user_id, d0?.userId);
+    const customerId: string | null = pick(d1?.customer_id, d1?.customerId, d0?.customer_id, d0?.customerId);
+    const nameOnCard: string = pick(d1?.name_on_card, d1?.name, d0?.name_on_card, d0?.name, fullName.toUpperCase());
+    let cardNumber: string | null = pick(d1?.card_number, d1?.pan, d0?.card_number, d0?.pan);
+    let last4: string | null = pick(d1?.last4, d1?.last_four, d0?.last4, d0?.last_four);
+    let cvv: string | null = pick(d1?.cvv, d1?.cvv2, d0?.cvv, d0?.cvv2);
+    let expiry: string | null = pick(d1?.expiry, d1?.expiry_date, d1?.expiration, d0?.expiry, d0?.expiry_date, d0?.expiration);
+    let cardBalance: string = String(pick(d1?.balance, d0?.balance) ?? "3.00");
+    const cardStatus: string = pick(d1?.card_status, d1?.status, d0?.card_status, d0?.status) ?? "active";
+
+    if (!last4 && cardNumber) last4 = cardNumber.slice(-4);
+
+    console.log(`[Card] Parsed → card_id:${cardId} last4:${last4} cvv:${cvv ? "***" : "null"} expiry:${expiry} balance:${cardBalance}`);
+
+    // Warn if card_id looks like a fallback (just the userId)
+    if (cardId === String(userId)) {
+      console.warn(`[Card] WARNING: card_id fell back to userId=${userId}. Full response:`, JSON.stringify(stroRes));
+    }
+
+    // Always attempt to fetch full card details from StroWallet after creation
+    if (cardId !== String(userId)) {
+      try {
+        const detailUrl = stroUrl("fetch-nfccard-detail") + `&card_id=${encodeURIComponent(cardId)}`;
+        console.log(`[Card] Fetching card detail from: ${detailUrl}`);
+        const detailRes = await fetch(detailUrl);
+        if (detailRes.ok) {
+          const detail = await detailRes.json();
+          console.log('[Card] Detail response:', JSON.stringify(detail));
+          const dd = detail?.data?.card ?? detail?.data ?? detail?.card ?? detail;
+          if (dd) {
+            if (pick(dd.card_number, dd.pan)) cardNumber = pick(dd.card_number, dd.pan);
+            if (pick(dd.last4, dd.last_four)) last4 = pick(dd.last4, dd.last_four);
+            if (pick(dd.cvv, dd.cvv2)) cvv = pick(dd.cvv, dd.cvv2);
+            if (pick(dd.expiry, dd.expiry_date, dd.expiration)) expiry = pick(dd.expiry, dd.expiry_date, dd.expiration);
+            if (pick(dd.balance)) cardBalance = String(dd.balance);
+            if (!last4 && cardNumber) last4 = cardNumber.slice(-4);
+            console.log(`[Card] Detail enriched → last4:${last4} cvv:${cvv ? "***" : "null"} expiry:${expiry}`);
+          }
+        }
+      } catch (detailErr) {
+        console.warn('[Card] Detail fetch failed (non-fatal):', detailErr);
+      }
+    }
 
     const [saved] = await db
       .insert(cardsTable)
@@ -255,33 +299,53 @@ router.get("/my-card", userAuth, async (req: any, res) => {
     });
     if (!card) return res.json({ card: null });
 
-    if (card.cardId && process.env.STROWALLET_PUBLIC_KEY) {
+    // Only fetch from StroWallet if card_id looks real (not a plain number fallback)
+    const cardIdIsReal = card.cardId && !/^\d+$/.test(card.cardId);
+
+    if (cardIdIsReal && process.env.STROWALLET_PUBLIC_KEY) {
       try {
-        const response = await fetch(
-          stroUrl("fetch-nfccard-detail") + `&card_id=${encodeURIComponent(card.cardId)}`
-        );
+        const detailUrl = stroUrl("fetch-nfccard-detail") + `&card_id=${encodeURIComponent(card.cardId!)}`;
+        console.log(`[Card] my-card fetching detail: ${detailUrl}`);
+        const response = await fetch(detailUrl);
+        const raw = await response.json();
+        console.log('[Card] my-card StroWallet detail response:', JSON.stringify(raw));
+
         if (response.ok) {
-          const data = await response.json();
-          const d = data?.data ?? data;
-          const updates: Partial<typeof card> = {};
-          if (d?.card_status) updates.cardStatus = d.card_status;
-          if (d?.balance !== undefined) updates.balance = String(d.balance);
-          if (d?.card_number) updates.cardNumber = d.card_number;
-          if (d?.last4) updates.last4 = d.last4;
-          if (d?.cvv) updates.cvv = d.cvv;
-          if (d?.expiry) updates.expiry = d.expiry;
+          // Try all possible nesting shapes
+          const dd = raw?.data?.card ?? raw?.data ?? raw?.card ?? raw;
+
+          function pickStr(...vals: any[]): string | null {
+            for (const v of vals) if (v !== undefined && v !== null && v !== "") return String(v);
+            return null;
+          }
+
+          const updates: Record<string, any> = {};
+          const newStatus = pickStr(dd?.card_status, dd?.status);
+          if (newStatus) updates.cardStatus = newStatus;
+          const newBalance = pickStr(dd?.balance);
+          if (newBalance) updates.balance = newBalance;
+          const newPan = pickStr(dd?.card_number, dd?.pan);
+          if (newPan) { updates.cardNumber = newPan; updates.last4 = newPan.slice(-4); }
+          const newLast4 = pickStr(dd?.last4, dd?.last_four);
+          if (newLast4 && !updates.last4) updates.last4 = newLast4;
+          const newCvv = pickStr(dd?.cvv, dd?.cvv2);
+          if (newCvv) updates.cvv = newCvv;
+          const newExpiry = pickStr(dd?.expiry, dd?.expiry_date, dd?.expiration);
+          if (newExpiry) updates.expiry = newExpiry;
+
+          console.log('[Card] my-card updates to apply:', { ...updates, cvv: updates.cvv ? '***' : undefined });
+
           if (Object.keys(updates).length > 0) {
             updates.updatedAt = new Date();
-            await db
-              .update(cardsTable)
-              .set(updates as any)
-              .where(eq(cardsTable.userId, userId));
+            await db.update(cardsTable).set(updates).where(eq(cardsTable.userId, userId));
             return res.json({ card: { ...card, ...updates } });
           }
         }
-      } catch {
-        // fall through to return cached card
+      } catch (detailErr) {
+        console.warn('[Card] my-card detail fetch failed (returning cached):', detailErr);
       }
+    } else if (!cardIdIsReal) {
+      console.warn(`[Card] my-card: card_id "${card.cardId}" looks like a fallback — skipping StroWallet fetch`);
     }
 
     return res.json({ card });
