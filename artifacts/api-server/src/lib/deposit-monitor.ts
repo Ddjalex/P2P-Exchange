@@ -29,7 +29,7 @@ import { eq, and, isNotNull } from "drizzle-orm";
 import { logger } from "./logger.js";
 import { PushNotify } from "../routes/push.js";
 import { derivePrivateKey } from "./bsc-hd.js";
-import { getBnbBalance, sendBnb, sendUsdtBsc } from "./bsc.js";
+import { getBnbBalance, getBscUsdtBalance, sendBnb, sendUsdtBsc } from "./bsc.js";
 
 const POLL_INTERVAL_MS = 60_000;
 
@@ -280,21 +280,32 @@ const SWEEP_DELAY_MS  = 5_000;   // wait after BNB top-up before sweeping USDT
  *   (from the hot wallet) and waits SWEEP_DELAY_MS for it to confirm.
  * - On any error: logs for admin review — NEVER reverses the user's credit.
  */
-async function sweepUsdtToHotWallet(userId: number, userAddress: string, amount: string): Promise<void> {
+async function sweepUsdtToHotWallet(userId: number, userAddress: string, amount: string): Promise<boolean> {
   try {
     const hotPrivKey = process.env["BSC_HOT_WALLET_PRIVATE_KEY"];
     if (!hotPrivKey) {
       console.warn(`[Deposit] Sweep skipped for user ${userId}: BSC_HOT_WALLET_PRIVATE_KEY not set`);
-      return;
+      return false;
     }
 
     const amountNum = parseFloat(amount);
-    if (isNaN(amountNum) || amountNum <= 0) return;
+    if (isNaN(amountNum) || amountNum <= 0) return false;
 
     // Derive the user's private key for signing the sweep tx
     const userPrivKey = derivePrivateKey(userId);
 
-    // Check BNB balance — need gas to send USDT
+    // Check BNB balance on the hot wallet first — it must have BNB to top-up user addresses
+    const hotBnbBalance = await getBnbBalance(HOT_WALLET_ADDRESS);
+    if (hotBnbBalance < GAS_TOPUP_BNB * 2) {
+      console.warn(
+        `[Deposit] Sweep SKIPPED for user ${userId}: hot wallet ${HOT_WALLET_ADDRESS} has ` +
+        `${hotBnbBalance.toFixed(6)} BNB — needs at least ${GAS_TOPUP_BNB * 2} BNB. ` +
+        `Please send BNB to the hot wallet to enable sweeping.`,
+      );
+      return false;
+    }
+
+    // Check BNB balance on the deposit address — need gas to send USDT
     const bnbBalance = await getBnbBalance(userAddress);
     if (bnbBalance < MIN_BNB_FOR_GAS) {
       console.log(
@@ -309,11 +320,13 @@ async function sweepUsdtToHotWallet(userId: number, userAddress: string, amount:
     console.log(`[Deposit] Sweeping ${amount} USDT from ${userAddress} → ${HOT_WALLET_ADDRESS}`);
     const txHash = await sendUsdtBsc(userPrivKey, HOT_WALLET_ADDRESS, amountNum);
     console.log(`[Deposit] Sweep complete txid: ${txHash}`);
+    return true;
   } catch (err: any) {
     console.error(
       `[Deposit] Sweep FAILED for user ${userId} (${userAddress}): ${err?.message ?? err} — ` +
       `user balance remains credited; review manually`,
     );
+    return false;
   }
 }
 
@@ -529,6 +542,70 @@ async function poll() {
   }
 }
 
+// ── Balance Sweep ──────────────────────────────────────────────────────────────
+
+const BALANCE_SWEEP_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
+let balanceSweepInterval: ReturnType<typeof setInterval> | null = null;
+let isSweepRunning = false;
+
+/**
+ * Sweeps USDT from ALL user deposit addresses that hold a balance > 0.
+ * Runs on startup and every hour to recover any funds that weren't swept
+ * (e.g. because BSC_HOT_WALLET_PRIVATE_KEY was missing at deposit time).
+ * Exported so the admin panel can trigger it on-demand.
+ */
+export async function sweepAllStuckFunds(): Promise<{ swept: number; failed: number }> {
+  if (isSweepRunning) {
+    console.log("[BalanceSweep] Already running — skipping");
+    return { swept: 0, failed: 0 };
+  }
+  isSweepRunning = true;
+
+  const hotPrivKey = process.env["BSC_HOT_WALLET_PRIVATE_KEY"];
+  if (!hotPrivKey) {
+    console.warn("[BalanceSweep] BSC_HOT_WALLET_PRIVATE_KEY not set — skipping balance sweep");
+    isSweepRunning = false;
+    return { swept: 0, failed: 0 };
+  }
+
+  console.log("[BalanceSweep] Starting sweep of all user deposit addresses…");
+  let swept = 0;
+  let failed = 0;
+
+  try {
+    const userAddressMap = await loadUserDepositAddresses();
+    if (userAddressMap.size === 0) {
+      console.log("[BalanceSweep] No user deposit addresses found — nothing to sweep");
+      return { swept: 0, failed: 0 };
+    }
+
+    for (const [address, walletInfo] of userAddressMap.entries()) {
+      try {
+        const usdtBalance = await getBscUsdtBalance(address);
+        const balanceNum = parseFloat(usdtBalance);
+        if (isNaN(balanceNum) || balanceNum < 0.01) continue;
+
+        console.log(
+          `[BalanceSweep] User ${walletInfo.userId} deposit address ${address} holds ` +
+          `${usdtBalance} USDT — sweeping to hot wallet`,
+        );
+        const ok = await sweepUsdtToHotWallet(walletInfo.userId, address, usdtBalance);
+        if (ok) swept++; else failed++;
+      } catch (err: any) {
+        console.error(
+          `[BalanceSweep] Failed for user ${walletInfo.userId} (${address}): ${err?.message ?? err}`,
+        );
+        failed++;
+      }
+    }
+  } finally {
+    isSweepRunning = false;
+  }
+
+  console.log(`[BalanceSweep] Done — swept: ${swept}, failed: ${failed}`);
+  return { swept, failed };
+}
+
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
 
 export function startDepositMonitor() {
@@ -536,6 +613,20 @@ export function startDepositMonitor() {
   logger.info("Starting BEP20 deposit monitor — per-user HD addresses via ethers.js getLogs (60s interval)");
   poll();
   monitorInterval = setInterval(poll, POLL_INTERVAL_MS);
+
+  // Run a balance sweep on startup (catches any stuck funds from previous runs
+  // where BSC_HOT_WALLET_PRIVATE_KEY was missing), then repeat every hour
+  setTimeout(() => {
+    sweepAllStuckFunds().catch((err) =>
+      console.error("[BalanceSweep] Startup sweep error:", err),
+    );
+  }, 15_000); // 15s delay so the server is fully up first
+
+  balanceSweepInterval = setInterval(() => {
+    sweepAllStuckFunds().catch((err) =>
+      console.error("[BalanceSweep] Periodic sweep error:", err),
+    );
+  }, BALANCE_SWEEP_INTERVAL_MS);
 }
 
 export function stopDepositMonitor() {
@@ -543,5 +634,9 @@ export function stopDepositMonitor() {
     clearInterval(monitorInterval);
     monitorInterval = null;
     logger.info("BEP20 deposit monitor stopped");
+  }
+  if (balanceSweepInterval) {
+    clearInterval(balanceSweepInterval);
+    balanceSweepInterval = null;
   }
 }
