@@ -384,21 +384,6 @@ export default function CardPage() {
                 </div>
               </div>
             </div>
-            <div style={{ width: "100%", maxWidth: "380px", background: "rgba(0,229,255,0.04)", border: "1px solid rgba(0,229,255,0.12)", borderRadius: "14px", padding: "16px", marginBottom: "16px" }}>
-              <div style={{ color: "#8899aa", fontSize: "12px", marginBottom: "12px", fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase" }}>Card Details</div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px", textAlign: "center" }}>
-                {[
-                  { label: "Balance", value: `$${parseFloat(card.balance ?? "0").toFixed(2)}` },
-                  { label: "CVV", value: card.cvv ?? "•••" },
-                  { label: "Expires", value: card.expiry ?? "••/••" },
-                ].map(({ label, value }) => (
-                  <div key={label} style={{ padding: "10px 8px", background: "rgba(0,229,255,0.06)", borderRadius: "8px" }}>
-                    <div style={{ color: "#8899aa", fontSize: "10px", marginBottom: "4px" }}>{label}</div>
-                    <div style={{ color: "#fff", fontSize: "13px", fontWeight: 700 }}>{value}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
           </>
         )}
 
