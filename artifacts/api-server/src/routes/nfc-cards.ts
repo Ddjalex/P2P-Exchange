@@ -19,6 +19,18 @@ function stroUrl(path: string) {
   return `${STRO_BASE}/${path}?public_key=${encodeURIComponent(key || "")}`;
 }
 
+function stroErrMsg(stroRes: any, fallback: string): string {
+  const raw = stroRes?.message ?? stroRes?.error ?? stroRes?.errors?.[0];
+  if (!raw) return fallback;
+  if (typeof raw === "string") return raw;
+  if (typeof raw === "object") {
+    const nested = raw.message ?? raw.text ?? raw.detail;
+    if (typeof nested === "string") return nested;
+    return JSON.stringify(raw);
+  }
+  return String(raw);
+}
+
 async function getOrCreateWallet(userId: number) {
   let wallet = await db.query.walletsTable.findFirst({
     where: eq(walletsTable.userId, userId),
@@ -152,7 +164,7 @@ router.post("/create", userAuth, async (req: any, res) => {
         note: "Card creation fee refund",
       });
       return res.status(502).json({
-        error: String(stroRes?.message ?? "Card creation failed. Your $2 fee has been refunded."),
+        error: stroErrMsg(stroRes, "Card creation failed. Your $2 fee has been refunded."),
       });
     }
 
@@ -278,7 +290,7 @@ router.post("/fund", userAuth, async (req: any, res) => {
     if (!stroOk) {
       const refund = (parseFloat(newBalance) + amount).toFixed(6);
       await db.update(walletsTable).set({ availableBalance: refund, updatedAt: new Date() }).where(eq(walletsTable.userId, userId));
-      return res.status(502).json({ error: String(stroRes?.message ?? "Funding failed. Amount has been refunded.") });
+      return res.status(502).json({ error: stroErrMsg(stroRes, "Funding failed. Amount has been refunded.") });
     }
 
     await db.insert(transactionsTable).values({
@@ -324,7 +336,7 @@ router.post("/withdraw", userAuth, async (req: any, res) => {
     } catch {}
 
     if (!stroOk) {
-      return res.status(502).json({ error: String(stroRes?.message ?? "Withdrawal failed. Please try again.") });
+      return res.status(502).json({ error: stroErrMsg(stroRes, "Withdrawal failed. Please try again.") });
     }
 
     const wallet = await getOrCreateWallet(userId);
@@ -373,7 +385,7 @@ router.post("/freeze", userAuth, async (req: any, res) => {
     } catch {}
 
     if (!stroOk) {
-      return res.status(502).json({ error: String(stroRes?.message ?? `Card ${action} failed. Please try again.`) });
+      return res.status(502).json({ error: stroErrMsg(stroRes, `Card ${action} failed. Please try again.`) });
     }
 
     const newStatus = isFrozen ? "active" : "inactive";
