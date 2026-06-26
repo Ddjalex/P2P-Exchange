@@ -19,23 +19,30 @@ function stroUrl(path: string) {
   return `${STRO_BASE}/${path}?public_key=${encodeURIComponent(key || "")}`;
 }
 
+function flattenValidationObj(obj: Record<string, unknown>): string | null {
+  const parts: string[] = [];
+  for (const val of Object.values(obj)) {
+    if (Array.isArray(val)) parts.push(...val.map(String));
+    else if (typeof val === "string") parts.push(val);
+  }
+  return parts.length ? parts.join(" ") : null;
+}
+
 function stroErrMsg(stroRes: any, fallback: string): string {
-  // StroWallet validation errors: { errors: { field: ["msg", ...], ... } }
+  // Case 1: { errors: { field: ["msg"], ... } }
   if (stroRes?.errors && typeof stroRes.errors === "object" && !Array.isArray(stroRes.errors)) {
-    const parts: string[] = [];
-    for (const msgs of Object.values(stroRes.errors)) {
-      if (Array.isArray(msgs)) parts.push(...msgs.map(String));
-      else if (typeof msgs === "string") parts.push(msgs);
-    }
-    if (parts.length) return parts.join(" ");
+    const flat = flattenValidationObj(stroRes.errors);
+    if (flat) return flat;
   }
   const raw = stroRes?.message ?? stroRes?.error ?? stroRes?.errors?.[0];
   if (!raw) return fallback;
   if (typeof raw === "string") return raw;
-  if (typeof raw === "object") {
-    const nested = raw.message ?? raw.text ?? raw.detail;
+  // Case 2: message is itself a validation object { field: ["msg"], ... }
+  if (typeof raw === "object" && !Array.isArray(raw)) {
+    const nested = (raw as any).message ?? (raw as any).text ?? (raw as any).detail;
     if (typeof nested === "string") return nested;
-    return JSON.stringify(raw);
+    const flat = flattenValidationObj(raw as Record<string, unknown>);
+    if (flat) return flat;
   }
   return String(raw);
 }
@@ -142,7 +149,7 @@ router.post("/create", userAuth, async (req: any, res) => {
         city: "N/A",
         state: "N/A",
         postal_code: "00000",
-        country: process.env.STROWALLET_COUNTRY ?? "NG",
+        country: process.env.STROWALLET_COUNTRY ?? "US",
         amount_usd: "3",
         mode: "sandbox",
       };
