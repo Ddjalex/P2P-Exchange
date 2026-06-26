@@ -43,10 +43,11 @@ const BSC_BLOCK_NUMBER_ENDPOINTS = [
 ];
 
 // These endpoints support eth_getLogs with no API key.
-// 1rpc allows ≤50 blocks; nodies allows ≤250 blocks — MAX_BLOCKS_PER_QUERY is 50.
+// nodies/ankr/publicnode allow ≤250 blocks — MAX_BLOCKS_PER_QUERY is 50.
 const BSC_GETLOGS_ENDPOINTS = [
-  "https://1rpc.io/bnb",
   "https://bsc-pokt.nodies.app",
+  "https://rpc.ankr.com/bsc",
+  "https://bsc.publicnode.com",
 ];
 
 const BSC_NETWORK = ethers.Network.from(56); // BNB Smart Chain, avoids eth_chainId probe
