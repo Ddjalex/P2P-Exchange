@@ -209,9 +209,9 @@ router.post("/create", userAuth, async (req: any, res) => {
       return res.status(422).json({ error: errMsg });
     }
 
-    // StroWallet may nest data under .data, .card, or at the root level — try all paths
-    const d0 = stroRes?.data ?? stroRes?.card ?? stroRes;
-    const d1 = d0?.card ?? d0; // some responses nest further under .card
+    // StroWallet nests creation result under response.card_detail, response, data, or root — try all
+    const d0 = stroRes?.response?.card_detail ?? stroRes?.response?.card ?? stroRes?.response ?? stroRes?.data ?? stroRes?.card ?? stroRes;
+    const d1 = d0?.card ?? d0;
 
     function pick(...vals: any[]): any {
       for (const v of vals) if (v !== undefined && v !== null && v !== "") return v;
@@ -304,15 +304,15 @@ router.get("/my-card", userAuth, async (req: any, res) => {
 
     if (cardIdIsReal && process.env.STROWALLET_PUBLIC_KEY) {
       try {
-        const detailUrl = stroUrl("fetch-nfccard-detail") + `&card_id=${encodeURIComponent(card.cardId!)}`;
+        const detailUrl = stroUrl("fetch-nfccard-detail") + `&card_id=${encodeURIComponent(card.cardId!)}&mode=live`;
         console.log(`[Card] my-card fetching detail: ${detailUrl}`);
         const response = await fetch(detailUrl);
         const raw = await response.json();
         console.log('[Card] my-card StroWallet detail response:', JSON.stringify(raw));
 
         if (response.ok) {
-          // Try all possible nesting shapes
-          const dd = raw?.data?.card ?? raw?.data ?? raw?.card ?? raw;
+          // StroWallet nests under response.card_detail — try all known shapes
+          const dd = raw?.response?.card_detail ?? raw?.response?.card ?? raw?.response ?? raw?.data?.card ?? raw?.data ?? raw?.card ?? raw;
 
           function pickStr(...vals: any[]): string | null {
             for (const v of vals) if (v !== undefined && v !== null && v !== "") return String(v);
