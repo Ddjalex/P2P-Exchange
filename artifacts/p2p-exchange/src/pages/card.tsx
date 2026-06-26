@@ -1,114 +1,235 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useLocation } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AppLayout } from "@/components/layout";
+import { Eye, EyeOff, ArrowUpCircle, ArrowDownCircle, Lock, Unlock, RefreshCw, CheckCircle, History, Clock } from "lucide-react";
 
 function getToken() {
   return localStorage.getItem("p2p_token") ?? "";
 }
 
-function CardSvg({ holderName, nameColor }: { holderName: string; nameColor: string }) {
+async function apiFetch(url: string, opts?: RequestInit) {
+  const res = await fetch(url, {
+    ...opts,
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${getToken()}`,
+      ...(opts?.headers ?? {}),
+    },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error ?? "Request failed");
+  return data;
+}
+
+function CardVisual({
+  holderName,
+  cardNumber,
+  last4,
+  cvv,
+  expiry,
+  balance,
+  status,
+  blurred,
+}: {
+  holderName: string;
+  cardNumber?: string | null;
+  last4?: string | null;
+  cvv?: string | null;
+  expiry?: string | null;
+  balance?: string | null;
+  status?: string;
+  blurred?: boolean;
+}) {
+  const [showNumber, setShowNumber] = useState(false);
+  const [showCvv, setShowCvv] = useState(false);
+  const isFrozen = status === "inactive" || status === "frozen";
+  const isProcessing = !status || status === "processing";
+
+  const accent = isFrozen ? "rgb(120,120,200)" : "rgb(0,229,255)";
+
+  const displayNumber =
+    showNumber && cardNumber
+      ? cardNumber.replace(/(.{4})/g, "$1 ").trim()
+      : last4
+      ? `•••• •••• •••• ${last4}`
+      : "•••• •••• •••• ••••";
+
   return (
-    <svg viewBox="0 0 380 220" style={{ width: "100%", borderRadius: "18px", display: "block" }}>
-      <defs>
-        <linearGradient id="cg-cardGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="rgb(10,22,40)" />
-          <stop offset="50%" stopColor="rgb(13,32,64)" />
-          <stop offset="100%" stopColor="rgb(10,22,40)" />
-        </linearGradient>
-        <linearGradient id="cg-cyanGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="rgb(0,229,255)" />
-          <stop offset="100%" stopColor="rgb(0,136,204)" />
-        </linearGradient>
-      </defs>
+    <div style={{ position: "relative", width: "100%", maxWidth: "380px" }}>
+      <svg viewBox="0 0 380 220" style={{ width: "100%", borderRadius: "18px", display: "block", filter: blurred ? "blur(4px)" : "none" }}>
+        <defs>
+          <linearGradient id="cg-cardGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor={isFrozen ? "rgb(20,20,40)" : "rgb(10,22,40)"} />
+            <stop offset="50%" stopColor={isFrozen ? "rgb(30,20,60)" : "rgb(13,32,64)"} />
+            <stop offset="100%" stopColor={isFrozen ? "rgb(20,20,40)" : "rgb(10,22,40)"} />
+          </linearGradient>
+          <linearGradient id="cg-accentGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor={accent} />
+            <stop offset="100%" stopColor={isFrozen ? "rgb(60,60,140)" : "rgb(0,136,204)"} />
+          </linearGradient>
+        </defs>
+        <rect x="0" y="0" width="380" height="220" rx="18" fill="url(#cg-cardGrad)" />
+        <rect x="0" y="0" width="380" height="220" rx="18" fill="none" stroke={accent} strokeWidth="1" strokeOpacity="0.5" />
+        <circle cx="320" cy="55" r="80" fill="none" stroke={accent} strokeWidth="0.5" strokeOpacity="0.15" />
+        <circle cx="320" cy="55" r="55" fill="none" stroke={accent} strokeWidth="0.5" strokeOpacity="0.12" />
+        <circle cx="60" cy="175" r="60" fill="none" stroke={accent} strokeWidth="0.5" strokeOpacity="0.1" />
+        <rect x="24" y="78" width="44" height="32" rx="5" fill="rgb(255,215,0)" fillOpacity="0.9" />
+        <line x1="24" y1="89" x2="68" y2="89" stroke="rgb(170,136,0)" strokeWidth="0.8" strokeOpacity="0.5" />
+        <line x1="24" y1="98" x2="68" y2="98" stroke="rgb(170,136,0)" strokeWidth="0.8" strokeOpacity="0.5" />
+        <line x1="46" y1="78" x2="46" y2="110" stroke="rgb(170,136,0)" strokeWidth="0.8" strokeOpacity="0.5" />
+        <text x="24" y="58" fontFamily="Poppins, sans-serif" fontSize="14" fontWeight="800" fill="white">
+          xen<tspan fill={accent}>drx</tspan>
+        </text>
+        <circle cx="340" cy="52" r="10" fill="rgb(255,68,68)" fillOpacity="0.8" />
+        <circle cx="352" cy="52" r="10" fill="rgb(255,170,0)" fillOpacity="0.8" />
+        <circle cx="346" cy="52" r="6" fill="rgb(255,119,0)" fillOpacity="0.6" />
+        <text x="24" y="145" fontFamily="'Courier New', monospace" fontSize="13" fontWeight="600" fill="white" letterSpacing="2">{displayNumber}</text>
+        <text x="24" y="174" fontFamily="Poppins, sans-serif" fontSize="9" fill={accent} fillOpacity="0.7" letterSpacing="2">CARD HOLDER</text>
+        <text x="24" y="192" fontFamily="Poppins, sans-serif" fontSize="12" fontWeight="600" fill="white" letterSpacing="1">
+          {holderName.toUpperCase().slice(0, 22)}
+        </text>
+        <text x="298" y="174" fontFamily="Poppins, sans-serif" fontSize="9" fill={accent} fillOpacity="0.7" letterSpacing="2">EXPIRES</text>
+        <text x="298" y="192" fontFamily="Poppins, sans-serif" fontSize="12" fontWeight="600" fill="white">{expiry ?? "••/••"}</text>
+        <rect x="0" y="208" width="380" height="12" rx="0" fill="url(#cg-accentGrad)" opacity="0.6" />
+        <rect x="0" y="208" width="380" height="3" fill="url(#cg-accentGrad)" opacity="0.9" />
+      </svg>
 
-      <rect x="0" y="0" width="380" height="220" rx="18" fill="url(#cg-cardGrad)" />
-      <rect x="0" y="0" width="380" height="220" rx="18" fill="none" stroke="rgb(0,229,255)" strokeWidth="1" strokeOpacity="0.5" />
+      {isFrozen && (
+        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "18px", background: "rgba(80,0,160,0.25)" }}>
+          <div style={{ background: "rgba(200,0,0,0.85)", borderRadius: "8px", padding: "6px 18px", color: "#fff", fontWeight: 700, fontSize: "13px", letterSpacing: "2px" }}>FROZEN</div>
+        </div>
+      )}
+      {isProcessing && !blurred && (
+        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "18px", background: "rgba(0,0,0,0.4)" }}>
+          <div style={{ background: "rgba(255,170,0,0.9)", borderRadius: "8px", padding: "6px 18px", color: "#1a1a2e", fontWeight: 700, fontSize: "13px", letterSpacing: "2px" }}>PROCESSING</div>
+        </div>
+      )}
 
-      <circle cx="320" cy="55" r="80" fill="none" stroke="rgb(0,229,255)" strokeWidth="0.5" strokeOpacity="0.15" />
-      <circle cx="320" cy="55" r="55" fill="none" stroke="rgb(0,229,255)" strokeWidth="0.5" strokeOpacity="0.12" />
-      <circle cx="320" cy="55" r="30" fill="rgb(0,229,255)" fillOpacity="0.06" />
-      <circle cx="60" cy="175" r="60" fill="none" stroke="rgb(0,229,255)" strokeWidth="0.5" strokeOpacity="0.1" />
+      {!blurred && !isProcessing && (
+        <div style={{ marginTop: "10px", display: "flex", gap: "12px", justifyContent: "center" }}>
+          <div style={{ background: "rgba(0,229,255,0.08)", border: "1px solid rgba(0,229,255,0.2)", borderRadius: "10px", padding: "8px 20px", textAlign: "center" }}>
+            <div style={{ color: "#8899aa", fontSize: "10px", letterSpacing: "1px", marginBottom: "2px" }}>BALANCE</div>
+            <div style={{ color: "#fff", fontSize: "18px", fontWeight: 700 }}>${parseFloat(balance ?? "0").toFixed(2)}</div>
+          </div>
+          <div
+            style={{ background: "rgba(0,229,255,0.08)", border: "1px solid rgba(0,229,255,0.2)", borderRadius: "10px", padding: "8px 20px", textAlign: "center", cursor: "pointer" }}
+            onClick={() => setShowCvv((v) => !v)}
+          >
+            <div style={{ color: "#8899aa", fontSize: "10px", letterSpacing: "1px", marginBottom: "2px" }}>CVV</div>
+            <div style={{ color: "#fff", fontSize: "18px", fontWeight: 700 }}>{showCvv && cvv ? cvv : "•••"}</div>
+          </div>
+          <div
+            style={{ background: "rgba(0,229,255,0.08)", border: "1px solid rgba(0,229,255,0.2)", borderRadius: "10px", padding: "8px 14px", textAlign: "center", cursor: "pointer" }}
+            onClick={() => setShowNumber((v) => !v)}
+            title={showNumber ? "Hide card number" : "Reveal card number"}
+          >
+            <div style={{ color: "#8899aa", fontSize: "10px", letterSpacing: "1px", marginBottom: "4px" }}>PAN</div>
+            <div style={{ color: "#00e5ff" }}>{showNumber ? <EyeOff size={18} /> : <Eye size={18} />}</div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
-      <line x1="0" y1="145" x2="380" y2="85" stroke="rgb(0,229,255)" strokeWidth="0.4" strokeOpacity="0.12" />
-      <line x1="0" y1="165" x2="380" y2="105" stroke="rgb(0,229,255)" strokeWidth="0.4" strokeOpacity="0.08" />
+function Modal({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
+  return (
+    <div
+      style={{ position: "fixed", inset: 0, zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.75)", padding: "16px" }}
+      onClick={onClose}
+    >
+      <div
+        style={{ background: "#0d1428", border: "1px solid rgba(0,229,255,0.2)", borderRadius: "20px", padding: "24px", width: "100%", maxWidth: "360px" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 style={{ color: "#fff", fontSize: "16px", fontWeight: 700, marginBottom: "20px" }}>{title}</h3>
+        {children}
+      </div>
+    </div>
+  );
+}
 
-      <rect x="24" y="78" width="44" height="32" rx="5" fill="rgb(255,215,0)" fillOpacity="0.9" />
-      <line x1="24" y1="89" x2="68" y2="89" stroke="rgb(170,136,0)" strokeWidth="0.8" strokeOpacity="0.5" />
-      <line x1="24" y1="98" x2="68" y2="98" stroke="rgb(170,136,0)" strokeWidth="0.8" strokeOpacity="0.5" />
-      <line x1="46" y1="78" x2="46" y2="110" stroke="rgb(170,136,0)" strokeWidth="0.8" strokeOpacity="0.5" />
-
-      <path d="M82,86 Q88,94 82,102" fill="none" stroke="rgb(0,229,255)" strokeWidth="1.5" strokeOpacity="0.7" />
-      <path d="M86,82 Q96,94 86,106" fill="none" stroke="rgb(0,229,255)" strokeWidth="1.5" strokeOpacity="0.5" />
-      <path d="M90,78 Q104,94 90,110" fill="none" stroke="rgb(0,229,255)" strokeWidth="1.5" strokeOpacity="0.3" />
-
-      <text x="24" y="58" fontFamily="Poppins, sans-serif" fontSize="14" fontWeight="800" fill="white">
-        xen<tspan fill="rgb(0,229,255)">drx</tspan>
-      </text>
-
-      <text x="334" y="42" textAnchor="end" fontFamily="Poppins, sans-serif" fontSize="11" fontWeight="700" fill="white" fillOpacity="0.6">CRYPTO</text>
-      <circle cx="340" cy="52" r="10" fill="rgb(255,68,68)" fillOpacity="0.8" />
-      <circle cx="352" cy="52" r="10" fill="rgb(255,170,0)" fillOpacity="0.8" />
-      <circle cx="346" cy="52" r="6" fill="rgb(255,119,0)" fillOpacity="0.6" />
-
-      <text x="24" y="145" fontFamily="'Courier New', monospace" fontSize="15" fontWeight="600" fill="white" letterSpacing="3">4521  ••••  ••••  8842</text>
-
-      <text x="24" y="174" fontFamily="Poppins, sans-serif" fontSize="9" fill="rgb(0,229,255)" fillOpacity="0.7" letterSpacing="2">CARD HOLDER</text>
-      <text x="24" y="192" fontFamily="Poppins, sans-serif" fontSize="13" fontWeight="600" fill={nameColor} letterSpacing="1">{holderName}</text>
-
-      <text x="298" y="174" fontFamily="Poppins, sans-serif" fontSize="9" fill="rgb(0,229,255)" fillOpacity="0.7" letterSpacing="2">EXPIRES</text>
-      <text x="298" y="192" fontFamily="Poppins, sans-serif" fontSize="13" fontWeight="600" fill="white">12/28</text>
-
-      <rect x="0" y="208" width="380" height="12" rx="0" fill="url(#cg-cyanGrad)" opacity="0.6" />
-      <rect x="0" y="208" width="380" height="3" fill="url(#cg-cyanGrad)" opacity="0.9" />
-    </svg>
+function Btn({
+  onClick, disabled, children, variant = "primary",
+}: {
+  onClick?: () => void; disabled?: boolean; children: React.ReactNode; variant?: "primary" | "secondary" | "danger";
+}) {
+  const styles = {
+    primary: { background: "#00e5ff", color: "#1a1a2e", border: "none" },
+    secondary: { background: "rgba(0,229,255,0.1)", color: "#fff", border: "1px solid rgba(0,229,255,0.3)" },
+    danger: { background: "#ff4444", color: "#fff", border: "none" },
+  }[variant];
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      style={{ ...styles, borderRadius: "12px", padding: "12px", fontWeight: 700, fontSize: "14px", cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.6 : 1, width: "100%", fontFamily: "Poppins, sans-serif" }}
+    >
+      {children}
+    </button>
   );
 }
 
 export default function CardPage() {
   const [, setLocation] = useLocation();
-  const [notified, setNotified] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const queryClient = useQueryClient();
+  const [modal, setModal] = useState<"fund" | "withdraw" | "freeze" | "confirm-create" | null>(null);
+  const [amount, setAmount] = useState("");
+  const [showHistory, setShowHistory] = useState(false);
+  const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
 
-  const { data: meData } = useQuery({
-    queryKey: ["me-card"],
-    queryFn: () =>
-      fetch("/api/auth/me", {
-        headers: { Authorization: `Bearer ${getToken()}` },
-      }).then((r) => r.json()),
-  });
-
-  const { data: waitlistStatus } = useQuery({
-    queryKey: ["card-waitlist-status"],
-    queryFn: () =>
-      fetch("/api/card/notify/status", {
-        headers: { Authorization: `Bearer ${getToken()}` },
-      }).then((r) => r.json()),
-  });
-
-  useEffect(() => {
-    if (waitlistStatus?.isOnWaitlist) setNotified(true);
-  }, [waitlistStatus]);
-
-  const kycName = meData?.kycFullName ?? meData?.username ?? null;
-  const cardHolderName = kycName ? kycName.toUpperCase().slice(0, 22) : "COMPLETE KYC";
-  const nameColor = kycName ? "#ffffff" : "#556677";
-
-  const handleNotifyMe = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch("/api/card/notify", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${getToken()}` },
-      });
-      const data = await res.json();
-      if (res.ok || data.alreadyJoined) setNotified(true);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
-    }
+  const showToast = (msg: string, ok = true) => {
+    setToast({ msg, ok });
+    setTimeout(() => setToast(null), 4500);
   };
+
+  const { data: meData } = useQuery({ queryKey: ["me-card"], queryFn: () => apiFetch("/api/auth/me") });
+  const { data: cardData, refetch: refetchCard, isFetching: cardFetching } = useQuery({
+    queryKey: ["my-card"],
+    queryFn: () => apiFetch("/api/cards/my-card"),
+    refetchInterval: (query) => {
+      const c = (query.state.data as any)?.card;
+      return c?.card_status === "processing" ? 30000 : false;
+    },
+  });
+  const { data: walletData } = useQuery({ queryKey: ["wallet-card"], queryFn: () => apiFetch("/api/wallet") });
+  const { data: historyData } = useQuery({ queryKey: ["card-history"], queryFn: () => apiFetch("/api/cards/history"), enabled: showHistory });
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ["my-card"] });
+    queryClient.invalidateQueries({ queryKey: ["wallet-card"] });
+  };
+
+  const createMutation = useMutation({
+    mutationFn: () => apiFetch("/api/cards/create", { method: "POST" }),
+    onSuccess: () => { invalidate(); setModal(null); showToast("Card created! It will be ready in a few minutes."); },
+    onError: (e: any) => { setModal(null); showToast(e.message, false); },
+  });
+  const fundMutation = useMutation({
+    mutationFn: (amt: number) => apiFetch("/api/cards/fund", { method: "POST", body: JSON.stringify({ amount: amt }) }),
+    onSuccess: () => { invalidate(); setModal(null); setAmount(""); showToast("Card funded successfully!"); },
+    onError: (e: any) => showToast(e.message, false),
+  });
+  const withdrawMutation = useMutation({
+    mutationFn: (amt: number) => apiFetch("/api/cards/withdraw", { method: "POST", body: JSON.stringify({ amount: amt }) }),
+    onSuccess: () => { invalidate(); setModal(null); setAmount(""); showToast("Withdrawal successful!"); },
+    onError: (e: any) => showToast(e.message, false),
+  });
+  const freezeMutation = useMutation({
+    mutationFn: () => apiFetch("/api/cards/freeze", { method: "POST" }),
+    onSuccess: (d: any) => { invalidate(); setModal(null); showToast(d.message); },
+    onError: (e: any) => { setModal(null); showToast(e.message, false); },
+  });
+
+  const kycStatus = meData?.kycStatus;
+  const card = (cardData as any)?.card ?? null;
+  const walletBalance = parseFloat((walletData as any)?.availableBalance ?? "0");
+  const kycName = (meData as any)?.kycFullName ?? (meData as any)?.username ?? "YOUR NAME";
+  const isFrozen = card?.card_status === "inactive" || card?.card_status === "frozen";
+  const isProcessing = card?.card_status === "processing";
+  const isActive = card?.card_status === "active";
+  const mutBusy = createMutation.isPending || fundMutation.isPending || withdrawMutation.isPending || freezeMutation.isPending;
 
   return (
     <AppLayout>
@@ -120,87 +241,226 @@ export default function CardPage() {
         </div>
       </header>
 
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          padding: "24px 20px 100px",
-          fontFamily: "Poppins, sans-serif",
-        }}
-      >
-        <div style={{ width: "100%", maxWidth: "380px", marginBottom: "32px" }}>
-          <CardSvg holderName={cardHolderName} nameColor={nameColor} />
-        </div>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "24px 20px 100px", fontFamily: "Poppins, sans-serif" }}>
 
-        <h2 style={{ color: "#ffffff", fontSize: "28px", fontWeight: 800, marginBottom: "8px", textAlign: "center" }}>
-          Coming Soon
-        </h2>
-        <p style={{ color: "#8899aa", fontSize: "14px", textAlign: "center", marginBottom: "32px", lineHeight: "1.6", maxWidth: "280px" }}>
-          The Xendrx Card is on its way. Pay anywhere, buy crypto instantly, and earn cashback on every transaction.
-        </p>
-
-        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", justifyContent: "center", marginBottom: "32px" }}>
-          {["💳 Buy Crypto", "🔄 P2P Pay", "💰 Cashback", "🔒 Secure", "⚡ Instant"].map((f) => (
-            <span
-              key={f}
-              style={{
-                background: "rgba(0,229,255,0.08)",
-                border: "1px solid rgba(0,229,255,0.3)",
-                borderRadius: "20px",
-                padding: "6px 14px",
-                color: "#00e5ff",
-                fontSize: "12px",
-                fontWeight: 500,
-              }}
-            >
-              {f}
-            </span>
-          ))}
-        </div>
-
-        {!notified ? (
-          <button
-            onClick={handleNotifyMe}
-            disabled={loading}
-            style={{
-              width: "100%",
-              maxWidth: "300px",
-              height: "50px",
-              background: "#00e5ff",
-              border: "none",
-              borderRadius: "25px",
-              color: "#1a1a2e",
-              fontSize: "15px",
-              fontWeight: 700,
-              cursor: loading ? "not-allowed" : "pointer",
-              opacity: loading ? 0.7 : 1,
-            }}
-          >
-            {loading ? "Joining..." : "🔔 Notify Me When Available"}
-          </button>
-        ) : (
-          <div
-            style={{
-              background: "rgba(0,229,255,0.1)",
-              border: "1px solid rgba(0,229,255,0.3)",
-              borderRadius: "12px",
-              padding: "16px 24px",
-              textAlign: "center",
-              maxWidth: "300px",
-            }}
-          >
-            <p style={{ color: "#00e5ff", fontSize: "15px", fontWeight: 700, margin: 0 }}>✅ You are on the waitlist!</p>
-            <p style={{ color: "#8899aa", fontSize: "12px", margin: "4px 0 0" }}>
-              We'll notify you when the card launches
-            </p>
+        {toast && (
+          <div style={{ width: "100%", maxWidth: "380px", marginBottom: "16px", padding: "12px 16px", borderRadius: "12px", background: toast.ok ? "rgba(0,229,255,0.1)" : "rgba(255,68,68,0.15)", border: `1px solid ${toast.ok ? "rgba(0,229,255,0.3)" : "rgba(255,68,68,0.4)"}`, color: toast.ok ? "#00e5ff" : "#ff8888", fontSize: "13px", fontWeight: 500 }}>
+            {toast.msg}
           </div>
         )}
 
-        <p style={{ color: "#556677", fontSize: "11px", textAlign: "center", marginTop: "24px" }}>
-          Xendrx Card — Powered by blockchain technology
-        </p>
+        {/* STATE 1 — KYC not verified */}
+        {kycStatus !== "verified" && (
+          <>
+            <div style={{ width: "100%", maxWidth: "380px", marginBottom: "24px" }}>
+              <CardVisual holderName="COMPLETE KYC" blurred />
+            </div>
+            <div style={{ width: "100%", maxWidth: "360px", background: "rgba(255,170,0,0.08)", border: "1px solid rgba(255,170,0,0.3)", borderRadius: "16px", padding: "28px", textAlign: "center" }}>
+              <div style={{ fontSize: "36px", marginBottom: "12px" }}>🔒</div>
+              <h2 style={{ color: "#fff", fontSize: "18px", fontWeight: 700, marginBottom: "8px" }}>KYC Verification Required</h2>
+              <p style={{ color: "#8899aa", fontSize: "13px", lineHeight: 1.6, marginBottom: "20px" }}>Please complete your identity verification before getting a card</p>
+              <Btn onClick={() => setLocation("/kyc")}>Verify Now</Btn>
+            </div>
+          </>
+        )}
+
+        {/* STATE 2 — KYC verified, no card yet */}
+        {kycStatus === "verified" && !card && (
+          <>
+            <div style={{ width: "100%", maxWidth: "380px", marginBottom: "24px" }}>
+              <CardVisual holderName={kycName} />
+            </div>
+            <h2 style={{ color: "#fff", fontSize: "22px", fontWeight: 800, marginBottom: "8px", textAlign: "center" }}>Get Your Xendrx Card</h2>
+            <p style={{ color: "#8899aa", fontSize: "13px", textAlign: "center", marginBottom: "24px", lineHeight: 1.6, maxWidth: "280px" }}>
+              Virtual Visa card — pay anywhere, Google Pay & Apple Pay supported
+            </p>
+            <div style={{ width: "100%", maxWidth: "360px", marginBottom: "24px", display: "flex", flexDirection: "column", gap: "10px" }}>
+              {[
+                ["👤", "Verified name", kycName],
+                ["💳", "Card creation fee", "$2 USDT"],
+                ["💰", "Initial funding loaded", "$3 USDT automatically"],
+                ["📋", "Total required", "$5 USDT minimum balance"],
+              ].map(([icon, label, value]) => (
+                <div key={String(label)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", background: "rgba(0,229,255,0.05)", border: "1px solid rgba(0,229,255,0.15)", borderRadius: "10px" }}>
+                  <span style={{ color: "#8899aa", fontSize: "13px" }}>{icon} {label}</span>
+                  <span style={{ color: "#fff", fontSize: "13px", fontWeight: 600 }}>{value}</span>
+                </div>
+              ))}
+            </div>
+            {walletBalance < 5 && (
+              <p style={{ color: "#ff8888", fontSize: "13px", marginBottom: "12px", textAlign: "center" }}>
+                You need $5.00 USDT — you have ${walletBalance.toFixed(2)}. Please deposit first.
+              </p>
+            )}
+            <div style={{ width: "100%", maxWidth: "360px" }}>
+              <Btn onClick={() => setModal("confirm-create")} disabled={walletBalance < 5}>Create My Card</Btn>
+            </div>
+          </>
+        )}
+
+        {/* STATE 3 — Processing */}
+        {kycStatus === "verified" && card && isProcessing && (
+          <>
+            <div style={{ width: "100%", maxWidth: "380px", marginBottom: "24px" }}>
+              <CardVisual holderName={card.name_on_card ?? kycName} last4={card.last4} expiry={card.expiry} balance={card.balance} status={card.card_status} />
+            </div>
+            <div style={{ width: "100%", maxWidth: "360px", background: "rgba(255,170,0,0.08)", border: "1px solid rgba(255,170,0,0.3)", borderRadius: "16px", padding: "24px", textAlign: "center" }}>
+              <Clock size={28} color="#ffaa00" style={{ margin: "0 auto 10px" }} />
+              <h3 style={{ color: "#fff", fontSize: "16px", fontWeight: 700, marginBottom: "6px" }}>Card Being Set Up</h3>
+              <p style={{ color: "#8899aa", fontSize: "13px", lineHeight: 1.5, marginBottom: "16px" }}>Your card is being set up. This usually takes a few minutes.</p>
+              <button
+                onClick={() => refetchCard()}
+                disabled={cardFetching}
+                style={{ background: "rgba(255,170,0,0.15)", border: "1px solid rgba(255,170,0,0.4)", borderRadius: "10px", padding: "10px 20px", color: "#ffaa00", fontWeight: 600, fontSize: "13px", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "6px" }}
+              >
+                <RefreshCw size={14} style={{ animation: cardFetching ? "spin 1s linear infinite" : "none" }} /> Refresh Status
+              </button>
+            </div>
+          </>
+        )}
+
+        {/* STATES 4 & 5 — Active / Frozen */}
+        {kycStatus === "verified" && card && (isActive || isFrozen) && (
+          <>
+            <div style={{ width: "100%", maxWidth: "380px", marginBottom: "16px" }}>
+              <CardVisual
+                holderName={card.name_on_card ?? kycName}
+                cardNumber={card.card_number}
+                last4={card.last4}
+                cvv={card.cvv}
+                expiry={card.expiry}
+                balance={card.balance}
+                status={card.card_status}
+              />
+            </div>
+
+            <div style={{ marginBottom: "20px" }}>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: "6px", padding: "6px 14px", borderRadius: "20px", background: isFrozen ? "rgba(255,68,68,0.15)" : "rgba(0,229,255,0.1)", border: `1px solid ${isFrozen ? "rgba(255,68,68,0.4)" : "rgba(0,229,255,0.3)"}`, color: isFrozen ? "#ff8888" : "#00e5ff", fontSize: "13px", fontWeight: 600 }}>
+                {isFrozen ? <Lock size={13} /> : <CheckCircle size={13} />}
+                {isFrozen ? "Frozen" : "Active"}
+              </span>
+            </div>
+
+            <div style={{ width: "100%", maxWidth: "360px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "20px" }}>
+              {[
+                { icon: <ArrowUpCircle size={20} color={isFrozen ? "#556677" : "#00e5ff"} />, label: "Fund Card", disabled: isFrozen, onClick: () => { setAmount(""); setModal("fund"); } },
+                { icon: <ArrowDownCircle size={20} color={isFrozen ? "#556677" : "#00e5ff"} />, label: "Withdraw", disabled: isFrozen, onClick: () => { setAmount(""); setModal("withdraw"); } },
+                { icon: isFrozen ? <Unlock size={20} color="#00e5ff" /> : <Lock size={20} color="#ff6666" />, label: isFrozen ? "Activate" : "Freeze", disabled: false, onClick: () => setModal("freeze") },
+                { icon: <History size={20} color="#00e5ff" />, label: "History", disabled: false, onClick: () => setShowHistory((v) => !v) },
+              ].map(({ icon, label, disabled, onClick }) => (
+                <button
+                  key={label}
+                  onClick={onClick}
+                  disabled={disabled}
+                  style={{ background: "rgba(0,229,255,0.08)", border: "1px solid rgba(0,229,255,0.2)", borderRadius: "14px", padding: "16px 10px", color: disabled ? "#556677" : "#fff", cursor: disabled ? "not-allowed" : "pointer", fontFamily: "Poppins, sans-serif", opacity: disabled ? 0.5 : 1, display: "flex", flexDirection: "column", alignItems: "center", gap: "6px" }}
+                >
+                  {icon}
+                  <span style={{ fontSize: "12px", fontWeight: 600 }}>{label}</span>
+                </button>
+              ))}
+            </div>
+
+            {showHistory && (
+              <div style={{ width: "100%", maxWidth: "380px" }}>
+                <h3 style={{ color: "#fff", fontSize: "15px", fontWeight: 700, marginBottom: "12px" }}>Transaction History</h3>
+                {!historyData ? (
+                  <p style={{ color: "#8899aa", textAlign: "center", padding: "20px" }}>Loading…</p>
+                ) : ((historyData as any).transactions ?? []).length === 0 ? (
+                  <p style={{ color: "#8899aa", textAlign: "center", padding: "20px", fontSize: "13px" }}>No transactions yet</p>
+                ) : (
+                  ((historyData as any).transactions ?? []).map((tx: any, i: number) => (
+                    <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", marginBottom: "8px", background: "rgba(0,229,255,0.04)", border: "1px solid rgba(0,229,255,0.1)", borderRadius: "12px" }}>
+                      <div>
+                        <div style={{ color: "#fff", fontSize: "13px", fontWeight: 600 }}>{tx.description ?? tx.narration ?? "Transaction"}</div>
+                        <div style={{ color: "#8899aa", fontSize: "11px", marginTop: "2px" }}>{tx.date ?? tx.created_at ?? ""}</div>
+                      </div>
+                      <div style={{ textAlign: "right" }}>
+                        <div style={{ color: tx.type === "credit" ? "#00e5ff" : "#ff6666", fontSize: "13px", fontWeight: 700 }}>
+                          {tx.type === "credit" ? "+" : "-"}${parseFloat(tx.amount ?? "0").toFixed(2)}
+                        </div>
+                        <div style={{ color: "#556677", fontSize: "11px", textTransform: "capitalize" }}>{tx.status ?? ""}</div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </>
+        )}
       </div>
+
+      {/* MODALS */}
+
+      {modal === "confirm-create" && (
+        <Modal title="Create Your Xendrx Card" onClose={() => setModal(null)}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "20px" }}>
+            {[["Card for", kycName], ["Creation fee", "$2 USDT deducted"], ["Auto-loaded", "$3 USDT on card"], ["Your balance", `$${walletBalance.toFixed(2)} USDT`]].map(([l, v]) => (
+              <div key={l} style={{ display: "flex", justifyContent: "space-between", padding: "10px 14px", background: "rgba(0,229,255,0.05)", borderRadius: "10px" }}>
+                <span style={{ color: "#8899aa", fontSize: "13px" }}>{l}</span>
+                <span style={{ color: "#fff", fontSize: "13px", fontWeight: 600 }}>{v}</span>
+              </div>
+            ))}
+          </div>
+          <div style={{ display: "flex", gap: "10px" }}>
+            <Btn variant="secondary" onClick={() => setModal(null)}>Cancel</Btn>
+            <Btn onClick={() => createMutation.mutate()} disabled={mutBusy}>{createMutation.isPending ? "Creating…" : "Confirm"}</Btn>
+          </div>
+        </Modal>
+      )}
+
+      {modal === "fund" && (
+        <Modal title="Fund Card" onClose={() => setModal(null)}>
+          <p style={{ color: "#8899aa", fontSize: "13px", marginBottom: "16px" }}>
+            Platform balance: <strong style={{ color: "#00e5ff" }}>${walletBalance.toFixed(2)} USDT</strong>
+          </p>
+          <input
+            type="number" value={amount} onChange={(e) => setAmount(e.target.value)}
+            placeholder="Amount in USDT" min="1"
+            style={{ width: "100%", padding: "12px 16px", background: "rgba(0,229,255,0.05)", border: "1px solid rgba(0,229,255,0.2)", borderRadius: "12px", color: "#fff", fontSize: "15px", marginBottom: "16px", boxSizing: "border-box", fontFamily: "Poppins, sans-serif", outline: "none" }}
+          />
+          <div style={{ display: "flex", gap: "10px" }}>
+            <Btn variant="secondary" onClick={() => setModal(null)}>Cancel</Btn>
+            <Btn onClick={() => fundMutation.mutate(parseFloat(amount))} disabled={mutBusy || !amount || parseFloat(amount) <= 0}>
+              {fundMutation.isPending ? "Funding…" : "Fund Card"}
+            </Btn>
+          </div>
+        </Modal>
+      )}
+
+      {modal === "withdraw" && (
+        <Modal title="Withdraw from Card" onClose={() => setModal(null)}>
+          <p style={{ color: "#8899aa", fontSize: "13px", marginBottom: "16px" }}>
+            Card balance: <strong style={{ color: "#00e5ff" }}>${parseFloat(card?.balance ?? "0").toFixed(2)} USDT</strong>
+          </p>
+          <input
+            type="number" value={amount} onChange={(e) => setAmount(e.target.value)}
+            placeholder="Amount in USDT" min="1"
+            style={{ width: "100%", padding: "12px 16px", background: "rgba(0,229,255,0.05)", border: "1px solid rgba(0,229,255,0.2)", borderRadius: "12px", color: "#fff", fontSize: "15px", marginBottom: "16px", boxSizing: "border-box", fontFamily: "Poppins, sans-serif", outline: "none" }}
+          />
+          <div style={{ display: "flex", gap: "10px" }}>
+            <Btn variant="secondary" onClick={() => setModal(null)}>Cancel</Btn>
+            <Btn onClick={() => withdrawMutation.mutate(parseFloat(amount))} disabled={mutBusy || !amount || parseFloat(amount) <= 0}>
+              {withdrawMutation.isPending ? "Withdrawing…" : "Withdraw"}
+            </Btn>
+          </div>
+        </Modal>
+      )}
+
+      {modal === "freeze" && (
+        <Modal title={isFrozen ? "Activate Card" : "Freeze Card"} onClose={() => setModal(null)}>
+          <p style={{ color: "#8899aa", fontSize: "14px", marginBottom: "20px", lineHeight: 1.6 }}>
+            {isFrozen
+              ? "Activate your card to start making payments again."
+              : "Freeze your card to block all payments immediately."}
+          </p>
+          <div style={{ display: "flex", gap: "10px" }}>
+            <Btn variant="secondary" onClick={() => setModal(null)}>Cancel</Btn>
+            <Btn variant={isFrozen ? "primary" : "danger"} onClick={() => freezeMutation.mutate()} disabled={mutBusy}>
+              {freezeMutation.isPending ? "Please wait…" : isFrozen ? "Activate" : "Freeze"}
+            </Btn>
+          </div>
+        </Modal>
+      )}
     </AppLayout>
   );
 }

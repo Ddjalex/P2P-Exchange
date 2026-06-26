@@ -7,7 +7,7 @@ import {
   transactionsTable, walletsTable, messagesTable, notificationsTable,
   adminLogsTable, systemSettingsTable, notificationHistoryTable, fraudFlagsTable,
   depositVerificationsTable, cardWaitlistTable, feeSettingsTable, platformWalletTable,
-  feeTransactionsTable, addressVerificationsTable, adminEmailSendsTable,
+  feeTransactionsTable, addressVerificationsTable, adminEmailSendsTable, cardsTable,
 } from "@workspace/db";
 import { eq, desc, and, or, ilike, sql, ne, count, inArray } from "drizzle-orm";
 import { getFeePercents, calculateFees } from "../helpers/fees.js";
@@ -1977,6 +1977,18 @@ router.get("/email/history", adminAuth, async (req, res) => {
     res.json(rows);
   } catch (err) {
     req.log.error({ err }, "Admin email history failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ─── Cards ───────────────────────────────────────────────────────────────────
+
+router.get("/cards", adminAuth, async (req, res) => {
+  try {
+    const cards = await db.select().from(cardsTable).orderBy(desc(cardsTable.createdAt));
+    res.json({ cards });
+  } catch (err) {
+    req.log.error({ err }, "Admin cards list failed");
     res.status(500).json({ error: "Internal server error" });
   }
 });
