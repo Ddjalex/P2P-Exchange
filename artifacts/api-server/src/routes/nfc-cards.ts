@@ -142,7 +142,7 @@ router.post("/create", userAuth, async (req: any, res) => {
         city: "N/A",
         state: "N/A",
         postal_code: "00000",
-        country: (kyc.nationality ?? "ET").slice(0, 2).toUpperCase(),
+        country: process.env.STROWALLET_COUNTRY ?? "NG",
         amount_usd: "3",
         mode: "sandbox",
       };
