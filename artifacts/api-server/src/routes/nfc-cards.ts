@@ -14,12 +14,21 @@ const router = Router();
 
 const STRO_BASE = "https://strowallet.com/api/bitvcard";
 
+// GET requests: keys go in query string
 function stroUrl(path: string) {
   const key = process.env.STROWALLET_PUBLIC_KEY;
   const secret = process.env.STROWALLET_SECRET_KEY;
   let url = `${STRO_BASE}/${path}?public_key=${encodeURIComponent(key || "")}`;
   if (secret) url += `&secret_key=${encodeURIComponent(secret)}`;
   return url;
+}
+
+// POST requests: keys go in the request body
+function stroKeys() {
+  return {
+    public_key: process.env.STROWALLET_PUBLIC_KEY || "",
+    secret_key: process.env.STROWALLET_SECRET_KEY || "",
+  };
 }
 
 function flattenValidationObj(obj: Record<string, unknown>): string | null {
@@ -147,6 +156,7 @@ router.post("/create", userAuth, async (req: any, res) => {
     let stroOk = false;
     try {
       const body = {
+        ...stroKeys(),
         name: fullName,
         first_name: firstName,
         last_name: lastName,
@@ -293,6 +303,12 @@ router.post("/fund", userAuth, async (req: any, res) => {
       .where(eq(walletsTable.userId, userId));
 
     console.log(`[Card] Funding card ${card.cardId} amount: ${amount} USDT`);
+    console.log('[Card] Fund request params:', {
+      public_key: process.env.STROWALLET_PUBLIC_KEY?.substring(0, 8),
+      card_id: card.cardId,
+      amount,
+      type: 'fund',
+    });
 
     let stroOk = false;
     let stroRes: any;
@@ -300,7 +316,7 @@ router.post("/fund", userAuth, async (req: any, res) => {
       const response = await fetch(stroUrl("fund-withdraw-nfccard"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ card_id: card.cardId, amount: String(amount), type: "fund" }),
+        body: JSON.stringify({ ...stroKeys(), card_id: card.cardId, amount: String(amount), type: "fund" }),
       });
       stroRes = await response.json();
       stroOk = response.ok && (stroRes?.status === true || stroRes?.success === true);
@@ -348,7 +364,7 @@ router.post("/withdraw", userAuth, async (req: any, res) => {
       const response = await fetch(stroUrl("fund-withdraw-nfccard"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ card_id: card.cardId, amount: String(amount), type: "withdraw" }),
+        body: JSON.stringify({ ...stroKeys(), card_id: card.cardId, amount: String(amount), type: "withdraw" }),
       });
       stroRes = await response.json();
       stroOk = response.ok && (stroRes?.status === true || stroRes?.success === true);
@@ -397,7 +413,7 @@ router.post("/freeze", userAuth, async (req: any, res) => {
       const response = await fetch(stroUrl("freeze-unfreeze-nfccard"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ card_id: card.cardId, action }),
+        body: JSON.stringify({ ...stroKeys(), card_id: card.cardId, action }),
       });
       stroRes = await response.json();
       stroOk = response.ok && (stroRes?.status === true || stroRes?.success === true);
