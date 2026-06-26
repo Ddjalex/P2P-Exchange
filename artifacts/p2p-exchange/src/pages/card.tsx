@@ -19,7 +19,8 @@ async function apiFetch(url: string, opts?: RequestInit) {
   });
   const data = await res.json();
   if (!res.ok) {
-    const msg = typeof data.error === "string" ? data.error : (data.message ?? "Request failed");
+    const raw = data.error ?? data.message ?? "Request failed";
+    const msg = typeof raw === "string" ? raw : JSON.stringify(raw);
     throw new Error(msg);
   }
   return data;
