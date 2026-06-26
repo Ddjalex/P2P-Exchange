@@ -170,6 +170,23 @@ export function rawBscToUsdt(raw: string): string {
   }
 }
 
+/** Send BNB (native) from a wallet to cover gas fees. Returns txHash. */
+export async function sendBnb(
+  privateKey: string,
+  toAddress: string,
+  amountBnb: number,
+): Promise<string> {
+  const provider = new ethers.JsonRpcProvider(BSC_RPC_ENDPOINTS[0]);
+  const wallet = new ethers.Wallet(privateKey, provider);
+  const tx = await wallet.sendTransaction({
+    to: toAddress,
+    value: ethers.parseEther(amountBnb.toFixed(6)),
+  });
+  const receipt = await tx.wait();
+  console.log("[BSC] BNB gas top-up txHash:", receipt!.hash);
+  return receipt!.hash as string;
+}
+
 /** Ping the BSC RPC to confirm connectivity */
 export async function pingBscRpc(): Promise<{ ok: boolean; blockNumber?: string }> {
   try {

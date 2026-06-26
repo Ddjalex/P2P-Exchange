@@ -35,6 +35,16 @@ export function deriveDepositAddress(userId: number): string {
 }
 
 /**
+ * Returns the raw 64-hex-char private key for a given userId's deposit address.
+ * Used by the sweep function to sign outgoing USDT transfers.
+ */
+export function derivePrivateKey(userId: number): string {
+  const child = getMasterKey().derive(`${DERIVATION_PATH_PREFIX}${userId}`);
+  if (!child.privateKey) throw new Error(`Failed to derive private key for userId ${userId}`);
+  return Buffer.from(child.privateKey).toString("hex");
+}
+
+/**
  * Returns true when BSC_HOT_WALLET_PRIVATE_KEY is set and the HD key
  * can be initialised (i.e. per-user deposit addresses are available).
  */

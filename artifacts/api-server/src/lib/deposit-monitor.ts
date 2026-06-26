@@ -28,6 +28,8 @@ import {
 import { eq, and, isNotNull } from "drizzle-orm";
 import { logger } from "./logger.js";
 import { PushNotify } from "../routes/push.js";
+import { derivePrivateKey } from "./bsc-hd.js";
+import { getBnbBalance, sendBnb, sendUsdtBsc } from "./bsc.js";
 
 const POLL_INTERVAL_MS = 60_000;
 
@@ -260,6 +262,60 @@ export async function creditUserDeposit(
   return true;
 }
 
+// ── Sweep ─────────────────────────────────────────────────────────────────────
+
+const HOT_WALLET_ADDRESS =
+  process.env["BSC_HOT_WALLET_ADDRESS"] || "0x24c3AaC7A62a37333885Bc9a8A82ca4fDe7321B3";
+
+const MIN_BNB_FOR_GAS = 0.001;   // threshold below which we top-up first
+const GAS_TOPUP_BNB   = 0.002;   // amount of BNB to send for gas
+const SWEEP_DELAY_MS  = 5_000;   // wait after BNB top-up before sweeping USDT
+
+/**
+ * Fire-and-forget: sweeps USDT from a user's derived deposit address back to the
+ * hot wallet so funds consolidate in one place.
+ *
+ * - If the derived address has < MIN_BNB_FOR_GAS BNB, sends GAS_TOPUP_BNB first
+ *   (from the hot wallet) and waits SWEEP_DELAY_MS for it to confirm.
+ * - On any error: logs for admin review — NEVER reverses the user's credit.
+ */
+async function sweepUsdtToHotWallet(userId: number, userAddress: string, amount: string): Promise<void> {
+  try {
+    const hotPrivKey = process.env["BSC_HOT_WALLET_PRIVATE_KEY"];
+    if (!hotPrivKey) {
+      console.warn(`[Deposit] Sweep skipped for user ${userId}: BSC_HOT_WALLET_PRIVATE_KEY not set`);
+      return;
+    }
+
+    const amountNum = parseFloat(amount);
+    if (isNaN(amountNum) || amountNum <= 0) return;
+
+    // Derive the user's private key for signing the sweep tx
+    const userPrivKey = derivePrivateKey(userId);
+
+    // Check BNB balance — need gas to send USDT
+    const bnbBalance = await getBnbBalance(userAddress);
+    if (bnbBalance < MIN_BNB_FOR_GAS) {
+      console.log(
+        `[Deposit] User ${userId} address ${userAddress} has ${bnbBalance.toFixed(6)} BNB — ` +
+        `topping up ${GAS_TOPUP_BNB} BNB for gas`,
+      );
+      await sendBnb(hotPrivKey, userAddress, GAS_TOPUP_BNB);
+      // Give the BNB tx a moment to propagate before sending USDT
+      await new Promise((r) => setTimeout(r, SWEEP_DELAY_MS));
+    }
+
+    console.log(`[Deposit] Sweeping ${amount} USDT from ${userAddress} → ${HOT_WALLET_ADDRESS}`);
+    const txHash = await sendUsdtBsc(userPrivKey, HOT_WALLET_ADDRESS, amountNum);
+    console.log(`[Deposit] Sweep complete txid: ${txHash}`);
+  } catch (err: any) {
+    console.error(
+      `[Deposit] Sweep FAILED for user ${userId} (${userAddress}): ${err?.message ?? err} — ` +
+      `user balance remains credited; review manually`,
+    );
+  }
+}
+
 // ── Address map ───────────────────────────────────────────────────────────────
 
 interface WalletInfo {
@@ -283,14 +339,22 @@ async function loadUserDepositAddresses(): Promise<Map<string, WalletInfo>> {
     .from(walletsTable)
     .where(and(eq(walletsTable.asset, "USDT"), isNotNull(walletsTable.depositAddress)));
 
+  // Only include valid EVM addresses (0x + 40 hex chars).
+  // Old Tron/Base58 addresses stored from a previous migration are silently skipped.
+  const EVM_ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/i;
+
   const map = new Map<string, WalletInfo>();
   for (const row of rows) {
-    if (row.depositAddress) {
+    if (row.depositAddress && EVM_ADDRESS_RE.test(row.depositAddress)) {
       map.set(row.depositAddress.toLowerCase(), {
         walletId: row.id,
         userId: row.userId,
         balance: row.availableBalance,
       });
+    } else if (row.depositAddress) {
+      console.warn(
+        `[Deposit] Skipping non-EVM deposit address for wallet ${row.id} (user ${row.userId}): ${row.depositAddress.slice(0, 12)}… — will be re-derived on next user login`,
+      );
     }
   }
   return map;
@@ -422,6 +486,9 @@ async function poll() {
             // Update the balance in our in-memory map so concurrent deposits in the same
             // chunk are accumulated correctly without an extra DB round-trip
             walletInfo.balance = (parseFloat(walletInfo.balance) + amountFloat).toFixed(6);
+
+            // Fire-and-forget sweep: move USDT from user's deposit address → hot wallet
+            sweepUsdtToHotWallet(walletInfo.userId, parsed.to, parsed.amount).catch(() => {});
 
           } else {
             // Legacy mode: flag deposit as pending for admin to assign manually
