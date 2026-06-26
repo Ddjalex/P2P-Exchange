@@ -16,7 +16,10 @@ const STRO_BASE = "https://strowallet.com/api/bitvcard";
 
 function stroUrl(path: string) {
   const key = process.env.STROWALLET_PUBLIC_KEY;
-  return `${STRO_BASE}/${path}?public_key=${encodeURIComponent(key || "")}`;
+  const secret = process.env.STROWALLET_SECRET_KEY;
+  let url = `${STRO_BASE}/${path}?public_key=${encodeURIComponent(key || "")}`;
+  if (secret) url += `&secret_key=${encodeURIComponent(secret)}`;
+  return url;
 }
 
 function flattenValidationObj(obj: Record<string, unknown>): string | null {
@@ -151,7 +154,7 @@ router.post("/create", userAuth, async (req: any, res) => {
         postal_code: "00000",
         country: process.env.STROWALLET_COUNTRY ?? "US",
         amount_usd: "3",
-        mode: "sandbox",
+        mode: "live",
       };
 
       const response = await fetch(stroUrl("create-nfc-card"), {
