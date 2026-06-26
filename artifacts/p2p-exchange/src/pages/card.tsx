@@ -260,10 +260,10 @@ export default function CardPage() {
   const card = (cardData as any)?.card ?? null;
   const walletBalance = parseFloat((walletData as any)?.availableBalance ?? "0");
   const kycName = (meData as any)?.kycFullName ?? (meData as any)?.username ?? "YOUR NAME";
-  const isFrozen = card?.card_status === "inactive" || card?.card_status === "frozen";
-  const isProcessing = card?.card_status === "processing";
-  const isActive = card?.card_status === "active";
-  const isDemo = card?.card_status === "demo";
+  const isFrozen = card?.cardStatus === "inactive" || card?.cardStatus === "frozen";
+  const isProcessing = card?.cardStatus === "processing";
+  const isActive = card?.cardStatus === "active";
+  const isDemo = card?.cardStatus === "demo";
   const mutBusy = createMutation.isPending || fundMutation.isPending || withdrawMutation.isPending || freezeMutation.isPending;
 
   return (
@@ -344,7 +344,7 @@ export default function CardPage() {
         {kycStatus === "verified" && card && isProcessing && (
           <>
             <div style={{ width: "100%", maxWidth: "380px", marginBottom: "24px" }}>
-              <CardVisual holderName={card.name_on_card ?? kycName} last4={card.last4} expiry={card.expiry} balance={card.balance} status={card.card_status} />
+              <CardVisual holderName={card.nameOnCard ?? kycName} last4={card.last4} expiry={card.expiry} balance={card.balance} status={card.cardStatus} />
             </div>
             <div style={{ width: "100%", maxWidth: "360px", background: "rgba(255,170,0,0.08)", border: "1px solid rgba(255,170,0,0.3)", borderRadius: "16px", padding: "24px", textAlign: "center" }}>
               <Clock size={28} color="#ffaa00" style={{ margin: "0 auto 10px" }} />
@@ -366,8 +366,8 @@ export default function CardPage() {
           <>
             <div style={{ width: "100%", maxWidth: "380px", marginBottom: "12px" }}>
               <CardVisual
-                holderName={card.name_on_card ?? kycName}
-                cardNumber={card.card_number}
+                holderName={card.nameOnCard ?? kycName}
+                cardNumber={card.cardNumber}
                 last4={card.last4}
                 cvv={card.cvv}
                 expiry={card.expiry}
@@ -407,13 +407,13 @@ export default function CardPage() {
           <>
             <div style={{ width: "100%", maxWidth: "380px", marginBottom: "16px" }}>
               <CardVisual
-                holderName={card.name_on_card ?? kycName}
-                cardNumber={card.card_number}
+                holderName={card.nameOnCard ?? kycName}
+                cardNumber={card.cardNumber}
                 last4={card.last4}
                 cvv={card.cvv}
                 expiry={card.expiry}
                 balance={card.balance}
-                status={card.card_status}
+                status={card.cardStatus}
               />
             </div>
 
