@@ -20,6 +20,15 @@ function stroUrl(path: string) {
 }
 
 function stroErrMsg(stroRes: any, fallback: string): string {
+  // StroWallet validation errors: { errors: { field: ["msg", ...], ... } }
+  if (stroRes?.errors && typeof stroRes.errors === "object" && !Array.isArray(stroRes.errors)) {
+    const parts: string[] = [];
+    for (const msgs of Object.values(stroRes.errors)) {
+      if (Array.isArray(msgs)) parts.push(...msgs.map(String));
+      else if (typeof msgs === "string") parts.push(msgs);
+    }
+    if (parts.length) return parts.join(" ");
+  }
   const raw = stroRes?.message ?? stroRes?.error ?? stroRes?.errors?.[0];
   if (!raw) return fallback;
   if (typeof raw === "string") return raw;
@@ -133,7 +142,7 @@ router.post("/create", userAuth, async (req: any, res) => {
         city: "N/A",
         state: "N/A",
         postal_code: "00000",
-        country: kyc.nationality ?? "ETH",
+        country: (kyc.nationality ?? "ET").slice(0, 2).toUpperCase(),
         amount_usd: "3",
         mode: "sandbox",
       };
