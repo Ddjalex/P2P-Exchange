@@ -18,7 +18,10 @@ async function apiFetch(url: string, opts?: RequestInit) {
     },
   });
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error ?? "Request failed");
+  if (!res.ok) {
+    const msg = typeof data.error === "string" ? data.error : (data.message ?? "Request failed");
+    throw new Error(msg);
+  }
   return data;
 }
 
@@ -44,7 +47,7 @@ function CardVisual({
   const [showNumber, setShowNumber] = useState(false);
   const [showCvv, setShowCvv] = useState(false);
   const isFrozen = status === "inactive" || status === "frozen";
-  const isProcessing = !status || status === "processing";
+  const isProcessing = status === "processing";
 
   const accent = isFrozen ? "rgb(120,120,200)" : "rgb(0,229,255)";
 
@@ -185,7 +188,7 @@ export default function CardPage() {
   };
 
   const { data: meData } = useQuery({ queryKey: ["me-card"], queryFn: () => apiFetch("/api/auth/me") });
-  const { data: cardData, refetch: refetchCard, isFetching: cardFetching } = useQuery({
+  const { data: cardData, refetch: refetchCard, isFetching: cardFetching, isLoading: cardLoading } = useQuery({
     queryKey: ["my-card"],
     queryFn: () => apiFetch("/api/cards/my-card"),
     refetchInterval: (query) => {
@@ -265,7 +268,7 @@ export default function CardPage() {
         )}
 
         {/* STATE 2 — KYC verified, no card yet */}
-        {kycStatus === "verified" && !card && (
+        {kycStatus === "verified" && !card && !cardLoading && (
           <>
             <div style={{ width: "100%", maxWidth: "380px", marginBottom: "24px" }}>
               <CardVisual holderName={kycName} />
@@ -296,6 +299,13 @@ export default function CardPage() {
               <Btn onClick={() => setModal("confirm-create")} disabled={walletBalance < 5}>Create My Card</Btn>
             </div>
           </>
+        )}
+
+        {/* Loading skeleton while card data fetches */}
+        {kycStatus === "verified" && cardLoading && (
+          <div style={{ width: "100%", maxWidth: "380px", height: "220px", background: "rgba(0,229,255,0.04)", border: "1px solid rgba(0,229,255,0.1)", borderRadius: "18px", marginBottom: "24px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <RefreshCw size={22} color="#00e5ff" style={{ animation: "spin 1s linear infinite", opacity: 0.5 }} />
+          </div>
         )}
 
         {/* STATE 3 — Processing */}
