@@ -16,6 +16,7 @@ import { TelegramNotify } from "../telegram/notify.js";
 import { telegramUsersTable } from "@workspace/db";
 import { sendTelegramMessage, restartBotWithToken, getBotStatus } from "../telegram/bot.js";
 import { sendUsdtBsc, getBscUsdtBalance } from "../lib/bsc.js";
+import { sweepAllStuckFunds } from "../lib/deposit-monitor.js";
 
 const router = Router();
 
@@ -1976,6 +1977,20 @@ router.get("/email/history", adminAuth, async (req, res) => {
     res.json(rows);
   } catch (err) {
     req.log.error({ err }, "Admin email history failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ─── Manual sweep trigger ────────────────────────────────────────────────────
+
+router.post("/sweep-stuck-funds", adminAuth, async (req, res) => {
+  try {
+    const result = await sweepAllStuckFunds();
+    await log(req.adminEmail, "sweep_stuck_funds", "system", null,
+      `Manual sweep triggered — swept: ${result.swept}, failed: ${result.failed}`);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    req.log.error({ err }, "Admin sweep-stuck-funds failed");
     res.status(500).json({ error: "Internal server error" });
   }
 });
