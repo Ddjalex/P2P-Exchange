@@ -278,7 +278,7 @@ router.post("/fund", userAuth, async (req: any, res) => {
     if (!stroOk) {
       const refund = (parseFloat(newBalance) + amount).toFixed(6);
       await db.update(walletsTable).set({ availableBalance: refund, updatedAt: new Date() }).where(eq(walletsTable.userId, userId));
-      return res.status(502).json({ error: stroRes?.message ?? "Funding failed. Amount refunded." });
+      return res.status(502).json({ error: String(stroRes?.message ?? "Funding failed. Amount has been refunded.") });
     }
 
     await db.insert(transactionsTable).values({
@@ -324,7 +324,7 @@ router.post("/withdraw", userAuth, async (req: any, res) => {
     } catch {}
 
     if (!stroOk) {
-      return res.status(502).json({ error: stroRes?.message ?? "Withdrawal failed." });
+      return res.status(502).json({ error: String(stroRes?.message ?? "Withdrawal failed. Please try again.") });
     }
 
     const wallet = await getOrCreateWallet(userId);
@@ -373,7 +373,7 @@ router.post("/freeze", userAuth, async (req: any, res) => {
     } catch {}
 
     if (!stroOk) {
-      return res.status(502).json({ error: stroRes?.message ?? `${action} failed.` });
+      return res.status(502).json({ error: String(stroRes?.message ?? `Card ${action} failed. Please try again.`) });
     }
 
     const newStatus = isFrozen ? "active" : "inactive";

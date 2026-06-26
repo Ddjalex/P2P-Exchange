@@ -50,6 +50,7 @@ function CardVisual({
   const isProcessing = status === "processing";
 
   const accent = isFrozen ? "rgb(120,120,200)" : "rgb(0,229,255)";
+  const accentDim = isFrozen ? "rgba(120,120,200,0.6)" : "rgba(0,229,255,0.6)";
 
   const displayNumber =
     showNumber && cardNumber
@@ -58,9 +59,12 @@ function CardVisual({
       ? `•••• •••• •••• ${last4}`
       : "•••• •••• •••• ••••";
 
+  const balanceDisplay = `$${parseFloat(balance ?? "0").toFixed(2)}`;
+  const cvvDisplay = showCvv && cvv ? cvv : "•••";
+
   return (
     <div style={{ position: "relative", width: "100%", maxWidth: "380px" }}>
-      <svg viewBox="0 0 380 220" style={{ width: "100%", borderRadius: "18px", display: "block", filter: blurred ? "blur(4px)" : "none" }}>
+      <svg viewBox="0 0 380 275" style={{ width: "100%", borderRadius: "18px", display: "block", filter: blurred ? "blur(4px)" : "none" }}>
         <defs>
           <linearGradient id="cg-cardGrad" x1="0%" y1="0%" x2="100%" y2="100%">
             <stop offset="0%" stopColor={isFrozen ? "rgb(20,20,40)" : "rgb(10,22,40)"} />
@@ -72,64 +76,90 @@ function CardVisual({
             <stop offset="100%" stopColor={isFrozen ? "rgb(60,60,140)" : "rgb(0,136,204)"} />
           </linearGradient>
         </defs>
-        <rect x="0" y="0" width="380" height="220" rx="18" fill="url(#cg-cardGrad)" />
-        <rect x="0" y="0" width="380" height="220" rx="18" fill="none" stroke={accent} strokeWidth="1" strokeOpacity="0.5" />
+
+        {/* Card background */}
+        <rect x="0" y="0" width="380" height="275" rx="18" fill="url(#cg-cardGrad)" />
+        <rect x="0" y="0" width="380" height="275" rx="18" fill="none" stroke={accent} strokeWidth="1" strokeOpacity="0.5" />
+
+        {/* Decorative circles */}
         <circle cx="320" cy="55" r="80" fill="none" stroke={accent} strokeWidth="0.5" strokeOpacity="0.15" />
         <circle cx="320" cy="55" r="55" fill="none" stroke={accent} strokeWidth="0.5" strokeOpacity="0.12" />
         <circle cx="60" cy="175" r="60" fill="none" stroke={accent} strokeWidth="0.5" strokeOpacity="0.1" />
+
+        {/* Chip */}
         <rect x="24" y="78" width="44" height="32" rx="5" fill="rgb(255,215,0)" fillOpacity="0.9" />
         <line x1="24" y1="89" x2="68" y2="89" stroke="rgb(170,136,0)" strokeWidth="0.8" strokeOpacity="0.5" />
         <line x1="24" y1="98" x2="68" y2="98" stroke="rgb(170,136,0)" strokeWidth="0.8" strokeOpacity="0.5" />
         <line x1="46" y1="78" x2="46" y2="110" stroke="rgb(170,136,0)" strokeWidth="0.8" strokeOpacity="0.5" />
+
+        {/* Logo */}
         <text x="24" y="58" fontFamily="Poppins, sans-serif" fontSize="14" fontWeight="800" fill="white">
           xen<tspan fill={accent}>drx</tspan>
         </text>
+
+        {/* Mastercard circles */}
         <circle cx="340" cy="52" r="10" fill="rgb(255,68,68)" fillOpacity="0.8" />
         <circle cx="352" cy="52" r="10" fill="rgb(255,170,0)" fillOpacity="0.8" />
         <circle cx="346" cy="52" r="6" fill="rgb(255,119,0)" fillOpacity="0.6" />
+
+        {/* Card number */}
         <text x="24" y="145" fontFamily="'Courier New', monospace" fontSize="13" fontWeight="600" fill="white" letterSpacing="2">{displayNumber}</text>
-        <text x="24" y="174" fontFamily="Poppins, sans-serif" fontSize="9" fill={accent} fillOpacity="0.7" letterSpacing="2">CARD HOLDER</text>
+
+        {/* Card holder + Expires */}
+        <text x="24" y="174" fontFamily="Poppins, sans-serif" fontSize="9" fill={accentDim} letterSpacing="2">CARD HOLDER</text>
         <text x="24" y="192" fontFamily="Poppins, sans-serif" fontSize="12" fontWeight="600" fill="white" letterSpacing="1">
           {holderName.toUpperCase().slice(0, 22)}
         </text>
-        <text x="298" y="174" fontFamily="Poppins, sans-serif" fontSize="9" fill={accent} fillOpacity="0.7" letterSpacing="2">EXPIRES</text>
+        <text x="298" y="174" fontFamily="Poppins, sans-serif" fontSize="9" fill={accentDim} letterSpacing="2">EXPIRES</text>
         <text x="298" y="192" fontFamily="Poppins, sans-serif" fontSize="12" fontWeight="600" fill="white">{expiry ?? "••/••"}</text>
-        <rect x="0" y="208" width="380" height="12" rx="0" fill="url(#cg-accentGrad)" opacity="0.6" />
-        <rect x="0" y="208" width="380" height="3" fill="url(#cg-accentGrad)" opacity="0.9" />
+
+        {/* Divider */}
+        <line x1="12" y1="208" x2="368" y2="208" stroke={accent} strokeWidth="0.5" strokeOpacity="0.25" />
+
+        {/* ── Balance box (static) ── */}
+        <rect x="12" y="213" width="108" height="46" rx="8" fill="rgba(0,229,255,0.06)" stroke={accent} strokeWidth="0.5" strokeOpacity="0.2" />
+        <text x="66" y="225" textAnchor="middle" fontFamily="Poppins, sans-serif" fontSize="8" fill={accentDim} letterSpacing="1">BALANCE</text>
+        <text x="66" y="246" textAnchor="middle" fontFamily="Poppins, sans-serif" fontSize="15" fontWeight="700" fill="white">{balanceDisplay}</text>
+
+        {/* ── CVV box (clickable) ── */}
+        <g onClick={() => setShowCvv((v) => !v)} style={{ cursor: "pointer" }}>
+          <rect x="128" y="213" width="108" height="46" rx="8" fill="rgba(0,229,255,0.06)" stroke={accent} strokeWidth="0.5" strokeOpacity="0.2" />
+          <text x="182" y="225" textAnchor="middle" fontFamily="Poppins, sans-serif" fontSize="8" fill={accentDim} letterSpacing="1">CVV</text>
+          <text x="182" y="246" textAnchor="middle" fontFamily="'Courier New', monospace" fontSize="15" fontWeight="700" fill="white">{cvvDisplay}</text>
+        </g>
+
+        {/* ── PAN toggle box (clickable) ── */}
+        <g onClick={() => setShowNumber((v) => !v)} style={{ cursor: "pointer" }}>
+          <rect x="244" y="213" width="124" height="46" rx="8" fill="rgba(0,229,255,0.06)" stroke={accent} strokeWidth="0.5" strokeOpacity="0.2" />
+          <text x="306" y="225" textAnchor="middle" fontFamily="Poppins, sans-serif" fontSize="8" fill={accentDim} letterSpacing="1">FULL PAN</text>
+          {/* Eye icon paths */}
+          {showNumber ? (
+            <g transform="translate(297,232)">
+              <ellipse cx="9" cy="7" rx="9" ry="6" fill="none" stroke={accent} strokeWidth="1.5" />
+              <circle cx="9" cy="7" r="2.5" fill={accent} />
+              <line x1="2" y1="1" x2="16" y2="13" stroke={accent} strokeWidth="1.5" strokeLinecap="round" />
+            </g>
+          ) : (
+            <g transform="translate(297,232)">
+              <ellipse cx="9" cy="7" rx="9" ry="6" fill="none" stroke={accent} strokeWidth="1.5" />
+              <circle cx="9" cy="7" r="2.5" fill={accent} />
+            </g>
+          )}
+        </g>
+
+        {/* Bottom accent bar */}
+        <rect x="0" y="263" width="380" height="12" rx="0" fill="url(#cg-accentGrad)" opacity="0.6" />
+        <rect x="0" y="263" width="380" height="3" fill="url(#cg-accentGrad)" opacity="0.9" />
       </svg>
 
       {isFrozen && (
-        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "18px", background: "rgba(80,0,160,0.25)" }}>
+        <div style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "18px", background: "rgba(80,0,160,0.25)" }}>
           <div style={{ background: "rgba(200,0,0,0.85)", borderRadius: "8px", padding: "6px 18px", color: "#fff", fontWeight: 700, fontSize: "13px", letterSpacing: "2px" }}>FROZEN</div>
         </div>
       )}
       {isProcessing && !blurred && (
-        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "18px", background: "rgba(0,0,0,0.4)" }}>
+        <div style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "18px", background: "rgba(0,0,0,0.4)" }}>
           <div style={{ background: "rgba(255,170,0,0.9)", borderRadius: "8px", padding: "6px 18px", color: "#1a1a2e", fontWeight: 700, fontSize: "13px", letterSpacing: "2px" }}>PROCESSING</div>
-        </div>
-      )}
-
-      {!blurred && !isProcessing && (
-        <div style={{ marginTop: "10px", display: "flex", gap: "12px", justifyContent: "center" }}>
-          <div style={{ background: "rgba(0,229,255,0.08)", border: "1px solid rgba(0,229,255,0.2)", borderRadius: "10px", padding: "8px 20px", textAlign: "center" }}>
-            <div style={{ color: "#8899aa", fontSize: "10px", letterSpacing: "1px", marginBottom: "2px" }}>BALANCE</div>
-            <div style={{ color: "#fff", fontSize: "18px", fontWeight: 700 }}>${parseFloat(balance ?? "0").toFixed(2)}</div>
-          </div>
-          <div
-            style={{ background: "rgba(0,229,255,0.08)", border: "1px solid rgba(0,229,255,0.2)", borderRadius: "10px", padding: "8px 20px", textAlign: "center", cursor: "pointer" }}
-            onClick={() => setShowCvv((v) => !v)}
-          >
-            <div style={{ color: "#8899aa", fontSize: "10px", letterSpacing: "1px", marginBottom: "2px" }}>CVV</div>
-            <div style={{ color: "#fff", fontSize: "18px", fontWeight: 700 }}>{showCvv && cvv ? cvv : "•••"}</div>
-          </div>
-          <div
-            style={{ background: "rgba(0,229,255,0.08)", border: "1px solid rgba(0,229,255,0.2)", borderRadius: "10px", padding: "8px 14px", textAlign: "center", cursor: "pointer" }}
-            onClick={() => setShowNumber((v) => !v)}
-            title={showNumber ? "Hide card number" : "Reveal card number"}
-          >
-            <div style={{ color: "#8899aa", fontSize: "10px", letterSpacing: "1px", marginBottom: "4px" }}>PAN</div>
-            <div style={{ color: "#00e5ff" }}>{showNumber ? <EyeOff size={18} /> : <Eye size={18} />}</div>
-          </div>
         </div>
       )}
     </div>
