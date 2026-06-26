@@ -1,0 +1,201 @@
+Implement StroWallet NFC Card feature for Xendrx platform
+Read the StroWallet API docs at https://strowallet.readme.io/llms.txt before starting.
+API endpoints to use:
+
+Create NFC Card: POST https://strowallet.com/api/bitvcard/create-nfc-card
+Get Card Details: GET https://strowallet.com/api/bitvcard/fetch-nfccard-detail
+Fund/Withdraw Card: POST https://strowallet.com/api/bitvcard/fund-withdraw-nfccard
+Card History: GET https://strowallet.com/api/bitvcard/nfc-card-history
+Freeze/Activate: POST https://strowallet.com/api/bitvcard/freeze-unfreeze-nfccard
+
+Auth: all requests include public_key query param from process.env.STROWALLET_PUBLIC_KEY
+
+Step 1 — Database migration
+Add to schema:
+sqlCREATE TABLE IF NOT EXISTS cards (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id) UNIQUE,
+  card_id TEXT UNIQUE,
+  card_user_id TEXT,
+  customer_id TEXT,
+  name_on_card TEXT,
+  card_status TEXT DEFAULT 'processing',
+  card_number TEXT,
+  last4 TEXT,
+  cvv TEXT,
+  expiry TEXT,
+  balance NUMERIC(10,2) DEFAULT 0,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+Step 2 — Backend routes in routes/cards.ts
+POST /api/cards/create
+
+Check user's KYC status — if NOT approved return error: "KYC verification required"
+Read KYC data from database for this user:
+
+Check existing kyc_submissions or kyc table — find the correct table name
+Get: first_name, last_name, dob, id_type, id_number
+Map id_type to StroWallet format: national_id → national_id, passport → passport, driver's license → drivers_license
+Format dob to mm/dd/yyyy
+
+
+Get user's email and phone from users table
+Check user has minimum $5 USDT platform balance
+Deduct $2 creation fee from user's platform USDT balance
+Call StroWallet create-nfc-card:
+
+name: full name
+first_name, last_name: from KYC
+dob: from KYC (mm/dd/yyyy)
+id_type: from KYC (mapped)
+id_number: from KYC
+email: from user profile
+phone: from user profile
+line1: from KYC if available, else "N/A"
+city: from KYC if available, else "N/A"
+state: from KYC if available, else "N/A"
+postal_code: from KYC if available, else "00000"
+country: from KYC if available, else "ETH" — check KYC table for country field
+amount_usd: "3"
+mode: "sandbox"
+
+
+Save card to database
+Log: [Card] Creating card for user: X
+Return card data
+
+GET /api/cards/my-card
+
+Get user's card from database
+If card exists, fetch fresh details from StroWallet
+Update database with latest details
+Return full card details
+
+POST /api/cards/fund
+
+Body: { amount: number }
+Check user has enough platform USDT balance
+Deduct amount from user platform USDT balance
+Call StroWallet fund-withdraw-nfccard with type: "fund"
+Log transaction
+Return success
+
+POST /api/cards/withdraw
+
+Body: { amount: number }
+Call StroWallet fund-withdraw-nfccard with type: "withdraw"
+Add amount to user platform USDT balance
+Log transaction
+Return success
+
+POST /api/cards/freeze
+
+Call StroWallet freeze/activate endpoint
+Update card_status in database
+Return success
+
+GET /api/cards/history
+
+Call StroWallet nfc-card-history endpoint
+Return transaction history array
+
+
+Step 3 — Frontend — update /card page completely
+State 1 — KYC not verified:
+
+Show message: "KYC Verification Required"
+Text: "Please complete your identity verification before getting a card"
+Button: "Verify Now" → links to KYC page
+Show the card preview as blurred/locked
+
+State 2 — KYC verified, no card yet:
+
+Show card preview (animated card already on the page)
+Title: "Get Your Xendrx Card"
+Subtitle: "Virtual Visa card — pay anywhere, Google Pay & Apple Pay supported"
+Show user's verified name from KYC
+Show creation fee notice: "Card creation fee: $2 USDT"
+Show initial funding: "$3 USDT loaded automatically"
+Show total required: "$5 USDT minimum balance needed"
+Single "Create My Card" button
+Confirmation dialog before creating:
+
+"Creating card for: [Full Name from KYC]"
+"$2 fee will be deducted from your balance"
+Confirm / Cancel buttons
+
+
+Show loading state during creation
+
+State 3 — Card processing:
+
+Show card with "Processing" badge
+Message: "Your card is being set up. This usually takes a few minutes."
+Auto-refresh every 30 seconds to check status
+Refresh button
+
+State 4 — Card active:
+Top section — animated card visual:
+
+Card number masked: **** **** **** XXXX — tap eye icon to reveal full number
+CVV hidden — tap to reveal
+Expiry date visible
+Cardholder name
+Card brand (Visa logo)
+Card balance: "$X.XX"
+Status badge: "Active" (green)
+
+Action buttons:
+
+💳 Fund Card — modal with amount input, shows current platform balance, deducts from platform USDT
+💰 Withdraw — modal with amount input, adds to platform USDT balance
+🔒 Freeze Card — confirmation dialog, freezes card
+📋 History — shows transaction list below
+
+Transaction history:
+
+Date, description, amount, status for each transaction
+
+State 5 — Card frozen:
+
+Show card with red "Frozen" overlay
+Show "Activate Card" button
+Show history still accessible
+
+
+Step 4 — Admin panel
+Add /admin/cards page:
+
+Table: User ID, Name, Card ID, Status, Balance, Created Date
+Filter by status
+Click row to see full card details
+Add link in admin sidebar
+
+
+Step 5 — Environment
+Add to .env.example:
+STROWALLET_PUBLIC_KEY=your_strowallet_public_key_here
+
+Step 6 — Error handling and logging
+[Card] Creating card for user: X name: Y
+[Card] KYC data retrieved: first_name, last_name, id_type
+[Card] StroWallet response: success/failed — reason
+[Card] Funding card X amount: Y USDT
+[Card] Withdraw from card X amount: Y USDT
+[Card] Freeze card X
+
+If StroWallet API fails → refund the $2 fee back to user, return clear error
+If KYC not approved → block card creation with clear message
+If insufficient balance → show clear error with required amount
+Never log raw card numbers or CVV
+
+
+Step 7 — Check KYC table structure first
+Before implementing, check the existing database schema:
+
+Find the KYC table name (could be kyc_submissions, kyc, verifications)
+Find exact column names for: first_name, last_name, dob, id_type, id_number, status
+Find the approved status value (could be approved, verified, active)
+Use these exact values in the implementation
