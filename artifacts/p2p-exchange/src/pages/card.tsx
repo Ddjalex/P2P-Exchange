@@ -263,6 +263,7 @@ export default function CardPage() {
   const isFrozen = card?.card_status === "inactive" || card?.card_status === "frozen";
   const isProcessing = card?.card_status === "processing";
   const isActive = card?.card_status === "active";
+  const isDemo = card?.card_status === "demo";
   const mutBusy = createMutation.isPending || fundMutation.isPending || withdrawMutation.isPending || freezeMutation.isPending;
 
   return (
@@ -360,7 +361,48 @@ export default function CardPage() {
           </>
         )}
 
-        {/* STATES 4 & 5 — Active / Frozen */}
+        {/* STATE 4 — Demo card */}
+        {kycStatus === "verified" && card && isDemo && (
+          <>
+            <div style={{ width: "100%", maxWidth: "380px", marginBottom: "12px" }}>
+              <CardVisual
+                holderName={card.name_on_card ?? kycName}
+                cardNumber={card.card_number}
+                last4={card.last4}
+                cvv={card.cvv}
+                expiry={card.expiry}
+                balance={card.balance}
+                status="active"
+              />
+            </div>
+            <div style={{ width: "100%", maxWidth: "380px", marginBottom: "16px", padding: "10px 14px", borderRadius: "10px", background: "rgba(255,170,0,0.1)", border: "1px solid rgba(255,170,0,0.35)", display: "flex", alignItems: "flex-start", gap: "10px" }}>
+              <span style={{ fontSize: "16px", marginTop: "1px" }}>🧪</span>
+              <div>
+                <div style={{ color: "#ffaa00", fontSize: "12px", fontWeight: 700, marginBottom: "3px" }}>Demo Card</div>
+                <div style={{ color: "#aa8800", fontSize: "11px", lineHeight: 1.5 }}>
+                  This is a sandbox card for testing the UI. Real virtual cards will be issued once your StroWallet merchant account has supported countries configured.
+                </div>
+              </div>
+            </div>
+            <div style={{ width: "100%", maxWidth: "380px", background: "rgba(0,229,255,0.04)", border: "1px solid rgba(0,229,255,0.12)", borderRadius: "14px", padding: "16px", marginBottom: "16px" }}>
+              <div style={{ color: "#8899aa", fontSize: "12px", marginBottom: "12px", fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase" }}>Card Details</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px", textAlign: "center" }}>
+                {[
+                  { label: "Balance", value: `$${parseFloat(card.balance ?? "0").toFixed(2)}` },
+                  { label: "CVV", value: card.cvv ?? "•••" },
+                  { label: "Expires", value: card.expiry ?? "••/••" },
+                ].map(({ label, value }) => (
+                  <div key={label} style={{ padding: "10px 8px", background: "rgba(0,229,255,0.06)", borderRadius: "8px" }}>
+                    <div style={{ color: "#8899aa", fontSize: "10px", marginBottom: "4px" }}>{label}</div>
+                    <div style={{ color: "#fff", fontSize: "13px", fontWeight: 700 }}>{value}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* STATES 5 & 6 — Active / Frozen */}
         {kycStatus === "verified" && card && (isActive || isFrozen) && (
           <>
             <div style={{ width: "100%", maxWidth: "380px", marginBottom: "16px" }}>
