@@ -128,6 +128,9 @@ router.post("/create", userAuth, async (req: any, res) => {
     const dob = formatDob(kyc.dateOfBirth ?? "01/01/1990");
     const idType = mapIdType(kyc.idType ?? "national_id");
 
+    console.log('[Card] Step 1 — KYC check passed');
+    console.log(`[Card]   user: ${userId}, name: ${fullName}, dob: ${formatDob(kyc.dateOfBirth ?? "01/01/1990")}, idType: ${mapIdType(kyc.idType ?? "national_id")}`);
+
     const newBalance = (avail - 2).toFixed(6);
     await db
       .update(walletsTable)
@@ -142,49 +145,54 @@ router.post("/create", userAuth, async (req: any, res) => {
       note: "Card creation fee",
     });
 
+    console.log('[Card] Step 2 — Balance deducted ($2 fee). New balance:', newBalance);
+
     if (!process.env.STROWALLET_PUBLIC_KEY) {
-      // Refund the fee before returning the error
       await db.update(walletsTable).set({ availableBalance: avail.toFixed(6), updatedAt: new Date() }).where(eq(walletsTable.userId, userId));
       return res.status(503).json({ error: "Card service not configured. Please contact support." });
     }
 
-    console.log(`[Card] Creating card for user: ${userId} name: ${fullName}`);
-    console.log(`[Card] KYC data retrieved: ${firstName}, ${lastName}, ${idType}`);
-    console.log('[Card] Calling real StroWallet API with key:', process.env.STROWALLET_PUBLIC_KEY?.substring(0, 8));
+    const stroEndpoint = stroUrl("create-nfc-card");
+    const body = {
+      ...stroKeys(),
+      name: fullName,
+      first_name: firstName,
+      last_name: lastName,
+      dob,
+      id_type: idType,
+      id_number: `ETH${String(userId).padStart(8, "0")}`,
+      email: user.email,
+      phone: user.phone ?? "0900000000",
+      line1: "N/A",
+      city: "N/A",
+      state: "N/A",
+      postal_code: "00000",
+      country: process.env.STROWALLET_COUNTRY ?? "US",
+      amount_usd: "3",
+      mode: "live",
+    };
+
+    console.log('[Card] Step 3 — Calling StroWallet API...');
+    console.log('[Card] StroWallet URL:', stroEndpoint);
+    console.log('[Card] StroWallet params:', {
+      ...body,
+      public_key: body.public_key ? body.public_key.substring(0, 8) + '…' : '(missing)',
+      secret_key: body.secret_key ? '***' : '(missing)',
+    });
 
     let stroRes: any;
     let stroOk = false;
     try {
-      const body = {
-        ...stroKeys(),
-        name: fullName,
-        first_name: firstName,
-        last_name: lastName,
-        dob,
-        id_type: idType,
-        id_number: `ETH${String(userId).padStart(8, "0")}`,
-        email: user.email,
-        phone: user.phone ?? "0900000000",
-        line1: "N/A",
-        city: "N/A",
-        state: "N/A",
-        postal_code: "00000",
-        country: process.env.STROWALLET_COUNTRY ?? "US",
-        amount_usd: "3",
-        mode: "live",
-      };
-
-      const response = await fetch(stroUrl("create-nfc-card"), {
+      const response = await fetch(stroEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
       stroRes = await response.json();
       stroOk = response.ok && (stroRes?.status === true || stroRes?.success === true || stroRes?.card_id);
-      console.log(`[Card] StroWallet response: ${stroOk ? "success" : "failed"} — ${JSON.stringify(stroRes)?.slice(0, 300)}`);
+      console.log('[Card] StroWallet response:', JSON.stringify(stroRes));
     } catch (fetchErr) {
       console.error("[Card] StroWallet fetch error:", fetchErr);
-      // Refund the fee on network error
       await db.update(walletsTable).set({ availableBalance: avail.toFixed(6), updatedAt: new Date() }).where(eq(walletsTable.userId, userId));
       return res.status(502).json({ error: "Could not reach card service. Your balance has been refunded. Please try again." });
     }
