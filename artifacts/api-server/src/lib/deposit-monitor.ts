@@ -28,6 +28,7 @@ import {
 import { eq, and, isNotNull } from "drizzle-orm";
 import { logger } from "./logger.js";
 import { PushNotify } from "../routes/push.js";
+import { emitToUser } from "./sse.js";
 import { derivePrivateKey } from "./bsc-hd.js";
 import { getBnbBalance, getBscUsdtBalance, sendBnb, sendUsdtBsc } from "./bsc.js";
 
@@ -246,6 +247,13 @@ export async function creditUserDeposit(
     })
     .onConflictDoNothing();
 
+  // Real-time SSE update — instantly refreshes wallet in open browser tabs
+  emitToUser(userId, "wallet_update", {
+    type: "deposit_received",
+    amount: amountUsdt,
+  });
+
+  // Background push — fires even when the app is closed/backgrounded
   PushNotify.depositReceived(userId, amountUsdt).catch((err) => {
     console.warn("[Deposit] Push notification failed:", err);
   });

@@ -115,10 +115,22 @@ export function useSse() {
       });
 
       // ── Wallet balance changed ─────────────────────────────────────────────
-      es.addEventListener("wallet_update", () => {
+      es.addEventListener("wallet_update", (e: MessageEvent) => {
         queryClient.invalidateQueries({ queryKey: ["/api/wallet"] });
         queryClient.invalidateQueries({ queryKey: ["wallet-transactions"] });
         queryClient.invalidateQueries({ queryKey: ["transfer-history"] });
+
+        // Show a toast when a deposit is credited in real-time
+        try {
+          const data = JSON.parse(e.data ?? "{}") as { type?: string; amount?: string };
+          if (data.type === "deposit_received" && data.amount) {
+            const displayAmount = parseFloat(data.amount).toFixed(2);
+            toast({
+              title: "💰 Deposit Received!",
+              description: `${displayAmount} USDT has been credited to your wallet.`,
+            });
+          }
+        } catch {}
       });
 
       // ── General notification badge ─────────────────────────────────────────
