@@ -93,7 +93,19 @@ export default function AdminAdsPage() {
                     <td className="px-4 py-3 font-mono">{parseFloat(a.availableAmount).toFixed(2)} USDT</td>
                     <td className="px-4 py-3 text-xs">{parseFloat(a.minLimit).toLocaleString()} – {parseFloat(a.maxLimit).toLocaleString()}</td>
                     <td className="px-4 py-3">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${a.status === 'online' ? 'bg-success/20 text-success' : a.status === 'offline' ? 'bg-muted text-muted-foreground' : 'bg-warning/20 text-warning'}`}>{a.status}</span>
+                      <div className="flex flex-col gap-0.5">
+                        <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium w-fit ${
+                          a.status === 'online' ? 'bg-success/20 text-success' :
+                          (a.status === 'offline' && a.pause_reason) ? 'bg-warning/20 text-warning' :
+                          a.status === 'offline' ? 'bg-muted text-muted-foreground' :
+                          'bg-warning/20 text-warning'
+                        }`}>
+                          {a.status === 'offline' && a.pause_reason ? 'paused' : a.status}
+                        </span>
+                        {a.pause_reason && (
+                          <span className="text-[10px] text-warning/70 max-w-[180px] leading-tight">{a.pause_reason}</span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-xs text-muted-foreground">{new Date(a.createdAt).toLocaleDateString()}</td>
                     <td className="px-4 py-3">
@@ -101,7 +113,9 @@ export default function AdminAdsPage() {
                         {a.status === 'online' ? (
                           <button onClick={() => suspend(a.id)} className="text-xs text-destructive hover:underline">Suspend</button>
                         ) : (
-                          <button onClick={() => reactivate(a.id)} className="text-xs text-success hover:underline">Reactivate</button>
+                          <button onClick={() => reactivate(a.id)} className={`text-xs hover:underline ${a.pause_reason ? 'text-warning font-semibold' : 'text-success'}`}>
+                            {a.pause_reason ? '✅ Reactivate' : 'Reactivate'}
+                          </button>
                         )}
                         <button onClick={() => remove(a.id)} className="text-xs text-destructive hover:underline">Delete</button>
                       </div>

@@ -25,6 +25,7 @@ export const adsTable = pgTable("ads", {
   conditions: text("conditions").notNull().default("{}"),
   region: text("region").notNull().default("Ethiopia Only"),
   status: adStatusEnum("status").notNull().default("online"),
+  pauseReason: text("pause_reason"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

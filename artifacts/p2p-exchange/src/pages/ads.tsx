@@ -1,5 +1,5 @@
 import { AppLayout } from "@/components/layout";
-import { Plus, Pencil } from "lucide-react";
+import { Plus, Pencil, AlertTriangle, CheckCircle } from "lucide-react";
 import { useListAds, useToggleAdStatus, useDeleteAd, getListAdsQueryKey } from "@workspace/api-client-react";
 import { useState } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -82,15 +82,32 @@ export default function AdsPage() {
             <Link href="/ads/post" className="text-primary font-medium">Post your first ad</Link>
           </div>
         ) : (
-          ads?.map(ad => (
+          ads?.map(ad => {
+            const isPausedByExpiry = ad.status === 'offline' && ad.pauseReason;
+            return (
             <div key={ad.id} className="bg-card border border-card-border p-4 rounded-xl">
+              {/* Paused by order expiry — show prominent warning banner */}
+              {isPausedByExpiry && (
+                <div className="mb-3 flex items-start gap-2 bg-warning/10 border border-warning/30 rounded-lg px-3 py-2.5">
+                  <AlertTriangle className="w-4 h-4 text-warning shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold text-warning mb-0.5">⚠️ Paused — Order Expired</p>
+                    <p className="text-[11px] text-muted-foreground leading-snug">{ad.pauseReason}</p>
+                  </div>
+                </div>
+              )}
+
               <div className="flex justify-between items-center mb-3">
                 <div className="flex space-x-2">
                   <span className={`px-2 py-0.5 rounded text-xs font-bold ${ad.type === 'buy' ? 'bg-primary/20 text-primary' : 'bg-destructive/20 text-destructive'}`}>
                     {ad.type.toUpperCase()}
                   </span>
-                  <span className="px-2 py-0.5 rounded bg-secondary text-xs text-muted-foreground capitalize">
-                    {ad.status}
+                  <span className={`px-2 py-0.5 rounded text-xs font-medium capitalize ${
+                    ad.status === 'online' ? 'bg-success/20 text-success' :
+                    isPausedByExpiry ? 'bg-warning/20 text-warning' :
+                    'bg-secondary text-muted-foreground'
+                  }`}>
+                    {isPausedByExpiry ? 'paused' : ad.status}
                   </span>
                 </div>
                 <div className="text-sm font-medium">
@@ -116,25 +133,37 @@ export default function AdsPage() {
                   ))}
                 </div>
                 <div className="flex items-center space-x-3">
-                  <button
-                    onClick={() => handleShareAd(ad.id)}
-                    className="text-xs text-primary flex items-center gap-1 hover:opacity-80 transition-opacity"
-                  >
-                    🔗 Share
-                  </button>
-                  <Link href={`/ads/edit/${ad.id}`} className="text-xs text-primary flex items-center gap-1 hover:opacity-80 transition-opacity">
-                    <Pencil className="w-3 h-3" /> Edit
-                  </Link>
-                  <button onClick={() => handleToggle(ad.id)} className="text-xs text-muted-foreground hover:text-primary transition-colors">
-                    {ad.status === 'online' ? 'Offline' : 'Online'}
-                  </button>
+                  {isPausedByExpiry ? (
+                    <button
+                      onClick={() => handleToggle(ad.id)}
+                      className="flex items-center gap-1 text-xs bg-success/15 text-success border border-success/30 px-2.5 py-1 rounded-md font-semibold hover:bg-success/25 transition-colors"
+                    >
+                      <CheckCircle className="w-3 h-3" /> Reactivate Ad
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => handleShareAd(ad.id)}
+                        className="text-xs text-primary flex items-center gap-1 hover:opacity-80 transition-opacity"
+                      >
+                        🔗 Share
+                      </button>
+                      <Link href={`/ads/edit/${ad.id}`} className="text-xs text-primary flex items-center gap-1 hover:opacity-80 transition-opacity">
+                        <Pencil className="w-3 h-3" /> Edit
+                      </Link>
+                      <button onClick={() => handleToggle(ad.id)} className="text-xs text-muted-foreground hover:text-primary transition-colors">
+                        {ad.status === 'online' ? 'Offline' : 'Online'}
+                      </button>
+                    </>
+                  )}
                   <button onClick={() => handleDelete(ad.id)} className="text-xs text-destructive">
                     Delete
                   </button>
                 </div>
               </div>
             </div>
-          ))
+            );
+          })
         )}
       </div>
     </AppLayout>

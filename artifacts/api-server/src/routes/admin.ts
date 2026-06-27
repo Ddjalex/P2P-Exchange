@@ -435,7 +435,7 @@ router.put("/ads/:id/suspend", adminAuth, async (req: any, res) => {
 router.put("/ads/:id/reactivate", adminAuth, async (req: any, res) => {
   try {
     const id = parseInt(req.params.id);
-    await db.update(adsTable).set({ status: "online" }).where(eq(adsTable.id, id));
+    await db.update(adsTable).set({ status: "online", pauseReason: null } as any).where(eq(adsTable.id, id));
     await log(req.adminEmail, "reactivate_ad", "ad", id);
     res.json({ success: true });
   } catch (err) {

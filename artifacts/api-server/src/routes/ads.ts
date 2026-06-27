@@ -390,7 +390,10 @@ router.post("/:id/toggle-status", async (req, res) => {
     const ad = await db.select().from(adsTable).where(eq(adsTable.id, id)).then(r => r[0]);
     if (!ad) return res.status(404).json({ message: "Ad not found" });
     const newStatus = ad.status === "online" ? "offline" : "online";
-    const [updated] = await db.update(adsTable).set({ status: newStatus }).where(eq(adsTable.id, id)).returning();
+    // When reactivating (going online), always clear any pause reason
+    const updatePayload: any = { status: newStatus };
+    if (newStatus === "online") updatePayload.pauseReason = null;
+    const [updated] = await db.update(adsTable).set(updatePayload).where(eq(adsTable.id, id)).returning();
     res.json(await formatAd(updated));
   } catch (err) {
     req.log.error({ err }, "Failed to toggle ad status");
