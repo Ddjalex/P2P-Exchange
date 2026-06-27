@@ -258,9 +258,29 @@ router.post("/create", userAuth, async (req: any, res) => {
       }
     }
 
+    // Extract StroWallet detail fields
+    const cardType: string | null = pick(d1?.card_type, d0?.card_type);
+    const cardBrand: string | null = pick(d1?.card_brand, d0?.card_brand, "Visa");
+    const reference: string | null = pick(d1?.reference, d0?.reference, stroRes?.reference);
+    const cardCreatedDate: string | null = pick(d1?.card_created_date, d0?.card_created_date, new Date().toISOString());
+    const customerEmailFromStro: string | null = pick(d1?.customer_email, d0?.customer_email, user.email);
+
+    // Billing address from request body (sent during creation) or defaults
+    const billingLine1 = (body as any).line1 ?? "N/A";
+    const billingCity = (body as any).city ?? "N/A";
+    const billingState = (body as any).state ?? "N/A";
+    const billingPostal = (body as any).postal_code ?? "00000";
+    const billingCountry = (body as any).country ?? "ETH";
+
+    console.log("[Card] Billing address:", billingLine1, billingCity, billingCountry);
+
     const [saved] = await db
       .insert(cardsTable)
-      .values({ userId, cardId, cardUserId, customerId, nameOnCard, cardStatus, cardNumber, last4, cvv, expiry, balance: cardBalance })
+      .values({
+        userId, cardId, cardUserId, customerId, nameOnCard, cardStatus, cardNumber, last4, cvv, expiry, balance: cardBalance,
+        cardType, cardBrand, reference, cardCreatedDate, customerEmail: customerEmailFromStro,
+        billingLine1, billingCity, billingState, billingPostal, billingCountry,
+      })
       .returning();
 
     // Only record the fee transaction AFTER both StroWallet confirmed AND card is saved to DB
@@ -306,6 +326,19 @@ router.get("/my-card", userAuth, async (req: any, res) => {
           if (newCvv) updates.cvv = newCvv;
           const newExpiry = pick(detail?.expiry, detail?.expiry_date);
           if (newExpiry) updates.expiry = newExpiry;
+          // Enrich StroWallet detail fields
+          const newCardType = pick(detail?.card_type);
+          if (newCardType) updates.cardType = newCardType;
+          const newCardBrand = pick(detail?.card_brand);
+          if (newCardBrand) updates.cardBrand = newCardBrand;
+          const newReference = pick(detail?.reference);
+          if (newReference) updates.reference = newReference;
+          const newCreatedDate = pick(detail?.card_created_date);
+          if (newCreatedDate) updates.cardCreatedDate = newCreatedDate;
+          const newCustomerEmail = pick(detail?.customer_email);
+          if (newCustomerEmail) updates.customerEmail = newCustomerEmail;
+
+          console.log("[Card] Details fetched for user:", userId, "card:", card.cardId);
 
           if (Object.keys(updates).length > 0) {
             updates.updatedAt = new Date();
@@ -582,6 +615,87 @@ router.post("/freeze", userAuth, async (req: any, res) => {
     return res.status(502).json({ error: "Could not reach card service — check server logs for details" });
   } catch (err) {
     console.error("[Card] Freeze error:", err);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// POST /api/cards/terminate
+router.post("/terminate", userAuth, async (req: any, res) => {
+  const userId: number = req.userId;
+  const { password } = req.body ?? {};
+
+  try {
+    if (!password) return res.status(400).json({ error: "Password is required to terminate your card." });
+
+    const user = await db.query.usersTable.findFirst({ where: eq(usersTable.id, userId) });
+    if (!user?.passwordHash) return res.status(401).json({ error: "Unable to verify password. Please contact support." });
+
+    const passwordMatch = await bcrypt.compare(password, user.passwordHash);
+    if (!passwordMatch) return res.status(401).json({ error: "Incorrect password. Please try again." });
+
+    const card = await db.query.cardsTable.findFirst({ where: eq(cardsTable.userId, userId) });
+    if (!card) return res.status(404).json({ error: "No card found" });
+
+    console.log("[Card] Terminate — user:", userId, "card:", card.cardId, "balance:", card.balance);
+
+    const cardBalance = parseFloat(card.balance ?? "0");
+
+    // Step 1: Freeze on StroWallet (soft terminate)
+    if (card.cardId && !/^\d+$/.test(card.cardId) && process.env.STROWALLET_PUBLIC_KEY) {
+      const pk = cleanKey(process.env.STROWALLET_PUBLIC_KEY);
+      try {
+        const url = new URL(`${STRO_BASE}/nfc-cards/status`);
+        url.searchParams.set("public_key", pk);
+        url.searchParams.set("card_id", card.cardId!);
+        url.searchParams.set("status", "frozen");
+        url.searchParams.set("mode", "live");
+        const r = await fetch(url.toString(), { method: "POST" });
+        const j = await r.json();
+        console.log("[Card] Terminate freeze response:", JSON.stringify(j));
+      } catch (e) {
+        console.warn("[Card] Terminate freeze failed (non-fatal):", e);
+      }
+
+      // Step 2: Withdraw remaining balance from card back to platform
+      if (cardBalance > 0) {
+        try {
+          const wurl = stroBaseUrl("fund-withdraw-nfccard");
+          wurl.searchParams.set("card_id", card.cardId!);
+          wurl.searchParams.set("amount", cardBalance.toString());
+          wurl.searchParams.set("type", "withdraw");
+
+          const wresp = await fetch(wurl.toString(), { method: "POST" });
+          const wraw = await wresp.json();
+          console.log("[Card] Terminate withdraw response:", JSON.stringify(wraw));
+
+          if (wraw.success) {
+            const wallet = await getOrCreateWallet(userId);
+            const newWalletBal = (parseFloat(wallet.availableBalance) + cardBalance).toFixed(6);
+            await db.update(walletsTable).set({ availableBalance: newWalletBal, updatedAt: new Date() }).where(eq(walletsTable.userId, userId));
+            await db.insert(transactionsTable).values({ userId, type: "deposit", amount: cardBalance.toFixed(2), status: "completed", note: "Card termination — balance returned" });
+            console.log("[Card] Terminate — refunded $" + cardBalance.toFixed(2) + " to platform wallet");
+          }
+        } catch (e) {
+          console.warn("[Card] Terminate balance withdraw failed (non-fatal):", e);
+        }
+      }
+    }
+
+    // Step 3: Mark card as inactive in DB
+    await db.update(cardsTable)
+      .set({ cardStatus: "inactive", updatedAt: new Date() })
+      .where(eq(cardsTable.userId, userId));
+
+    console.log("[Card] Card terminated for user:", userId);
+
+    return res.json({
+      message: cardBalance > 0
+        ? `Card terminated. $${cardBalance.toFixed(2)} returned to your wallet.`
+        : "Card terminated successfully.",
+      refundedAmount: cardBalance > 0 ? cardBalance.toFixed(2) : null,
+    });
+  } catch (err) {
+    console.error("[Card] Terminate error:", err);
     return res.status(500).json({ error: "Internal server error" });
   }
 });

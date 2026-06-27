@@ -13,6 +13,18 @@ export const cardsTable = pgTable("cards", {
   cvv: text("cvv"),
   expiry: text("expiry"),
   balance: text("balance").notNull().default("0.00"),
+  // StroWallet detail fields
+  cardType: text("card_type"),
+  cardBrand: text("card_brand"),
+  reference: text("reference"),
+  cardCreatedDate: text("card_created_date"),
+  customerEmail: text("customer_email"),
+  // Billing address
+  billingLine1: text("billing_line1").default("N/A"),
+  billingCity: text("billing_city").default("N/A"),
+  billingState: text("billing_state").default("N/A"),
+  billingPostal: text("billing_postal").default("00000"),
+  billingCountry: text("billing_country").default("ETH"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

@@ -19,6 +19,7 @@ import nfcCardsRouter from "./nfc-cards";
 import feesRouter from "./fees";
 import pushRouter from "./push";
 import configRouter from "./config";
+import webhookCardsRouter from "./webhook-cards";
 
 const router: IRouter = Router();
 
@@ -43,6 +44,7 @@ router.use("/card", cardRouter);
 router.use("/cards", nfcCardsRouter);
 router.use("/push", userAuth, pushRouter);
 
+router.use("/webhooks", webhookCardsRouter);
 router.use("/admin", adminRouter);
 
 export default router;
