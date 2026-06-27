@@ -494,107 +494,88 @@ router.post("/freeze", userAuth, async (req: any, res) => {
     const isFrozen = card.cardStatus === "inactive" || card.cardStatus === "frozen";
     const newStatus = isFrozen ? "active" : "frozen";
 
-    console.log("[Card] Freeze request — user:", userId, "card:", card.cardId);
-    console.log("[Card] Current status:", card.cardStatus, "→ new status:", newStatus);
-    console.log("[Card] STROWALLET_PUBLIC_KEY loaded:", !!process.env.STROWALLET_PUBLIC_KEY);
-    console.log("[Card] Key first 8 chars:", cleanKey(process.env.STROWALLET_PUBLIC_KEY).substring(0, 8));
+    console.log("[Card] Freeze — start");
+    console.log("[Card] STROWALLET_PUBLIC_KEY set:", !!process.env.STROWALLET_PUBLIC_KEY);
+    console.log("[Card] Key cleaned first 8:", cleanKey(process.env.STROWALLET_PUBLIC_KEY).substring(0, 8));
     console.log("[Card] card_id:", card.cardId);
-    console.log("[Card] new status:", newStatus);
+    console.log("[Card] current status:", card.cardStatus);
+    console.log("[Card] new status will be:", newStatus);
 
-    // Helper: fetch and safely parse JSON, logging raw text on failure
-    async function stroFetch(url: string, init: RequestInit): Promise<{ httpStatus: number; stroRes: any; rawText: string }> {
-      const response = await fetch(url, init);
-      const httpStatus = response.status;
-      const rawText = await response.text();
-      console.log("[Card] Freeze raw response text:", rawText.substring(0, 500));
-      let stroRes: any = null;
-      try {
-        stroRes = JSON.parse(rawText);
-      } catch {
-        console.error("[Card] Freeze response is not JSON (status:", httpStatus, ") raw:", rawText.substring(0, 200));
+    const pk = cleanKey(process.env.STROWALLET_PUBLIC_KEY);
+
+    // Method 1 — Query string
+    try {
+      const url = new URL(`${STRO_BASE}/nfc-cards/status`);
+      url.searchParams.set("public_key", pk);
+      url.searchParams.set("card_id", card.cardId!);
+      url.searchParams.set("status", newStatus);
+      url.searchParams.set("mode", "live");
+      console.log("[Card] Method 1 URL:", url.toString().replace(pk, "***"));
+      const r1 = await fetch(url.toString(), { method: "POST" });
+      const t1 = await r1.text();
+      console.log("[Card] Method 1 HTTP status:", r1.status);
+      console.log("[Card] Method 1 raw response:", t1);
+      const j1 = JSON.parse(t1);
+      if (j1.success) {
+        await db.update(cardsTable).set({ cardStatus: newStatus, updatedAt: new Date() }).where(eq(cardsTable.userId, userId));
+        return res.json({ message: newStatus === "frozen" ? "Card frozen successfully" : "Card activated successfully", cardStatus: newStatus });
       }
-      return { httpStatus, stroRes, rawText };
+    } catch (e: any) {
+      console.log("[Card] Method 1 failed:", e.message);
     }
 
-    let stroRes: any;
-    let httpStatus: number;
+    // Method 2 — Form-urlencoded body
     try {
-      // Try 1 — form-urlencoded body
       const formData = new URLSearchParams();
-      formData.append("public_key", cleanKey(process.env.STROWALLET_PUBLIC_KEY));
-      formData.append("secret_key", cleanKey(process.env.STROWALLET_SECRET_KEY));
+      formData.append("public_key", pk);
       formData.append("card_id", card.cardId!);
       formData.append("status", newStatus);
       formData.append("mode", "live");
-
-      console.log("[Card] Try 1 — form-urlencoded...");
-      let attempt = await stroFetch(`${STRO_BASE}/nfc-cards/status`, {
+      console.log("[Card] Method 2 form body:", formData.toString().replace(pk, "***"));
+      const r2 = await fetch(`${STRO_BASE}/nfc-cards/status`, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: formData.toString(),
       });
-      httpStatus = attempt.httpStatus;
-      stroRes = attempt.stroRes;
-      console.log("[Card] Freeze HTTP status:", httpStatus, "| parsed:", JSON.stringify(stroRes));
-
-      // Try 2 — JSON body if not successful or key error
-      const needsRetry = !stroRes?.success && (
-        stroRes == null ||
-        (stroRes?.message ?? stroRes?.error ?? "").toLowerCase().includes("public_key") ||
-        (stroRes?.message ?? stroRes?.error ?? "").toLowerCase().includes("key")
-      );
-      if (needsRetry) {
-        console.log("[Card] Try 2 — JSON body...");
-        attempt = await stroFetch(`${STRO_BASE}/nfc-cards/status`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            public_key: cleanKey(process.env.STROWALLET_PUBLIC_KEY),
-            secret_key: cleanKey(process.env.STROWALLET_SECRET_KEY),
-            card_id: card.cardId,
-            status: newStatus,
-            mode: "live",
-          }),
-        });
-        httpStatus = attempt.httpStatus;
-        stroRes = attempt.stroRes;
-        console.log("[Card] Freeze JSON HTTP status:", httpStatus, "| parsed:", JSON.stringify(stroRes));
+      const t2 = await r2.text();
+      console.log("[Card] Method 2 HTTP status:", r2.status);
+      console.log("[Card] Method 2 raw response:", t2);
+      const j2 = JSON.parse(t2);
+      if (j2.success) {
+        await db.update(cardsTable).set({ cardStatus: newStatus, updatedAt: new Date() }).where(eq(cardsTable.userId, userId));
+        return res.json({ message: newStatus === "frozen" ? "Card frozen successfully" : "Card activated successfully", cardStatus: newStatus });
       }
-
-      // Try 3 — query-string fallback (some StroWallet endpoints still need it)
-      if (!stroRes?.success && stroRes != null) {
-        const qsUrl = stroBaseUrl("nfc-cards/status");
-        qsUrl.searchParams.set("card_id", card.cardId!);
-        qsUrl.searchParams.set("status", newStatus);
-        console.log("[Card] Try 3 — query-string params...");
-        attempt = await stroFetch(qsUrl.toString(), { method: "POST" });
-        httpStatus = attempt.httpStatus;
-        stroRes = attempt.stroRes;
-        console.log("[Card] Freeze QS HTTP status:", httpStatus, "| parsed:", JSON.stringify(stroRes));
-      }
-    } catch (e) {
-      console.error("[Card] Freeze network error:", e);
-      return res.status(502).json({ error: "Could not reach card service. Please try again." });
+    } catch (e: any) {
+      console.log("[Card] Method 2 failed:", e.message);
     }
 
-    // If all attempts returned non-JSON, update DB locally and return success
-    // (StroWallet may have processed the request even if response was malformed)
-    if (stroRes == null) {
-      console.warn("[Card] All attempts returned non-JSON — updating DB optimistically");
-      await db.update(cardsTable).set({ cardStatus: newStatus, updatedAt: new Date() }).where(eq(cardsTable.userId, userId));
-      return res.json({ message: newStatus === "frozen" ? "Card frozen successfully" : "Card activated successfully", cardStatus: newStatus });
-    }
-
-    if (!stroRes?.success) {
-      const errMsg = stroRes?.message || `Failed to update card status`;
-      console.error("[Card] Freeze rejected by StroWallet:", errMsg);
+    // Method 3 — JSON body
+    try {
+      const body = { public_key: pk, card_id: card.cardId, status: newStatus, mode: "live" };
+      console.log("[Card] Method 3 JSON body:", JSON.stringify({ ...body, public_key: "***" }));
+      const r3 = await fetch(`${STRO_BASE}/nfc-cards/status`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const t3 = await r3.text();
+      console.log("[Card] Method 3 HTTP status:", r3.status);
+      console.log("[Card] Method 3 raw response:", t3);
+      const j3 = JSON.parse(t3);
+      if (j3.success) {
+        await db.update(cardsTable).set({ cardStatus: newStatus, updatedAt: new Date() }).where(eq(cardsTable.userId, userId));
+        return res.json({ message: newStatus === "frozen" ? "Card frozen successfully" : "Card activated successfully", cardStatus: newStatus });
+      }
+      // Return the actual StroWallet error message so we can read it
+      const errMsg = j3?.message || j3?.error || "Card service rejected the request";
+      console.log("[Card] All 3 methods failed for freeze — last error:", errMsg);
       return res.status(422).json({ error: errMsg });
+    } catch (e: any) {
+      console.log("[Card] Method 3 failed:", e.message);
     }
 
-    await db.update(cardsTable).set({ cardStatus: newStatus, updatedAt: new Date() }).where(eq(cardsTable.userId, userId));
-
-    console.log("[Card] Card status updated to:", newStatus, "for user:", userId);
-    return res.json({ message: newStatus === "frozen" ? "Card frozen successfully" : "Card activated successfully", cardStatus: newStatus });
+    console.log("[Card] All 3 methods failed for freeze");
+    return res.status(502).json({ error: "Could not reach card service — check server logs for details" });
   } catch (err) {
     console.error("[Card] Freeze error:", err);
     return res.status(500).json({ error: "Internal server error" });
