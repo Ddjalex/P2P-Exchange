@@ -472,7 +472,9 @@ router.post("/fund", userAuth, async (req: any, res) => {
       }
       // Other errors — refund immediately
       await db.update(walletsTable).set({ availableBalance: avail.toFixed(6), updatedAt: new Date() }).where(eq(walletsTable.userId, userId));
-      const userMsg = rawMsg || "Card top-up failed. Your balance has been refunded.";
+      const userMsg = rawMsg.toLowerCase().includes("invalid") && rawMsg.toLowerCase().includes("key")
+        ? "Card service configuration error. Please contact support."
+        : rawMsg || "Card top-up failed. Your balance has been refunded.";
       return res.status(502).json({ error: userMsg });
     }
 
@@ -689,9 +691,11 @@ router.post("/freeze", userAuth, async (req: any, res) => {
         await db.update(cardsTable).set({ cardStatus: newStatus, updatedAt: new Date() }).where(eq(cardsTable.userId, userId));
         return res.json({ message: newStatus === "frozen" ? "Card frozen successfully" : "Card activated successfully", cardStatus: newStatus });
       }
-      // Return the actual StroWallet error message so we can read it
-      const errMsg = j3?.message || j3?.error || "Card service rejected the request";
-      console.log("[Card] All 3 methods failed for freeze — last error:", errMsg);
+      const rawErr = j3?.message || j3?.error || "Card service rejected the request";
+      console.log("[Card] All 3 methods failed for freeze — last error:", rawErr);
+      const errMsg = rawErr.toLowerCase().includes("invalid") && rawErr.toLowerCase().includes("key")
+        ? "Card service configuration error. Please contact support."
+        : rawErr;
       return res.status(422).json({ error: errMsg });
     } catch (e: any) {
       console.log("[Card] Method 3 failed:", e.message);
