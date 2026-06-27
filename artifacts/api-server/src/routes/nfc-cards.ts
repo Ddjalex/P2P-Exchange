@@ -552,6 +552,36 @@ router.post("/withdraw", userAuth, async (req: any, res) => {
   }
 });
 
+// PATCH /api/cards/billing — update billing address from our DB
+router.patch("/billing", userAuth, async (req: any, res) => {
+  const userId: number = req.userId;
+  try {
+    const card = await db.query.cardsTable.findFirst({ where: eq(cardsTable.userId, userId) });
+    if (!card) return res.status(404).json({ error: "No card found" });
+
+    const { line1, city, state, postal_code, country, phone } = req.body ?? {};
+    if (!line1 || !city || !postal_code || !phone) {
+      return res.status(400).json({ error: "Street address, city, postal code, and phone are required" });
+    }
+
+    await db.update(cardsTable).set({
+      billingLine1: String(line1).trim(),
+      billingCity: String(city).trim(),
+      billingState: String(state || city).trim(),
+      billingPostal: String(postal_code).trim(),
+      billingCountry: String(country || "ETH").trim(),
+      billingPhone: String(phone).trim(),
+      updatedAt: new Date(),
+    }).where(eq(cardsTable.userId, userId));
+
+    console.log("[Card] Billing updated for user:", userId, { line1, city, postal_code, country });
+    return res.json({ success: true, message: "Billing address updated" });
+  } catch (err) {
+    console.error("[Card] Billing update error:", err);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // POST /api/cards/freeze
 router.post("/freeze", userAuth, async (req: any, res) => {
   const userId: number = req.userId;

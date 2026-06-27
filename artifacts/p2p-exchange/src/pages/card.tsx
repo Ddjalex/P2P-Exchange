@@ -216,6 +216,15 @@ export default function CardPage() {
   const [phone, setPhone] = useState("");
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
 
+  // Edit billing address state
+  const [showEditBilling, setShowEditBilling] = useState(false);
+  const [editLine1, setEditLine1] = useState("");
+  const [editCity, setEditCity] = useState("");
+  const [editState, setEditState] = useState("");
+  const [editPostal, setEditPostal] = useState("");
+  const [editCountry, setEditCountry] = useState("ETH");
+  const [editPhone, setEditPhone] = useState("");
+
   const showToast = (msg: string, ok = true) => {
     setToast({ msg, ok });
     setTimeout(() => setToast(null), 4500);
@@ -294,6 +303,16 @@ export default function CardPage() {
       setActiveTab("overview");
     },
     onError: (e: any) => { setTerminateError(e.message); },
+  });
+
+  const updateBillingMutation = useMutation({
+    mutationFn: () => apiFetch("/api/cards/billing", { method: "PATCH", body: JSON.stringify({ line1: editLine1, city: editCity, state: editState || editCity, postal_code: editPostal, country: editCountry, phone: editPhone }) }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["my-card"] });
+      setShowEditBilling(false);
+      showToast("✅ Billing address updated successfully!");
+    },
+    onError: (e: any) => showToast(e.message, false),
   });
 
   const fees = (feesData as any) ?? { cardCreationFee: "2.00", cardInitialLoad: "3.00", cardMinFund: "2.00", totalRequired: "5.00" };
@@ -520,11 +539,25 @@ export default function CardPage() {
                     <InfoRow label="Phone" value={card.billing?.phone || (meData as any)?.phone} />
                   )}
                 </div>
-                <div style={{ background: "rgba(255,170,0,0.06)", border: "1px solid rgba(255,170,0,0.2)", borderRadius: "10px", padding: "12px 14px", marginBottom: "4px" }}>
+                <div style={{ background: "rgba(255,170,0,0.06)", border: "1px solid rgba(255,170,0,0.2)", borderRadius: "10px", padding: "12px 14px", marginBottom: "12px" }}>
                   <p style={{ color: "#ffaa66", fontSize: "12px", lineHeight: 1.6, margin: 0 }}>
-                    💡 Use this billing address and phone number when making online purchases that ask for billing information.
+                    💡 Use this billing address and phone when making online purchases. If StroWallet shows a different address, tap Edit to sync them.
                   </p>
                 </div>
+                <button
+                  onClick={() => {
+                    setEditLine1(card.billing?.line1 ?? card.billingLine1 ?? "");
+                    setEditCity(card.billing?.city ?? card.billingCity ?? "");
+                    setEditState(card.billing?.state ?? card.billingState ?? "");
+                    setEditPostal(card.billing?.postalCode ?? card.billingPostal ?? "");
+                    setEditCountry(card.billing?.country ?? card.billingCountry ?? "ETH");
+                    setEditPhone(card.billing?.phone ?? (meData as any)?.phone ?? "");
+                    setShowEditBilling(true);
+                  }}
+                  style={{ width: "100%", background: "rgba(0,229,255,0.1)", border: "1px solid rgba(0,229,255,0.3)", borderRadius: "12px", padding: "12px", color: "#00e5ff", fontFamily: "Poppins, sans-serif", fontWeight: 700, fontSize: "14px", cursor: "pointer", marginBottom: "16px" }}
+                >
+                  ✏️ Edit Billing Address
+                </button>
                 <DangerZone card={card} onTerminate={() => setModal("terminate")} />
               </div>
             )}
