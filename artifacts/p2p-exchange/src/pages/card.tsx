@@ -252,7 +252,7 @@ export default function CardPage() {
       setAmount("");
       const cardBal = d?.newCardBalance ? `$${parseFloat(d.newCardBalance).toFixed(2)}` : "";
       const walBal = d?.newPlatformBalance ? `$${parseFloat(d.newPlatformBalance).toFixed(2)}` : "";
-      showToast(`✅ Card funded! Card balance: ${cardBal} | Wallet: ${walBal}`);
+      showToast(`✅ Card topped up! Card balance: ${cardBal} | Wallet: ${walBal}`);
     },
     onError: (e: any) => showToast(e.message, false),
   });
@@ -396,7 +396,7 @@ export default function CardPage() {
 
             <div style={{ width: "100%", maxWidth: "360px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "20px" }}>
               {[
-                { icon: <ArrowUpCircle size={20} color={isFrozen ? "#556677" : "#00e5ff"} />, label: "Fund Card", disabled: isFrozen, onClick: () => { setAmount(""); setModal("fund"); } },
+                { icon: <ArrowUpCircle size={20} color={isFrozen ? "#556677" : "#00e5ff"} />, label: "Top-Up", disabled: isFrozen, onClick: () => { setAmount(""); setModal("fund"); } },
                 { icon: <RefreshCw size={20} color={cardFetching ? "#556677" : "#00e5ff"} style={{ animation: cardFetching ? "spin 1s linear infinite" : "none" }} />, label: "Refresh", disabled: cardFetching, onClick: () => refetchCard() },
                 { icon: isFrozen ? <Unlock size={20} color="#00e5ff" /> : <Lock size={20} color="#ff6666" />, label: isFrozen ? "Activate" : "Freeze", disabled: false, onClick: () => setModal("freeze") },
                 { icon: <History size={20} color="#00e5ff" />, label: "History", disabled: false, onClick: () => setShowHistory((v) => !v) },
@@ -490,7 +490,7 @@ export default function CardPage() {
       )}
 
       {modal === "fund" && (
-        <Modal title="Fund Card" onClose={() => setModal(null)}>
+        <Modal title="Top-Up Card" onClose={() => setModal(null)}>
           <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "16px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 14px", background: "rgba(0,229,255,0.05)", borderRadius: "10px" }}>
               <span style={{ color: "#8899aa", fontSize: "13px" }}>Available</span>
@@ -512,7 +512,7 @@ export default function CardPage() {
           />
           <p style={{ color: "#8899aa", fontSize: "11px", marginBottom: "10px" }}>Minimum: ${minFund.toFixed(2)}</p>
           {amount && parseFloat(amount) > 0 && parseFloat(amount) < minFund && (
-            <p style={{ color: "#ff8888", fontSize: "12px", marginBottom: "10px" }}>Minimum fund amount is ${minFund.toFixed(2)}</p>
+            <p style={{ color: "#ff8888", fontSize: "12px", marginBottom: "10px" }}>Minimum top-up amount is ${minFund.toFixed(2)}</p>
           )}
           {!walletLoading && amount && parseFloat(amount) > walletBalance && (
             <p style={{ color: "#ff8888", fontSize: "12px", marginBottom: "10px" }}>Insufficient wallet balance — you have ${walletBalance.toFixed(2)} USDT</p>
@@ -520,7 +520,7 @@ export default function CardPage() {
           <div style={{ display: "flex", gap: "10px" }}>
             <Btn variant="secondary" onClick={() => setModal(null)}>Cancel</Btn>
             <Btn onClick={() => fundMutation.mutate(parseFloat(amount))} disabled={mutBusy || walletLoading || !amount || parseFloat(amount) < minFund || (!walletLoading && parseFloat(amount) > walletBalance)}>
-              {fundMutation.isPending ? "Funding…" : "Fund Card"}
+              {fundMutation.isPending ? "Processing…" : "Top-Up"}
             </Btn>
           </div>
         </Modal>
