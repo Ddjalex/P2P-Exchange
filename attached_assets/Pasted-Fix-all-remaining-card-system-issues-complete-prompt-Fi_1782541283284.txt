@@ -1,0 +1,265 @@
+Fix all remaining card system issues — complete prompt
+
+Fix 1 — Top Up (Fund) with correct API implementation:
+The fund endpoint uses query parameters NOT request body:
+POST https://strowallet.com/api/bitvcard/fund-withdraw-nfccard
+  ?public_key=X
+  &secret_key=X
+  &card_id=019f0416-81ca-7b1f-b9cc-75f0af483861
+  &amount=10
+  &type=fund
+  &mode=live
+Expected success response:
+json{
+  "success": true,
+  "message": "Card funding request submitted successfully.",
+  "response": {
+    "card_id": "...",
+    "amount": 10,
+    "type": "fund",
+    "reference": "card_fund_WQP7DMJBEM",
+    "status": "pending"
+  }
+}
+Complete fund flow in POST /api/cards/fund:
+typescript// 1. Validate amount (minimum $1, maximum card balance limit)
+if (amount < 1) throw new Error('Minimum fund amount is $1');
+
+// 2. Check user platform USDT balance
+if (wallet.balance < amount) throw new Error('Insufficient platform balance');
+
+// 3. Deduct from platform balance FIRST
+await db.update(wallets).set({ balance: wallet.balance - amount }).where(eq(wallets.userId, userId));
+
+// 4. Call StroWallet with query params (NOT body):
+const url = new URL('https://strowallet.com/api/bitvcard/fund-withdraw-nfccard');
+url.searchParams.set('public_key', cleanKey(process.env.STROWALLET_PUBLIC_KEY));
+url.searchParams.set('secret_key', cleanKey(process.env.STROWALLET_SECRET_KEY));
+url.searchParams.set('card_id', card.cardId);
+url.searchParams.set('amount', amount.toString());
+url.searchParams.set('type', 'fund');
+url.searchParams.set('mode', 'live');
+
+const res = await fetch(url.toString(), { method: 'POST' });
+const raw = await res.json();
+console.log('[Card] StroWallet fund response:', JSON.stringify(raw));
+
+// 5. Check success
+if (!raw.success) {
+  // Refund platform balance
+  await db.update(wallets).set({ balance: wallet.balance }).where(eq(wallets.userId, userId));
+  throw new Error(raw.message || 'Card funding failed');
+}
+
+// 6. Re-fetch card from StroWallet to get authoritative balance
+const freshCard = await fetchCardDetails(card.cardId);
+await db.update(cards)
+  .set({ balance: freshCard.balance, updatedAt: new Date() })
+  .where(eq(cards.userId, userId));
+
+// 7. Return new balances
+return {
+  success: true,
+  message: 'Card funded successfully',
+  newCardBalance: freshCard.balance,
+  newPlatformBalance: wallet.balance - amount,
+  reference: raw.response?.reference
+};
+
+Fix 2 — Withdraw with correct API implementation:
+POST https://strowallet.com/api/bitvcard/fund-withdraw-nfccard
+  ?public_key=X
+  &secret_key=X
+  &card_id=X
+  &amount=X
+  &type=withdraw
+  &mode=live
+Complete withdraw flow in POST /api/cards/withdraw:
+typescript// 1. Validate amount
+if (amount < 1) throw new Error('Minimum withdraw amount is $1');
+
+// 2. Call StroWallet FIRST (don't touch platform balance until success)
+const url = new URL('https://strowallet.com/api/bitvcard/fund-withdraw-nfccard');
+url.searchParams.set('public_key', cleanKey(process.env.STROWALLET_PUBLIC_KEY));
+url.searchParams.set('secret_key', cleanKey(process.env.STROWALLET_SECRET_KEY));
+url.searchParams.set('card_id', card.cardId);
+url.searchParams.set('amount', amount.toString());
+url.searchParams.set('type', 'withdraw');
+url.searchParams.set('mode', 'live');
+
+const res = await fetch(url.toString(), { method: 'POST' });
+const raw = await res.json();
+console.log('[Card] StroWallet withdraw response:', JSON.stringify(raw));
+
+// 3. Check success
+if (!raw.success) {
+  throw new Error(raw.message || 'Card withdrawal failed');
+}
+
+// 4. Add amount to platform balance
+await db.update(wallets)
+  .set({ balance: wallet.balance + amount })
+  .where(eq(wallets.userId, userId));
+
+// 5. Re-fetch card balance
+const freshCard = await fetchCardDetails(card.cardId);
+await db.update(cards)
+  .set({ balance: freshCard.balance, updatedAt: new Date() })
+  .where(eq(cards.userId, userId));
+
+// 6. Return new balances
+return {
+  success: true,
+  message: 'Withdrawal successful',
+  newCardBalance: freshCard.balance,
+  newPlatformBalance: wallet.balance + amount,
+  reference: raw.response?.reference
+};
+
+Fix 3 — Card history with correct API and response parsing:
+GET https://strowallet.com/api/bitvcard/nfc-card-transactions
+  ?public_key=X
+  &card_id=X
+  &mode=live
+Response shape from StroWallet docs:
+json{
+  "success": true,
+  "response": {
+    "card_transactions": [
+      {
+        "id": "...",
+        "createdAt": "2026-04-25T01:47:15.094717Z",
+        "amount": "2",
+        "centAmount": "200",
+        "type": "credit",
+        "method": "topup",
+        "narrative": "Card funding",
+        "status": "success",
+        "currency": "usd",
+        "reference": "card_f0CXPIM",
+        "cardId": "..."
+      }
+    ]
+  }
+}
+Fix parsing:
+typescriptconst transactions = raw.response?.card_transactions ?? [];
+Map to frontend:
+typescripttransactions.map(tx => ({
+  id: tx.id,
+  date: tx.createdAt,
+  description: tx.narrative,
+  amount: tx.amount,
+  type: tx.type, // "credit" or "debit"
+  method: tx.method, // "topup", "withdrawal", "purchase"
+  status: tx.status, // "success", "failed", "pending"
+  reference: tx.reference,
+  currency: tx.currency
+}))
+
+Fix 4 — Freeze/Unfreeze with correct implementation:
+POST https://strowallet.com/api/bitvcard/freeze-unfreeze-nfccard
+  ?public_key=X
+  &secret_key=X
+  &card_id=X
+  &action=freeze  (or unfreeze)
+  &mode=live
+typescriptconst url = new URL('https://strowallet.com/api/bitvcard/freeze-unfreeze-nfccard');
+url.searchParams.set('public_key', cleanKey(process.env.STROWALLET_PUBLIC_KEY));
+url.searchParams.set('secret_key', cleanKey(process.env.STROWALLET_SECRET_KEY));
+url.searchParams.set('card_id', card.cardId);
+url.searchParams.set('action', currentStatus === 'frozen' ? 'unfreeze' : 'freeze');
+url.searchParams.set('mode', 'live');
+
+const res = await fetch(url.toString(), { method: 'POST' });
+const raw = await res.json();
+console.log('[Card] StroWallet freeze response:', JSON.stringify(raw));
+
+if (raw.success) {
+  const newStatus = currentStatus === 'frozen' ? 'active' : 'frozen';
+  await db.update(cards).set({ cardStatus: newStatus }).where(eq(cards.userId, userId));
+  return { success: true, newStatus };
+}
+
+Fix 5 — Balance sync helper function:
+Create a shared helper used by fund, withdraw, my-card:
+typescriptasync function fetchCardDetails(cardId: string) {
+  const url = new URL('https://strowallet.com/api/bitvcard/fetch-nfccard-detail');
+  url.searchParams.set('public_key', cleanKey(process.env.STROWALLET_PUBLIC_KEY!));
+  url.searchParams.set('secret_key', cleanKey(process.env.STROWALLET_SECRET_KEY!));
+  url.searchParams.set('card_id', cardId);
+  url.searchParams.set('mode', 'live');
+  
+  const res = await fetch(url.toString());
+  const raw = await res.json();
+  console.log('[Card] fetchCardDetails response:', JSON.stringify(raw));
+  
+  return raw.response?.card_detail ?? raw.response ?? raw;
+}
+
+Fix 6 — Frontend top up panel:
+Fund modal:
+
+Amount input (minimum $1)
+Show current platform balance: "Available: $X.XX USDT"
+Show estimated card balance after: "Card balance after: $X.XX"
+Button: "Fund Card"
+On success: show toast "✅ Card funded! Card balance: $X.XX | Wallet: $X.XX"
+Update card balance and wallet balance shown on page immediately without refresh
+
+Withdraw modal:
+
+Amount input (minimum $1)
+Show current card balance: "Card balance: $X.XX"
+Show estimated wallet balance after: "Wallet after: $X.XX"
+Button: "Withdraw to Wallet"
+On success: show toast "✅ Withdrawn! Wallet balance: $X.XX"
+Update both balances immediately
+
+
+Fix 7 — Admin Link Card tool:
+Add POST /api/admin/cards/link:
+typescript// Body: { userId: number, cardId: string }
+// 1. Fetch card details from StroWallet using cardId
+// 2. Save to cards table linked to userId
+// 3. Return card details
+Add to /admin/cards page:
+
+"Link Existing Card" button
+Form: User ID field + StroWallet Card ID field
+On submit → calls endpoint → shows result
+
+
+Fix 8 — History UI with correct field names:
+Transaction history list:
+tsx{transactions.map(tx => (
+  <div key={tx.id}>
+    <span>{new Date(tx.date).toLocaleDateString()}</span>
+    <span>{tx.description}</span>
+    <span className={tx.type === 'credit' ? 'text-green' : 'text-red'}>
+      {tx.type === 'credit' ? '+' : '-'}${tx.amount}
+    </span>
+    <span className={
+      tx.status === 'success' ? 'badge-green' :
+      tx.status === 'failed' ? 'badge-red' : 'badge-yellow'
+    }>{tx.status}</span>
+    <span className="text-gray">{tx.reference}</span>
+  </div>
+))}
+Empty state: "No transactions yet. Fund your card to start spending!"
+
+Fix 9 — Complete logging:
+typescriptconsole.log('[Card] Fund — user:', userId, 'amount:', amount, 'card:', cardId);
+console.log('[Card] Platform balance before:', wallet.balance);
+console.log('[Card] StroWallet fund response:', JSON.stringify(raw));
+console.log('[Card] Card balance after fund:', freshCard.balance);
+console.log('[Card] Platform balance after:', wallet.balance - amount);
+
+console.log('[Card] Withdraw — user:', userId, 'amount:', amount);
+console.log('[Card] StroWallet withdraw response:', JSON.stringify(raw));
+console.log('[Card] Card balance after withdraw:', freshCard.balance);
+console.log('[Card] Platform balance after:', wallet.balance + amount);
+
+console.log('[Card] History — card:', cardId, 'found:', transactions.length, 'transactions');
+console.log('[Card] Freeze — card:', cardId, 'action:', action);
+console.log('[Card] Freeze response:', JSON.stringify(raw));

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { AdminLayout, AdminGuard } from "@/components/admin-layout";
-import { adminGet } from "@/lib/admin-api";
-import { CreditCard, RefreshCw, Search } from "lucide-react";
+import { adminGet, adminPost } from "@/lib/admin-api";
+import { CreditCard, RefreshCw, Search, Link } from "lucide-react";
 
 const STATUS_COLORS: Record<string, string> = {
   active: "bg-success/20 text-success",
@@ -16,6 +16,11 @@ export default function AdminCardsPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [selected, setSelected] = useState<any>(null);
+  const [showLink, setShowLink] = useState(false);
+  const [linkUserId, setLinkUserId] = useState("");
+  const [linkCardId, setLinkCardId] = useState("");
+  const [linkLoading, setLinkLoading] = useState(false);
+  const [linkResult, setLinkResult] = useState<{ ok: boolean; msg: string } | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -40,6 +45,22 @@ export default function AdminCardsPage() {
       (c.card_id ?? "").toLowerCase().includes(q);
     return matchStatus && matchSearch;
   });
+
+  const handleLink = async () => {
+    if (!linkUserId || !linkCardId) return;
+    setLinkLoading(true);
+    setLinkResult(null);
+    try {
+      const data = await adminPost<any>("/cards/link", { userId: parseInt(linkUserId), cardId: linkCardId.trim() });
+      setLinkResult({ ok: true, msg: `Linked! Card ID: ${data.card?.card_id ?? linkCardId}` });
+      setLinkUserId("");
+      setLinkCardId("");
+      load();
+    } catch (e: any) {
+      setLinkResult({ ok: false, msg: e?.message ?? "Link failed" });
+    }
+    setLinkLoading(false);
+  };
 
   return (
     <AdminGuard>
@@ -71,6 +92,14 @@ export default function AdminCardsPage() {
                   className="w-full pl-9 pr-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                 />
               </div>
+              <button
+                onClick={() => setShowLink(true)}
+                title="Link existing card"
+                className="flex items-center gap-1.5 px-3 py-2 bg-primary/10 border border-primary/30 rounded-lg text-primary text-xs font-semibold hover:bg-primary/20 transition-colors"
+              >
+                <Link className="w-4 h-4" />
+                Link Card
+              </button>
               <button
                 onClick={load}
                 className="p-2 bg-secondary rounded-lg border border-border hover:bg-secondary/80"
@@ -148,6 +177,7 @@ export default function AdminCardsPage() {
           </p>
         </div>
 
+        {/* Card detail modal */}
         {selected && (
           <div
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
@@ -198,6 +228,74 @@ export default function AdminCardsPage() {
               >
                 Close
               </button>
+            </div>
+          </div>
+        )}
+
+        {/* Link existing card modal */}
+        {showLink && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+            onClick={() => { setShowLink(false); setLinkResult(null); }}
+          >
+            <div
+              className="bg-card border border-border rounded-2xl p-6 w-full max-w-sm space-y-4"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                  <Link className="w-5 h-5 text-primary" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-foreground">Link Existing Card</h3>
+                  <p className="text-xs text-muted-foreground">Attach a StroWallet card to a user account</p>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div>
+                  <label className="text-xs text-muted-foreground block mb-1">User ID</label>
+                  <input
+                    type="number"
+                    value={linkUserId}
+                    onChange={(e) => setLinkUserId(e.target.value)}
+                    placeholder="e.g. 3"
+                    className="w-full px-3 py-2.5 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground block mb-1">StroWallet Card ID</label>
+                  <input
+                    type="text"
+                    value={linkCardId}
+                    onChange={(e) => setLinkCardId(e.target.value)}
+                    placeholder="e.g. 019f0416-81ca-7b1f-b9cc-75f0af483861"
+                    className="w-full px-3 py-2.5 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary font-mono"
+                  />
+                </div>
+              </div>
+
+              {linkResult && (
+                <div className={`text-sm px-4 py-3 rounded-lg ${linkResult.ok ? "bg-success/10 text-success border border-success/20" : "bg-destructive/10 text-destructive border border-destructive/20"}`}>
+                  {linkResult.msg}
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                <button
+                  onClick={() => { setShowLink(false); setLinkResult(null); }}
+                  className="flex-1 py-2.5 bg-secondary rounded-xl text-sm font-medium hover:bg-secondary/80 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleLink}
+                  disabled={linkLoading || !linkUserId || !linkCardId}
+                  className="flex-1 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90 transition-opacity"
+                >
+                  {linkLoading ? "Linking…" : "Link Card"}
+                </button>
+              </div>
             </div>
           </div>
         )}

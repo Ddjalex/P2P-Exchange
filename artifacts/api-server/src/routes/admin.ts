@@ -1993,6 +1993,71 @@ router.get("/cards", adminAuth, async (req, res) => {
   }
 });
 
+router.post("/cards/link", adminAuth, async (req, res) => {
+  const { userId, cardId } = req.body ?? {};
+  if (!userId || !cardId) return res.status(400).json({ error: "userId and cardId are required" });
+
+  const uid = parseInt(String(userId));
+  if (isNaN(uid)) return res.status(400).json({ error: "Invalid userId" });
+
+  try {
+    const user = await db.query.usersTable.findFirst({ where: eq(usersTable.id, uid) });
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    const existing = await db.query.cardsTable.findFirst({ where: eq(cardsTable.userId, uid) });
+    if (existing) return res.status(400).json({ error: `User already has a card (card_id: ${existing.cardId})` });
+
+    // Fetch real card details from StroWallet
+    function cleanKey(k: string | undefined) { return (k || "").replace(/\s+/g, ""); }
+    const detailUrl = new URL("https://strowallet.com/api/bitvcard/fetch-nfccard-detail");
+    detailUrl.searchParams.set("public_key", cleanKey(process.env.STROWALLET_PUBLIC_KEY));
+    detailUrl.searchParams.set("secret_key", cleanKey(process.env.STROWALLET_SECRET_KEY));
+    detailUrl.searchParams.set("card_id", String(cardId).trim());
+    detailUrl.searchParams.set("mode", "live");
+
+    let detail: any = null;
+    try {
+      const r = await fetch(detailUrl.toString());
+      const raw = await r.json();
+      console.log("[Admin] Link card StroWallet response:", JSON.stringify(raw));
+      detail = raw?.response?.card_detail ?? raw?.response?.card ?? raw?.response ?? raw;
+    } catch (e) {
+      console.warn("[Admin] Link card: could not fetch from StroWallet — linking with provided card_id only");
+    }
+
+    function pick2(...vals: any[]): any {
+      for (const v of vals) if (v !== undefined && v !== null && v !== "") return v;
+      return null;
+    }
+
+    const cardNumber: string | null = pick2(detail?.card_number, detail?.pan);
+    let last4: string | null = pick2(detail?.last4);
+    if (!last4 && cardNumber) last4 = cardNumber.slice(-4);
+
+    const [saved] = await db.insert(cardsTable).values({
+      userId: uid,
+      cardId: String(cardId).trim(),
+      cardUserId: pick2(detail?.card_user_id, detail?.user_id),
+      customerId: pick2(detail?.customer_id),
+      nameOnCard: pick2(detail?.card_holder_name, detail?.name_on_card, user.username?.toUpperCase() ?? "LINKED CARD"),
+      cardStatus: pick2(detail?.card_status, detail?.status) ?? "active",
+      cardNumber,
+      last4,
+      cvv: pick2(detail?.cvv),
+      expiry: pick2(detail?.expiry, detail?.expiry_date),
+      balance: String(pick2(detail?.balance) ?? "0.00"),
+    }).returning();
+
+    await log(req.adminEmail, "link_card", "card", uid,
+      `Linked card_id=${cardId} to user ${uid} (${user.email})`);
+
+    res.json({ success: true, card: saved });
+  } catch (err) {
+    req.log.error({ err }, "Admin link card failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // ─── Manual sweep trigger ────────────────────────────────────────────────────
 
 router.post("/sweep-stuck-funds", adminAuth, async (req, res) => {

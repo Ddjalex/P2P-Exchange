@@ -243,12 +243,25 @@ export default function CardPage() {
   });
   const fundMutation = useMutation({
     mutationFn: (amt: number) => apiFetch("/api/cards/fund", { method: "POST", body: JSON.stringify({ amount: amt }) }),
-    onSuccess: () => { invalidate(); setModal(null); setAmount(""); showToast("Card funded successfully!"); },
+    onSuccess: (d: any) => {
+      invalidate();
+      setModal(null);
+      setAmount("");
+      const cardBal = d?.newCardBalance ? `$${parseFloat(d.newCardBalance).toFixed(2)}` : "";
+      const walBal = d?.newPlatformBalance ? `$${parseFloat(d.newPlatformBalance).toFixed(2)}` : "";
+      showToast(`✅ Card funded! Card balance: ${cardBal} | Wallet: ${walBal}`);
+    },
     onError: (e: any) => showToast(e.message, false),
   });
   const withdrawMutation = useMutation({
     mutationFn: (amt: number) => apiFetch("/api/cards/withdraw", { method: "POST", body: JSON.stringify({ amount: amt }) }),
-    onSuccess: () => { invalidate(); setModal(null); setAmount(""); showToast("Withdrawal successful!"); },
+    onSuccess: (d: any) => {
+      invalidate();
+      setModal(null);
+      setAmount("");
+      const walBal = d?.newPlatformBalance ? `$${parseFloat(d.newPlatformBalance).toFixed(2)}` : "";
+      showToast(`✅ Withdrawn! Wallet balance: ${walBal}`);
+    },
     onError: (e: any) => showToast(e.message, false),
   });
   const freezeMutation = useMutation({
@@ -480,17 +493,31 @@ export default function CardPage() {
 
       {modal === "fund" && (
         <Modal title="Fund Card" onClose={() => setModal(null)}>
-          <p style={{ color: "#8899aa", fontSize: "13px", marginBottom: "16px" }}>
-            Platform balance: <strong style={{ color: "#00e5ff" }}>${walletBalance.toFixed(2)} USDT</strong>
-          </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "16px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 14px", background: "rgba(0,229,255,0.05)", borderRadius: "10px" }}>
+              <span style={{ color: "#8899aa", fontSize: "13px" }}>Available</span>
+              <span style={{ color: "#00e5ff", fontSize: "13px", fontWeight: 700 }}>${walletBalance.toFixed(2)} USDT</span>
+            </div>
+            {amount && parseFloat(amount) > 0 && (
+              <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 14px", background: "rgba(0,229,255,0.04)", borderRadius: "10px", border: "1px solid rgba(0,229,255,0.15)" }}>
+                <span style={{ color: "#8899aa", fontSize: "13px" }}>Card balance after</span>
+                <span style={{ color: "#fff", fontSize: "13px", fontWeight: 700 }}>
+                  ${(parseFloat(card?.balance ?? "0") + parseFloat(amount)).toFixed(2)}
+                </span>
+              </div>
+            )}
+          </div>
           <input
             type="number" value={amount} onChange={(e) => setAmount(e.target.value)}
-            placeholder="Amount in USDT" min="1"
+            placeholder="Amount (minimum $1)" min="1"
             style={{ width: "100%", padding: "12px 16px", background: "rgba(0,229,255,0.05)", border: "1px solid rgba(0,229,255,0.2)", borderRadius: "12px", color: "#fff", fontSize: "15px", marginBottom: "16px", boxSizing: "border-box", fontFamily: "Poppins, sans-serif", outline: "none" }}
           />
+          {amount && parseFloat(amount) > walletBalance && (
+            <p style={{ color: "#ff8888", fontSize: "12px", marginBottom: "10px" }}>Insufficient wallet balance</p>
+          )}
           <div style={{ display: "flex", gap: "10px" }}>
             <Btn variant="secondary" onClick={() => setModal(null)}>Cancel</Btn>
-            <Btn onClick={() => fundMutation.mutate(parseFloat(amount))} disabled={mutBusy || !amount || parseFloat(amount) <= 0}>
+            <Btn onClick={() => fundMutation.mutate(parseFloat(amount))} disabled={mutBusy || !amount || parseFloat(amount) < 1 || parseFloat(amount) > walletBalance}>
               {fundMutation.isPending ? "Funding…" : "Fund Card"}
             </Btn>
           </div>
@@ -499,18 +526,32 @@ export default function CardPage() {
 
       {modal === "withdraw" && (
         <Modal title="Withdraw from Card" onClose={() => setModal(null)}>
-          <p style={{ color: "#8899aa", fontSize: "13px", marginBottom: "16px" }}>
-            Card balance: <strong style={{ color: "#00e5ff" }}>${parseFloat(card?.balance ?? "0").toFixed(2)} USDT</strong>
-          </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "16px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 14px", background: "rgba(0,229,255,0.05)", borderRadius: "10px" }}>
+              <span style={{ color: "#8899aa", fontSize: "13px" }}>Card balance</span>
+              <span style={{ color: "#00e5ff", fontSize: "13px", fontWeight: 700 }}>${parseFloat(card?.balance ?? "0").toFixed(2)} USDT</span>
+            </div>
+            {amount && parseFloat(amount) > 0 && (
+              <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 14px", background: "rgba(0,229,255,0.04)", borderRadius: "10px", border: "1px solid rgba(0,229,255,0.15)" }}>
+                <span style={{ color: "#8899aa", fontSize: "13px" }}>Wallet after</span>
+                <span style={{ color: "#fff", fontSize: "13px", fontWeight: 700 }}>
+                  ${(walletBalance + parseFloat(amount)).toFixed(2)}
+                </span>
+              </div>
+            )}
+          </div>
           <input
             type="number" value={amount} onChange={(e) => setAmount(e.target.value)}
-            placeholder="Amount in USDT" min="1"
+            placeholder="Amount (minimum $1)" min="1"
             style={{ width: "100%", padding: "12px 16px", background: "rgba(0,229,255,0.05)", border: "1px solid rgba(0,229,255,0.2)", borderRadius: "12px", color: "#fff", fontSize: "15px", marginBottom: "16px", boxSizing: "border-box", fontFamily: "Poppins, sans-serif", outline: "none" }}
           />
+          {amount && parseFloat(amount) > parseFloat(card?.balance ?? "0") && (
+            <p style={{ color: "#ff8888", fontSize: "12px", marginBottom: "10px" }}>Exceeds card balance</p>
+          )}
           <div style={{ display: "flex", gap: "10px" }}>
             <Btn variant="secondary" onClick={() => setModal(null)}>Cancel</Btn>
-            <Btn onClick={() => withdrawMutation.mutate(parseFloat(amount))} disabled={mutBusy || !amount || parseFloat(amount) <= 0}>
-              {withdrawMutation.isPending ? "Withdrawing…" : "Withdraw"}
+            <Btn onClick={() => withdrawMutation.mutate(parseFloat(amount))} disabled={mutBusy || !amount || parseFloat(amount) < 1 || parseFloat(amount) > parseFloat(card?.balance ?? "0")}>
+              {withdrawMutation.isPending ? "Withdrawing…" : "Withdraw to Wallet"}
             </Btn>
           </div>
         </Modal>
