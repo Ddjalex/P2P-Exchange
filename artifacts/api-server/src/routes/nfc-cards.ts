@@ -377,6 +377,18 @@ router.get("/my-card", userAuth, async (req: any, res) => {
           if (newCreatedDate) updates.cardCreatedDate = newCreatedDate;
           const newCustomerEmail = pick(detail?.customer_email);
           if (newCustomerEmail) updates.customerEmail = newCustomerEmail;
+          // Sync billing address from StroWallet (covers address, billing_address, etc.)
+          const newBillingLine1 = pick(detail?.billing_address, detail?.address, detail?.line1, detail?.street);
+          if (newBillingLine1) updates.billingLine1 = newBillingLine1;
+          const newBillingCity = pick(detail?.billing_city, detail?.city);
+          if (newBillingCity) updates.billingCity = newBillingCity;
+          const newBillingState = pick(detail?.billing_state, detail?.state);
+          if (newBillingState) updates.billingState = newBillingState;
+          const newBillingPostal = pick(detail?.billing_zip, detail?.billing_postal_code, detail?.postal_code, detail?.zip_code, detail?.zip);
+          if (newBillingPostal) updates.billingPostal = newBillingPostal;
+          const newBillingCountry = pick(detail?.billing_country, detail?.country);
+          if (newBillingCountry) updates.billingCountry = newBillingCountry;
+          console.log("[Card] Billing sync from StroWallet:", { newBillingLine1, newBillingCity, newBillingState, newBillingPostal, newBillingCountry });
 
           console.log("[Card] Details fetched for user:", userId, "card:", card.cardId);
 
