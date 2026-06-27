@@ -69,13 +69,23 @@ async function pollExpiredOrders() {
 
         logger.info({ orderId: order.id }, "[OrderExpiry] Order marked cancelled");
 
-        // 2. Return frozen USDT to seller
-        await returnUsdtToSeller(order.sellerId, order.amountUsdt);
-        logger.info({ orderId: order.id, sellerId: order.sellerId, amountUsdt: order.amountUsdt },
-          "[OrderExpiry] USDT returned to seller");
-
-        // 3. Restore ad available amount AND pause the ad (set offline with reason)
+        // 2. Fetch the ad first — we need its type to decide whether to touch wallet balances
         const [ad] = await db.select().from(adsTable).where(eq(adsTable.id, order.adId));
+
+        // 3. Return frozen USDT to seller ONLY for buy-ad orders.
+        //    For sell-ad orders, USDT was frozen at ad-creation time for the full ad amount —
+        //    wallet frozenBalance stays unchanged; only ad.availableAmount is restored below.
+        //    For buy-ad orders, USDT was frozen per-order → return to available on expiry.
+        if (!ad || ad.type === "buy") {
+          await returnUsdtToSeller(order.sellerId, order.amountUsdt);
+          logger.info({ orderId: order.id, sellerId: order.sellerId, amountUsdt: order.amountUsdt },
+            "[OrderExpiry] Buy-ad order expired — USDT returned to seller wallet");
+        } else {
+          logger.info({ orderId: order.id, sellerId: order.sellerId, amountUsdt: order.amountUsdt },
+            "[OrderExpiry] Sell-ad order expired — wallet unchanged (USDT stays frozen for ad)");
+        }
+
+        // 4. Restore ad available amount AND pause the ad (set offline with reason)
         if (ad) {
           const restored = parseFloat(ad.availableAmount) + parseFloat(order.amountUsdt);
           const cap = parseFloat(ad.totalAmount);
@@ -91,7 +101,7 @@ async function pollExpiredOrders() {
             })
             .where(eq(adsTable.id, order.adId));
 
-          logger.info({ orderId: order.id, adId: order.adId, restoredAmount: restoredCapped },
+          logger.info({ orderId: order.id, adId: order.adId, restoredAmount: restoredCapped, adType: ad.type },
             "[OrderExpiry] Ad balance restored and ad PAUSED (offline)");
         } else {
           logger.warn({ orderId: order.id, adId: order.adId }, "[OrderExpiry] Ad not found — could not pause");

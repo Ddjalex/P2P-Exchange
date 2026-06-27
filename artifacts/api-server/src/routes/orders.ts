@@ -531,11 +531,15 @@ router.post("/:id/release", async (req, res) => {
     emitToUser(order.sellerId, "order_update", { orderId: id, status: "completed", type: "order_completed" });
     emitToUser(order.sellerId, "wallet_update", {});
 
-    // Remove the ad only now that the sale is confirmed — and only if balance is truly exhausted
+    // After order completion: if the ad's availableAmount is exhausted, set it offline.
+    // We never delete the ad — seller should see their trade history.
     if (order.adId) {
       const completedAd = await db.select().from(adsTable).where(eq(adsTable.id, order.adId)).then(r => r[0]);
       if (completedAd && parseFloat(completedAd.availableAmount) < 0.0001) {
-        await db.delete(adsTable).where(eq(adsTable.id, order.adId));
+        await db.update(adsTable)
+          .set({ status: "offline", pauseReason: "Ad fully traded — all USDT has been sold." })
+          .where(eq(adsTable.id, order.adId));
+        console.log('[Ad] Fully traded — set offline, adId:', order.adId);
       }
     }
 
@@ -567,16 +571,23 @@ router.post("/:id/cancel", async (req, res) => {
     if (ad) {
       const restored = parseFloat(ad.availableAmount) + parseFloat(order.amountUsdt);
       const cap = parseFloat(ad.totalAmount);
+      const restoredCapped = Math.min(restored, cap).toFixed(4);
+      console.log('[Order] Cancel — adId:', order.adId, 'adType:', ad.type, 'restoring availableAmount:', ad.availableAmount, '->', restoredCapped);
       await db.update(adsTable).set({
-        availableAmount: Math.min(restored, cap).toFixed(4),
+        availableAmount: restoredCapped,
       }).where(eq(adsTable.id, order.adId));
     }
 
-    // Always return the order's USDT to the seller's available balance.
-    // • Sell-ad orders: entire ad amount was frozen at ad creation; per-order
-    //   amount is moved back to available so the seller isn't locked out.
-    // • Buy-ad orders: seller froze USDT at order creation; unfreeze on cancel.
-    await returnUsdtToSeller(order.sellerId, order.amountUsdt);
+    // For sell-ad orders: USDT was frozen at ad-creation time for the full ad amount.
+    // Cancelling an order just restores the per-order lock on the ad — ad.availableAmount
+    // goes back up, but the wallet frozenBalance stays unchanged (still backing the ad).
+    // For buy-ad orders: USDT was frozen per-order at order creation → return to available.
+    if (!ad || ad.type === "buy") {
+      console.log('[Order] Cancel — buy-ad order, returning USDT to seller wallet:', order.sellerId, 'amount:', order.amountUsdt);
+      await returnUsdtToSeller(order.sellerId, order.amountUsdt);
+    } else {
+      console.log('[Order] Cancel — sell-ad order, wallet balances unchanged (USDT stays frozen for ad)');
+    }
 
     const cancelledByRole = userId === order.buyerId ? "buyer" : "seller";
     const counterpartyId = userId === order.buyerId ? order.sellerId : order.buyerId;

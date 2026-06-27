@@ -1,0 +1,207 @@
+Critical Fix: Seller's USDT balance not frozen when creating sell ad
+When a seller creates a sell ad, their USDT must be frozen immediately to prevent them from spending the same USDT elsewhere.
+Current broken behavior:
+
+Seller has $500 USDT available balance
+Seller creates sell ad for $500 USDT
+Balance stays at $500 available — NOT frozen ❌
+Seller could create multiple ads or withdraw the same USDT ❌
+
+Correct behavior:
+
+Seller has $500 USDT available balance
+Seller creates sell ad for $500 USDT
+$500 moves from available → frozen immediately ✅
+Available balance shows $0 ✅
+Frozen balance shows $500 ✅
+
+
+Fix in POST /api/ads/create (or wherever ads are created):
+typescript// After validating the ad:
+
+// 1. Check seller has enough available balance
+if (Number(wallet.availableBalance) < Number(ad.totalAmount)) {
+  return res.status(400).json({
+    success: false,
+    message: `Insufficient balance. You need ${ad.totalAmount} USDT to create this ad.`
+  });
+}
+
+// 2. Freeze the USDT immediately
+await db.update(wallets)
+  .set({
+    availableBalance: Number(wallet.availableBalance) - Number(ad.totalAmount),
+    frozenBalance: Number(wallet.frozenBalance) + Number(ad.totalAmount)
+  })
+  .where(eq(wallets.userId, userId));
+
+console.log('[Ad] Created sell ad — frozen:', ad.totalAmount, 'USDT for user:', userId);
+
+// 3. Record the freeze transaction
+await db.insert(transactions).values({
+  userId,
+  type: 'freeze',
+  amount: ad.totalAmount,
+  note: `Sell ad #${ad.id} created — USDT frozen`,
+  status: 'completed'
+});
+
+When ad is cancelled/deleted — unfreeze:
+typescript// In DELETE /api/ads/:id or cancel endpoint:
+
+// 1. Return frozen USDT to available balance
+await db.update(wallets)
+  .set({
+    availableBalance: Number(wallet.availableBalance) + Number(ad.totalAmount),
+    frozenBalance: Number(wallet.frozenBalance) - Number(ad.totalAmount)
+  })
+  .where(eq(wallets.userId, userId));
+
+console.log('[Ad] Cancelled sell ad — unfrozen:', ad.totalAmount, 'USDT for user:', userId);
+
+When order is completed — deduct frozen balance:
+typescript// When P2P order completes successfully:
+
+// 1. Deduct from frozen (not available — it was already frozen)
+await db.update(wallets)
+  .set({
+    frozenBalance: Number(wallet.frozenBalance) - Number(order.amount)
+  })
+  .where(eq(wallets.userId, sellerId));
+
+console.log('[Order] Completed — deducted:', order.amount, 'USDT from frozen balance of seller:', sellerId);
+
+Also check existing sell ads in database:
+sql-- Find all active sell ads where seller balance is NOT frozen:
+SELECT a.id, a.user_id, a.total_amount, a.status,
+       w.available_balance, w.frozen_balance
+FROM ads a
+JOIN wallets w ON w.user_id = a.user_id
+WHERE a.type = 'sell'
+AND a.status = 'online'
+AND w.frozen_balance < a.total_amount;
+Show the output — we may need to manually freeze balances for existing ads.
+
+Add these checks everywhere:
+
+Withdrawal — check frozen balance not included:
+
+typescript// Only allow withdrawal of available balance, never frozen:
+if (amount > wallet.availableBalance) {
+  throw new Error('Cannot withdraw frozen funds');
+}
+
+Card top-up — same check:
+
+typescriptif (amount > wallet.availableBalance) {
+  throw new Error('Cannot use frozen funds for card top-up');
+}
+
+New sell ad — check available balance only:
+
+typescriptif (ad.totalAmount > wallet.availableBalance) {
+  throw new Error('Insufficient available balance');
+}
+
+Logging:
+typescriptconsole.log('[Ad] Create sell ad — user:', userId, 'amount:', totalAmount);
+console.log('[Ad] Wallet before freeze — available:', wallet.availableBalance, 'frozen:', wallet.frozenBalance);
+console.log('[Ad] Wallet after freeze — available:', newAvailable, 'frozen:', newFrozen);
+Rebuild API only and repackage. This is critical for platform security! 🚀You said: why drop down the ads by buyer mistike when return or unfreeze only for that refund amount so after refund not drop down the ads stay the ads with refund amountwhy drop down the ads by buyer mistike when return or unfreeze only for that refund amount so after refund not drop down the ads stay the ads with refund amount10:30 AMClaude responded: You're right!You're right! When a buyer cancels or order expires, only the specific order amount should be refunded — the ad should stay active with the remaining amount.
+Give this prompt to Replit:
+
+Fix: Ad should stay active after order refund — only reduce by order amount
+Current broken behavior:
+
+Seller creates sell ad for $500 USDT → frozen $500
+Buyer orders $100
+Order expires/cancelled
+System refunds $100 BUT drops the entire ad ❌
+
+Correct behavior:
+
+Seller creates sell ad for $500 USDT → frozen $500
+Buyer orders $100 → ad available amount reduces to $400
+Order expires/cancelled → $100 refunded back to frozen
+Ad stays active with $400 available amount ✅
+Ad only goes offline when total amount is fully traded
+
+
+Fix in order expiry/cancellation handler:
+typescript// When order is cancelled or expires:
+
+// 1. Refund ONLY the order amount back to frozen (NOT available)
+await db.update(wallets)
+  .set({
+    frozenBalance: Number(wallet.frozenBalance) + Number(order.amount)
+  })
+  .where(eq(wallets.userId, order.sellerId));
+
+// 2. Restore ad available amount
+await db.update(ads)
+  .set({
+    availableAmount: Number(ad.availableAmount) + Number(order.amount)
+  })
+  .where(eq(ads.id, order.adId));
+
+// 3. Keep ad status as "online" — DO NOT change to offline
+// Only pause if order expired (seller didn't pay) using existing pause logic
+
+console.log('[Order] Cancelled — refunded:', order.amount, 'USDT back to ad:', order.adId);
+console.log('[Order] Ad available amount restored to:', Number(ad.availableAmount) + Number(order.amount));
+
+Ad lifecycle should be:
+Seller creates ad $500 → frozen $500, ad available $500
+        ↓
+Buyer 1 orders $100 → ad available $400
+        ↓
+Order completes → frozen reduces by $100, ad available stays $400
+        ↓
+Buyer 2 orders $200 → ad available $200
+        ↓
+Order cancelled → ad available restored to $400
+        ↓
+Ad goes offline ONLY when:
+  - Seller manually closes it
+  - Available amount reaches $0
+  - Order expires (pause, not close)
+
+Fix ad available amount tracking:
+typescript// When buyer places order:
+await db.update(ads)
+  .set({
+    availableAmount: Number(ad.availableAmount) - Number(order.amount)
+  })
+  .where(eq(ads.id, order.adId));
+
+// When order completes successfully:
+// availableAmount stays reduced (trade is done)
+// frozenBalance reduces by order amount (USDT sent to buyer)
+
+// When order cancelled/expired:
+// availableAmount restored by order amount
+// frozenBalance stays the same (USDT still frozen for the ad)
+
+// When seller closes ad manually:
+// availableAmount → 0
+// frozenBalance reduces by remaining ad amount
+// remaining USDT returns to availableBalance
+
+Also fix when ad should go offline automatically:
+typescript// After every order completion/cancellation, check:
+const updatedAd = await db.select().from(ads).where(eq(ads.id, order.adId));
+
+if (Number(updatedAd.availableAmount) <= 0) {
+  // Ad fully traded — close it
+  await db.update(ads)
+    .set({ status: 'offline' })
+    .where(eq(ads.id, order.adId));
+  console.log('[Ad] Fully traded — closed ad:', order.adId);
+}
+// Otherwise keep ad online with remaining amount
+
+Logging:
+typescriptconsole.log('[Order] Cancel/Expire — order:', order.id, 'amount:', order.amount);
+console.log('[Ad] Before restore — availableAmount:', ad.availableAmount);
+console.log('[Ad] After restore — availableAmount:', Number(ad.availableAmount) + Number(order.amount));
+console.log('[Ad] Ad status:', updatedAd.status, '— keeping online:', Number(updatedAd.availableAmount) > 0);
