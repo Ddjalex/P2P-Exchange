@@ -275,9 +275,10 @@ router.patch("/:id", async (req, res) => {
     // Handle totalAmount change for sell ads — must adjust wallet frozen/available
     if (totalAmount !== undefined) {
       const newTotal = parseFloat(totalAmount);
+      const oldTotal = parseFloat(ad.totalAmount ?? "0");
       const oldAvailable = parseFloat(ad.availableAmount ?? "0");
 
-      // Query actual active orders (unpaid/paid/appeal) — NOT completed/cancelled ones
+      // Query active orders (unpaid/paid/appeal) to enforce minimum
       const activeOrders = await db.select({ amountUsdt: ordersTable.amountUsdt })
         .from(ordersTable)
         .where(and(
@@ -285,37 +286,53 @@ router.patch("/:id", async (req, res) => {
           sql`${ordersTable.status} IN ('unpaid', 'paid', 'appeal')`
         ));
       const lockedInOrders = activeOrders.reduce((sum, o) => sum + parseFloat(o.amountUsdt ?? "0"), 0);
-      const newAvailable = newTotal - lockedInOrders;
+
+      // newAvailable = shift old available by the same delta as totalAmount.
+      // This correctly handles ads with completed trades (availableAmount < totalAmount - lockedInOrders).
+      const totalDiff = newTotal - oldTotal;
+      const newAvailable = oldAvailable + totalDiff;
 
       if (newAvailable < 0) {
+        return res.status(400).json({
+          message: `Cannot reduce ad below what has already been traded.`,
+        });
+      }
+      if (newAvailable < lockedInOrders) {
         return res.status(400).json({
           message: `Cannot set total below ${lockedInOrders.toFixed(4)} USDT — that amount is locked in active orders.`,
         });
       }
 
       updates.totalAmount = String(newTotal);
-      updates.availableAmount = String(newAvailable);
+      updates.availableAmount = newAvailable.toFixed(4);
 
-      if (ad.type === "sell") {
-        // diff > 0 means user wants more USDT in the ad (deduct from wallet.available)
-        // diff < 0 means user is reducing (return to wallet.available)
-        const diff = newAvailable - oldAvailable;
-        if (diff !== 0) {
-          const wallet = await getOrCreateWallet(userId);
-          const walletAvailable = parseFloat(wallet.availableBalance);
-          const walletFrozen = parseFloat(wallet.frozenBalance);
+      if (ad.type === "sell" && totalDiff !== 0) {
+        // totalDiff > 0: seller increased ad — deduct extra from wallet.available, add to frozen
+        // totalDiff < 0: seller decreased ad — return |diff| from frozen back to wallet.available
+        const wallet = await getOrCreateWallet(userId);
+        const walletAvailable = parseFloat(wallet.availableBalance);
+        const walletFrozen = parseFloat(wallet.frozenBalance);
 
-          if (diff > 0 && walletAvailable < diff) {
-            return res.status(400).json({
-              message: `Insufficient balance. You only have ${walletAvailable.toFixed(4)} USDT available.`,
-            });
-          }
+        console.log('[Ad] Edit sell ad:', id, 'user:', userId);
+        console.log('[Ad] Old totalAmount:', oldTotal, 'New totalAmount:', newTotal, 'Diff:', totalDiff);
+        console.log('[Ad] Active orders locked:', lockedInOrders);
+        console.log('[Ad] Wallet before edit — available:', walletAvailable, 'frozen:', walletFrozen);
 
-          await db.update(walletsTable).set({
-            availableBalance: Math.max(0, walletAvailable - diff).toFixed(4),
-            frozenBalance: Math.max(0, walletFrozen + diff).toFixed(4),
-          }).where(eq(walletsTable.userId, userId));
+        if (totalDiff > 0 && walletAvailable < totalDiff) {
+          return res.status(400).json({
+            message: `Insufficient balance. You need ${totalDiff.toFixed(4)} more USDT but only have ${walletAvailable.toFixed(4)} available.`,
+          });
         }
+
+        const newWalletAvailable = Math.max(0, walletAvailable - totalDiff);
+        const newWalletFrozen = Math.max(0, walletFrozen + totalDiff);
+
+        await db.update(walletsTable).set({
+          availableBalance: newWalletAvailable.toFixed(4),
+          frozenBalance: newWalletFrozen.toFixed(4),
+        }).where(eq(walletsTable.userId, userId));
+
+        console.log('[Ad] Wallet after edit — available:', newWalletAvailable.toFixed(4), 'frozen:', newWalletFrozen.toFixed(4));
       }
     }
 
