@@ -1983,9 +1983,80 @@ router.get("/email/history", adminAuth, async (req, res) => {
 
 // ─── Cards ───────────────────────────────────────────────────────────────────
 
+// Helper to read card fee settings with defaults
+async function getCardSettingsAdmin() {
+  const rows = await db.select().from(systemSettingsTable).where(
+    or(
+      eq(systemSettingsTable.key, "cardCreationFee"),
+      eq(systemSettingsTable.key, "cardInitialLoad"),
+      eq(systemSettingsTable.key, "cardMinFund"),
+    )
+  );
+  const map = Object.fromEntries(rows.map((r) => [r.key, r.value]));
+  return {
+    cardCreationFee: map.cardCreationFee ?? "2.00",
+    cardInitialLoad: map.cardInitialLoad ?? "3.00",
+    cardMinFund: map.cardMinFund ?? "2.00",
+  };
+}
+
+router.get("/cards/settings", adminAuth, async (req, res) => {
+  try {
+    const settings = await getCardSettingsAdmin();
+    res.json(settings);
+  } catch (err) {
+    req.log.error({ err }, "Admin card settings fetch failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.put("/cards/settings", adminAuth, async (req, res) => {
+  const { cardCreationFee, cardInitialLoad, cardMinFund } = req.body ?? {};
+  const updates: Record<string, string> = {};
+  if (cardCreationFee !== undefined) updates.cardCreationFee = String(parseFloat(cardCreationFee).toFixed(2));
+  if (cardInitialLoad !== undefined) updates.cardInitialLoad = String(parseFloat(cardInitialLoad).toFixed(2));
+  if (cardMinFund !== undefined) updates.cardMinFund = String(parseFloat(cardMinFund).toFixed(2));
+
+  if (Object.keys(updates).length === 0) return res.status(400).json({ error: "No settings provided" });
+
+  try {
+    for (const [key, value] of Object.entries(updates)) {
+      await db.insert(systemSettingsTable).values({ key, value, updatedAt: new Date() })
+        .onConflictDoUpdate({ target: systemSettingsTable.key, set: { value, updatedAt: new Date() } });
+    }
+    await log(req.adminEmail, "update_card_settings", "system", null, JSON.stringify(updates));
+    res.json(await getCardSettingsAdmin());
+  } catch (err) {
+    req.log.error({ err }, "Admin card settings update failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 router.get("/cards", adminAuth, async (req, res) => {
   try {
-    const cards = await db.select().from(cardsTable).orderBy(desc(cardsTable.createdAt));
+    const cards = await db
+      .select({
+        id: cardsTable.id,
+        userId: cardsTable.userId,
+        cardId: cardsTable.cardId,
+        cardUserId: cardsTable.cardUserId,
+        customerId: cardsTable.customerId,
+        nameOnCard: cardsTable.nameOnCard,
+        cardStatus: cardsTable.cardStatus,
+        cardNumber: cardsTable.cardNumber,
+        last4: cardsTable.last4,
+        cvv: cardsTable.cvv,
+        expiry: cardsTable.expiry,
+        balance: cardsTable.balance,
+        createdAt: cardsTable.createdAt,
+        updatedAt: cardsTable.updatedAt,
+        userName: usersTable.username,
+        userEmail: usersTable.email,
+        userPhone: usersTable.phone,
+      })
+      .from(cardsTable)
+      .leftJoin(usersTable, eq(cardsTable.userId, usersTable.id))
+      .orderBy(desc(cardsTable.createdAt));
     res.json({ cards });
   } catch (err) {
     req.log.error({ err }, "Admin cards list failed");

@@ -221,6 +221,7 @@ export default function CardPage() {
     setTimeout(() => setToast(null), 4500);
   };
 
+  const { data: feesData } = useQuery({ queryKey: ["card-fees"], queryFn: () => apiFetch("/api/cards/fees") });
   const { data: meData } = useQuery({ queryKey: ["me-card"], queryFn: () => apiFetch("/api/auth/me") });
   const { data: cardData, refetch: refetchCard, isFetching: cardFetching, isLoading: cardLoading } = useQuery({
     queryKey: ["my-card"],
@@ -260,6 +261,12 @@ export default function CardPage() {
     onSuccess: (d: any) => { invalidate(); setModal(null); setFreezePassword(""); setFreezeError(""); showToast(d.message); },
     onError: (e: any) => { setFreezeError(e.message); },
   });
+
+  const fees = (feesData as any) ?? { cardCreationFee: "2.00", cardInitialLoad: "3.00", cardMinFund: "2.00", totalRequired: "5.00" };
+  const creationFee = parseFloat(fees.cardCreationFee);
+  const initialLoad = parseFloat(fees.cardInitialLoad);
+  const totalRequired = parseFloat(fees.totalRequired ?? fees.cardCreationFee) + parseFloat(fees.cardInitialLoad ?? "0");
+  const minFund = parseFloat(fees.cardMinFund);
 
   const kycStatus = meData?.kycStatus;
   const card = (cardData as any)?.card ?? null;
@@ -316,9 +323,9 @@ export default function CardPage() {
             <div style={{ width: "100%", maxWidth: "360px", marginBottom: "24px", display: "flex", flexDirection: "column", gap: "10px" }}>
               {[
                 ["👤", "Verified name", kycName],
-                ["💳", "Card creation fee", "$2 USDT"],
-                ["💰", "Initial funding loaded", "$3 USDT automatically"],
-                ["📋", "Total required", "$5 USDT minimum balance"],
+                ["💳", "Card creation fee", `$${creationFee.toFixed(2)} USDT`],
+                ["💰", "Initial funding loaded", `$${initialLoad.toFixed(2)} USDT automatically`],
+                ["📋", "Total required", `$${totalRequired.toFixed(2)} USDT minimum balance`],
               ].map(([icon, label, value]) => (
                 <div key={String(label)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", background: "rgba(0,229,255,0.05)", border: "1px solid rgba(0,229,255,0.15)", borderRadius: "10px" }}>
                   <span style={{ color: "#8899aa", fontSize: "13px" }}>{icon} {label}</span>
@@ -326,13 +333,13 @@ export default function CardPage() {
                 </div>
               ))}
             </div>
-            {walletBalance < 5 && (
+            {walletBalance < totalRequired && (
               <p style={{ color: "#ff8888", fontSize: "13px", marginBottom: "12px", textAlign: "center" }}>
-                You need $5.00 USDT — you have ${walletBalance.toFixed(2)}. Please deposit first.
+                You need ${totalRequired.toFixed(2)} USDT — you have ${walletBalance.toFixed(2)}. Please deposit first.
               </p>
             )}
             <div style={{ width: "100%", maxWidth: "360px" }}>
-              <Btn onClick={() => setModal("confirm-create")} disabled={walletBalance < 5}>Create My Card</Btn>
+              <Btn onClick={() => setModal("confirm-create")} disabled={walletBalance < totalRequired}>Create My Card</Btn>
             </div>
           </>
         )}
@@ -440,7 +447,7 @@ export default function CardPage() {
       {modal === "confirm-create" && (
         <Modal title="Create Your Xendrx Card" onClose={() => setModal(null)}>
           <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "16px" }}>
-            {[["Card for", kycName], ["Creation fee", "$2 USDT deducted"], ["Auto-loaded", "$3 USDT on card"], ["Your balance", `$${walletBalance.toFixed(2)} USDT`]].map(([l, v]) => (
+            {[["Card for", kycName], ["Creation fee", `$${creationFee.toFixed(2)} USDT deducted`], ["Auto-loaded", `$${initialLoad.toFixed(2)} USDT on card`], ["Your balance", `$${walletBalance.toFixed(2)} USDT`]].map(([l, v]) => (
               <div key={l} style={{ display: "flex", justifyContent: "space-between", padding: "10px 14px", background: "rgba(0,229,255,0.05)", borderRadius: "10px" }}>
                 <span style={{ color: "#8899aa", fontSize: "13px" }}>{l}</span>
                 <span style={{ color: "#fff", fontSize: "13px", fontWeight: 600 }}>{v}</span>
@@ -500,19 +507,19 @@ export default function CardPage() {
           </div>
           <input
             type="number" value={amount} onChange={(e) => setAmount(e.target.value)}
-            placeholder="Amount (minimum $2)" min="2"
+            placeholder={`Amount (minimum $${minFund.toFixed(2)})`} min={minFund}
             style={{ width: "100%", padding: "12px 16px", background: "rgba(0,229,255,0.05)", border: "1px solid rgba(0,229,255,0.2)", borderRadius: "12px", color: "#fff", fontSize: "15px", marginBottom: "6px", boxSizing: "border-box", fontFamily: "Poppins, sans-serif", outline: "none" }}
           />
-          <p style={{ color: "#8899aa", fontSize: "11px", marginBottom: "10px" }}>Minimum: $2.00</p>
-          {amount && parseFloat(amount) > 0 && parseFloat(amount) < 2 && (
-            <p style={{ color: "#ff8888", fontSize: "12px", marginBottom: "10px" }}>Minimum fund amount is $2</p>
+          <p style={{ color: "#8899aa", fontSize: "11px", marginBottom: "10px" }}>Minimum: ${minFund.toFixed(2)}</p>
+          {amount && parseFloat(amount) > 0 && parseFloat(amount) < minFund && (
+            <p style={{ color: "#ff8888", fontSize: "12px", marginBottom: "10px" }}>Minimum fund amount is ${minFund.toFixed(2)}</p>
           )}
           {!walletLoading && amount && parseFloat(amount) > walletBalance && (
             <p style={{ color: "#ff8888", fontSize: "12px", marginBottom: "10px" }}>Insufficient wallet balance — you have ${walletBalance.toFixed(2)} USDT</p>
           )}
           <div style={{ display: "flex", gap: "10px" }}>
             <Btn variant="secondary" onClick={() => setModal(null)}>Cancel</Btn>
-            <Btn onClick={() => fundMutation.mutate(parseFloat(amount))} disabled={mutBusy || walletLoading || !amount || parseFloat(amount) < 2 || (!walletLoading && parseFloat(amount) > walletBalance)}>
+            <Btn onClick={() => fundMutation.mutate(parseFloat(amount))} disabled={mutBusy || walletLoading || !amount || parseFloat(amount) < minFund || (!walletLoading && parseFloat(amount) > walletBalance)}>
               {fundMutation.isPending ? "Funding…" : "Fund Card"}
             </Btn>
           </div>

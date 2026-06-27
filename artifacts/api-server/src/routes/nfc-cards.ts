@@ -6,14 +6,48 @@ import {
   usersTable,
   walletsTable,
   transactionsTable,
+  systemSettingsTable,
 } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, or } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { userAuth } from "../middleware/user-auth";
 
 const router = Router();
 
 const STRO_BASE = "https://strowallet.com/api/bitvcard";
+
+async function getCardSettings() {
+  const rows = await db.select().from(systemSettingsTable).where(
+    or(
+      eq(systemSettingsTable.key, "cardCreationFee"),
+      eq(systemSettingsTable.key, "cardInitialLoad"),
+      eq(systemSettingsTable.key, "cardMinFund"),
+    )
+  );
+  const map = Object.fromEntries(rows.map((r) => [r.key, r.value]));
+  return {
+    cardCreationFee: map.cardCreationFee ?? "2.00",
+    cardInitialLoad: map.cardInitialLoad ?? "3.00",
+    cardMinFund: map.cardMinFund ?? "2.00",
+  };
+}
+
+// GET /api/cards/fees — public endpoint for frontend to show dynamic fee info
+router.get("/fees", async (_req, res) => {
+  try {
+    const settings = await getCardSettings();
+    const creationFee = parseFloat(settings.cardCreationFee);
+    const initialLoad = parseFloat(settings.cardInitialLoad);
+    res.json({
+      cardCreationFee: settings.cardCreationFee,
+      cardInitialLoad: settings.cardInitialLoad,
+      cardMinFund: settings.cardMinFund,
+      totalRequired: (creationFee + initialLoad).toFixed(2),
+    });
+  } catch {
+    res.json({ cardCreationFee: "2.00", cardInitialLoad: "3.00", cardMinFund: "2.00", totalRequired: "5.00" });
+  }
+});
 
 function cleanKey(k: string | undefined): string {
   return (k || "").replace(/\s+/g, "");
@@ -110,8 +144,12 @@ router.post("/create", userAuth, async (req: any, res) => {
 
     const wallet = await getOrCreateWallet(userId);
     const avail = parseFloat(wallet.availableBalance);
-    if (avail < 5) {
-      return res.status(400).json({ error: `Insufficient balance. You need at least $5.00 USDT. You have $${avail.toFixed(2)} USDT.` });
+    const cardFeeSettings = await getCardSettings();
+    const creationFee = parseFloat(cardFeeSettings.cardCreationFee);
+    const initialLoad = parseFloat(cardFeeSettings.cardInitialLoad);
+    const totalRequired = creationFee + initialLoad;
+    if (avail < totalRequired) {
+      return res.status(400).json({ error: `Insufficient balance. You need at least $${totalRequired.toFixed(2)} USDT. You have $${avail.toFixed(2)} USDT.` });
     }
 
     const nameParts = (kyc.fullName ?? "").trim().split(/\s+/);
@@ -124,10 +162,10 @@ router.post("/create", userAuth, async (req: any, res) => {
     console.log("[Card] Step 1 — KYC check passed");
     console.log(`[Card]   user: ${userId}, name: ${fullName}, dob: ${dob}, idType: ${idType}`);
 
-    const newBalance = (avail - 2).toFixed(6);
+    const newBalance = (avail - creationFee).toFixed(6);
     await db.update(walletsTable).set({ availableBalance: newBalance, updatedAt: new Date() }).where(eq(walletsTable.userId, userId));
 
-    console.log("[Card] Step 2 — Balance deducted ($2 fee). New balance:", newBalance);
+    console.log(`[Card] Step 2 — Balance deducted ($${creationFee} fee). New balance:`, newBalance);
 
     if (!process.env.STROWALLET_PUBLIC_KEY) {
       await db.update(walletsTable).set({ availableBalance: avail.toFixed(6), updatedAt: new Date() }).where(eq(walletsTable.userId, userId));
@@ -153,7 +191,7 @@ router.post("/create", userAuth, async (req: any, res) => {
       state: "N/A",
       postal_code: "00000",
       country,
-      amount_usd: "3",
+      amount_usd: String(initialLoad),
       mode: "live",
     };
 
@@ -174,7 +212,7 @@ router.post("/create", userAuth, async (req: any, res) => {
     } catch (fetchErr) {
       console.error("[Card] StroWallet fetch error:", fetchErr);
       await db.update(walletsTable).set({ availableBalance: avail.toFixed(6), updatedAt: new Date() }).where(eq(walletsTable.userId, userId));
-      return res.status(502).json({ error: "Could not reach card service. Your balance has been refunded." });
+      return res.status(502).json({ error: `Could not reach card service. Your $${creationFee.toFixed(2)} fee has been refunded.` });
     }
 
     if (!stroOk) {
@@ -226,7 +264,7 @@ router.post("/create", userAuth, async (req: any, res) => {
       .returning();
 
     // Only record the fee transaction AFTER both StroWallet confirmed AND card is saved to DB
-    await db.insert(transactionsTable).values({ userId, type: "withdraw", amount: "2.00", status: "completed", note: "Card creation fee" });
+    await db.insert(transactionsTable).values({ userId, type: "withdraw", amount: creationFee.toFixed(2), status: "completed", note: "Card creation fee" });
     console.log("[Card] Step — Fee transaction recorded after card saved successfully");
 
     return res.json({ card: saved, message: "Card created successfully" });
@@ -291,7 +329,9 @@ router.get("/my-card", userAuth, async (req: any, res) => {
 router.post("/fund", userAuth, async (req: any, res) => {
   const userId: number = req.userId;
   const amount = parseFloat(req.body?.amount);
-  if (!amount || amount < 2) return res.status(400).json({ error: "Minimum fund amount is $2" });
+  const fundSettings = await getCardSettings();
+  const minFund = parseFloat(fundSettings.cardMinFund);
+  if (!amount || amount < minFund) return res.status(400).json({ error: `Minimum fund amount is $${minFund.toFixed(2)}` });
 
   try {
     const card = await db.query.cardsTable.findFirst({ where: eq(cardsTable.userId, userId) });
