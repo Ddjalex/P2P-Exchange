@@ -452,29 +452,23 @@ router.post("/freeze", userAuth, async (req: any, res) => {
     if (!card) return res.status(404).json({ error: "No card found" });
 
     const isFrozen = card.cardStatus === "inactive" || card.cardStatus === "frozen";
-    const action = isFrozen ? "unfreeze" : "freeze";
+    const newStatus = isFrozen ? "active" : "frozen";
 
     console.log("[Card] Freeze request — user:", userId, "card:", card.cardId);
-    console.log("[Card] Current status:", card.cardStatus);
-    console.log("[Card] Action:", action);
+    console.log("[Card] Current status:", card.cardStatus, "→ new status:", newStatus);
 
-    // Send as form body — StroWallet may require body params, not query string
-    const formData = new URLSearchParams();
-    formData.append("public_key", cleanKey(process.env.STROWALLET_PUBLIC_KEY));
-    formData.append("secret_key", cleanKey(process.env.STROWALLET_SECRET_KEY));
-    formData.append("card_id", card.cardId!);
-    formData.append("action", action);
-    formData.append("mode", "live");
+    const url = new URL("https://strowallet.com/api/bitvcard/nfc-cards/status");
+    url.searchParams.set("public_key", cleanKey(process.env.STROWALLET_PUBLIC_KEY));
+    url.searchParams.set("card_id", card.cardId!);
+    url.searchParams.set("status", newStatus);
+    url.searchParams.set("mode", "live");
 
-    console.log("[Card] Freeze URL: https://strowallet.com/api/bitvcard/freeze-unfreeze-nfccard (keys redacted)");
+    console.log("[Card] Freeze URL:", url.toString().replace(cleanKey(process.env.STROWALLET_PUBLIC_KEY), "***"));
 
     let stroRes: any;
     let httpStatus: number;
     try {
-      const response = await fetch("https://strowallet.com/api/bitvcard/freeze-unfreeze-nfccard", {
-        method: "POST",
-        body: formData,
-      });
+      const response = await fetch(url.toString(), { method: "POST" });
       httpStatus = response.status;
       stroRes = await response.json();
       console.log("[Card] Freeze HTTP status:", httpStatus);
@@ -485,15 +479,15 @@ router.post("/freeze", userAuth, async (req: any, res) => {
     }
 
     if (!stroRes?.success) {
-      const errMsg = stroErrMsg(stroRes, `Card ${action} failed.`);
+      const errMsg = stroRes?.message || `Failed to update card status`;
       console.error("[Card] Freeze rejected by StroWallet:", errMsg);
       return res.status(422).json({ error: errMsg });
     }
 
-    const newStatus = isFrozen ? "active" : "frozen";
     await db.update(cardsTable).set({ cardStatus: newStatus, updatedAt: new Date() }).where(eq(cardsTable.userId, userId));
 
-    return res.json({ message: `Card ${action}d successfully`, cardStatus: newStatus });
+    console.log("[Card] Card status updated to:", newStatus, "for user:", userId);
+    return res.json({ message: newStatus === "frozen" ? "Card frozen successfully" : "Card activated successfully", cardStatus: newStatus });
   } catch (err) {
     console.error("[Card] Freeze error:", err);
     return res.status(500).json({ error: "Internal server error" });
