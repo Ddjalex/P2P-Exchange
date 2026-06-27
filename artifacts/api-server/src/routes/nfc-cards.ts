@@ -557,6 +557,19 @@ router.post("/fund", userAuth, async (req: any, res) => {
   }
 });
 
+// GET /api/cards/my-queue — user's own pending queue items
+router.get("/my-queue", userAuth, async (req: any, res) => {
+  const userId: number = req.userId;
+  try {
+    const items = await db.select().from(cardQueueTable)
+      .where(and(eq(cardQueueTable.userId, userId), eq(cardQueueTable.status, "pending")));
+    res.json({ pending: items });
+  } catch (err) {
+    console.error("[Card] my-queue error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // POST /api/cards/withdraw
 router.post("/withdraw", userAuth, async (req: any, res) => {
   const userId: number = req.userId;

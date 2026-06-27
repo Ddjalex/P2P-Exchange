@@ -224,6 +224,11 @@ export default function CardPage() {
 
   const { data: feesData } = useQuery({ queryKey: ["card-fees"], queryFn: () => apiFetch("/api/cards/fees") });
   const { data: meData } = useQuery({ queryKey: ["me-card"], queryFn: () => apiFetch("/api/auth/me") });
+  const { data: myQueueData, refetch: refetchQueue } = useQuery({
+    queryKey: ["my-card-queue"],
+    queryFn: () => apiFetch("/api/cards/my-queue"),
+    refetchInterval: 60_000,
+  });
 
   // Pre-fill phone from user profile when data loads
   useEffect(() => {
@@ -248,6 +253,7 @@ export default function CardPage() {
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["my-card"] });
     queryClient.invalidateQueries({ queryKey: ["wallet-card"] });
+    queryClient.invalidateQueries({ queryKey: ["my-card-queue"] });
   };
 
   const createMutation = useMutation({
@@ -303,6 +309,7 @@ export default function CardPage() {
   const initialLoad = parseFloat(fees.cardInitialLoad);
   const totalRequired = parseFloat(fees.totalRequired ?? fees.cardCreationFee) + parseFloat(fees.cardInitialLoad ?? "0");
   const minFund = parseFloat(fees.cardMinFund);
+  const pendingQueueItems: any[] = (myQueueData as any)?.pending ?? [];
 
   const kycStatus = meData?.kycStatus;
   const card = (cardData as any)?.card ?? null;
@@ -335,6 +342,34 @@ export default function CardPage() {
         {toast && (
           <div style={{ width: "100%", maxWidth: "380px", marginBottom: "16px", padding: "12px 16px", borderRadius: "12px", background: toast.ok ? "rgba(0,229,255,0.1)" : "rgba(255,68,68,0.15)", border: `1px solid ${toast.ok ? "rgba(0,229,255,0.3)" : "rgba(255,68,68,0.4)"}`, color: toast.ok ? "#00e5ff" : "#ff8888", fontSize: "13px", fontWeight: 500 }}>
             {toast.msg}
+          </div>
+        )}
+
+        {/* Persistent pending queue banner */}
+        {pendingQueueItems.length > 0 && (
+          <div style={{ width: "100%", maxWidth: "380px", marginBottom: "16px", background: "rgba(255,170,0,0.08)", border: "1px solid rgba(255,170,0,0.35)", borderRadius: "14px", padding: "14px 16px" }}>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: "10px" }}>
+              <Clock size={18} color="#ffaa00" style={{ marginTop: "1px", flexShrink: 0 }} />
+              <div style={{ flex: 1 }}>
+                <p style={{ color: "#ffcc44", fontSize: "13px", fontWeight: 700, marginBottom: "4px" }}>
+                  {pendingQueueItems.length === 1 ? "1 Request Pending" : `${pendingQueueItems.length} Requests Pending`}
+                </p>
+                {pendingQueueItems.map((item) => (
+                  <p key={item.id} style={{ color: "#aabbcc", fontSize: "12px", marginBottom: "2px" }}>
+                    • {item.type === "fund" ? `Top-up of $${parseFloat(item.amount ?? "0").toFixed(2)}` : `Card creation ($${parseFloat(item.amount ?? "0").toFixed(2)})`} — queued
+                  </p>
+                ))}
+                <p style={{ color: "#7788aa", fontSize: "11px", marginTop: "6px", lineHeight: 1.4 }}>
+                  Your funds are reserved. We'll process this automatically and send you a push notification when done.
+                </p>
+                <button
+                  onClick={() => refetchQueue()}
+                  style={{ marginTop: "8px", background: "rgba(255,170,0,0.12)", border: "1px solid rgba(255,170,0,0.3)", borderRadius: "8px", padding: "6px 12px", color: "#ffaa00", fontSize: "11px", fontWeight: 600, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "5px" }}
+                >
+                  <RefreshCw size={11} /> Check Status
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
