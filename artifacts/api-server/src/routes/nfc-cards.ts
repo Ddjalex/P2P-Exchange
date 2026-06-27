@@ -339,11 +339,9 @@ router.post("/fund", userAuth, async (req: any, res) => {
 
     const wallet = await getOrCreateWallet(userId);
 
-    console.log("[Card] Fund request — user:", userId, "amount:", amount);
-    console.log("[Card] Wallet from DB:", JSON.stringify(wallet));
-    console.log("[Card] Wallet availableBalance:", wallet.availableBalance, "type:", typeof wallet.availableBalance);
-    console.log("[Card] Amount requested:", amount, "type:", typeof amount);
-    console.log("[Card] Balance check (wallet >= amount):", Number(wallet.availableBalance) >= Number(amount));
+    console.log("[Card] Fund check — user platform balance:", wallet.availableBalance);
+    console.log("[Card] Fund amount requested:", amount);
+    console.log("[Card] Balance sufficient:", Number(wallet.availableBalance) >= amount);
 
     const avail = Number(wallet.availableBalance);
     if (isNaN(avail)) {
@@ -378,9 +376,15 @@ router.post("/fund", userAuth, async (req: any, res) => {
     }
 
     if (!stroRes?.success) {
-      // Refund
+      // Refund the user's platform balance
       await db.update(walletsTable).set({ availableBalance: avail.toFixed(6), updatedAt: new Date() }).where(eq(walletsTable.userId, userId));
-      return res.status(502).json({ error: stroErrMsg(stroRes, "Card funding failed. Amount refunded.") });
+      const rawMsg: string = stroRes?.message ?? stroRes?.error ?? "";
+      console.log("[Card] StroWallet fund rejected:", rawMsg, "| full response:", JSON.stringify(stroRes));
+      // StroWallet "Insufficient USD wallet balance" = merchant account low, not user's fault
+      const userMsg = rawMsg.toLowerCase().includes("insufficient")
+        ? "Card top-up service is temporarily unavailable. Your balance has NOT been deducted. Please try again later or contact support."
+        : rawMsg || "Card top-up failed. Your balance has been refunded.";
+      return res.status(502).json({ error: userMsg });
     }
 
     await db.insert(transactionsTable).values({ userId, type: "withdraw", amount: String(amount), status: "completed", note: "Funded Xendrx card" });
