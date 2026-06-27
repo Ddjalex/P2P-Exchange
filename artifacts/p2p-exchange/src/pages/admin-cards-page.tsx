@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import { AdminLayout, AdminGuard } from "@/components/admin-layout";
 import { adminGet, adminPost, adminPut } from "@/lib/admin-api";
-import { CreditCard, RefreshCw, Search, Link, Settings, AlertTriangle, CheckCircle, DollarSign, ExternalLink } from "lucide-react";
+import { CreditCard, RefreshCw, Search, Link, Settings, AlertTriangle, CheckCircle, DollarSign, ExternalLink, Clock, User, ArrowUpCircle, Plus, Wallet } from "lucide-react";
 
 const QUEUE_STATUS_STYLE: Record<string, string> = {
-  pending:    "bg-warning/20 text-warning",
+  pending:    "bg-amber-500/20 text-amber-400",
   processing: "bg-blue-500/20 text-blue-400",
   completed:  "bg-success/20 text-success",
   failed:     "bg-destructive/20 text-destructive",
@@ -218,162 +218,243 @@ export default function AdminCardsPage() {
             )}
           </div>
 
-          {/* ── StroWallet Deposit Alert Banner ── */}
+          {/* ── Pending Requests Dashboard ── */}
           {(() => {
-            const pendingCount = queue.filter(q => q.status === "pending" || q.status === "processing").length;
+            const pendingItems = queue.filter(q => q.status === "pending" || q.status === "processing");
+            const pendingCount = pendingItems.length;
+            const totalPendingAmount = pendingItems.reduce((s, q) => s + parseFloat(q.amount ?? "0"), 0);
+            const amountShort = Math.max(0, totalPendingAmount - (merchantBalance ?? 0));
             const balLow = merchantBalance !== null && merchantBalance < 10;
-            if (!balLow || pendingCount === 0) return null;
-            return (
-              <div className="bg-destructive/10 border-2 border-destructive/50 rounded-xl p-5">
-                <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-full bg-destructive/20 flex items-center justify-center flex-shrink-0">
-                    <DollarSign className="w-5 h-5 text-destructive" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap mb-1">
-                      <h3 className="font-bold text-destructive text-sm">StroWallet Balance Too Low — {pendingCount} Request{pendingCount !== 1 ? "s" : ""} Waiting</h3>
-                    </div>
-                    <p className="text-xs text-muted-foreground mb-3 leading-relaxed">
-                      Your StroWallet merchant balance is{" "}
-                      <span className="font-bold text-destructive">${merchantBalance?.toFixed(2) ?? "0.00"}</span>,
-                      which is too low to process the {pendingCount} pending card request{pendingCount !== 1 ? "s" : ""}.
-                      Deposit funds to your StroWallet account, then click <strong>"Process Queue Now"</strong> below to fulfill all pending requests and send push notifications to users.
-                    </p>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <a
-                        href="https://strowallet.com/dashboard"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 px-3 py-2 bg-destructive text-white rounded-lg text-xs font-semibold hover:opacity-90 transition-opacity"
-                      >
-                        <ExternalLink className="w-3 h-3" />
-                        Deposit to StroWallet
-                      </a>
-                      <button
-                        onClick={() => { loadMerchantBalance(); loadQueue(); }}
-                        disabled={balanceLoading}
-                        className="inline-flex items-center gap-1.5 px-3 py-2 bg-secondary border border-border rounded-lg text-xs font-medium hover:bg-secondary/80 disabled:opacity-50"
-                      >
-                        <RefreshCw className={`w-3 h-3 ${balanceLoading ? "animate-spin" : ""}`} />
-                        Refresh Balance
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          })()}
+            const hasIssue = balLow && pendingCount > 0;
 
-          {/* ── Pending Queue Panel ── */}
-          {(() => {
-            const pendingCount = queue.filter(q => q.status === "pending" || q.status === "processing").length;
-            const balLow = merchantBalance !== null && merchantBalance < 10;
             return (
-              <div className={`bg-card border rounded-xl p-5 ${pendingCount > 0 ? "border-warning/40" : "border-border"}`}>
-                <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
+              <div className={`bg-card border rounded-xl overflow-hidden ${hasIssue ? "border-amber-500/40" : pendingCount > 0 ? "border-primary/30" : "border-border"}`}>
+
+                {/* Header */}
+                <div className={`px-5 py-4 flex items-center justify-between flex-wrap gap-3 ${hasIssue ? "bg-amber-500/5 border-b border-amber-500/20" : "border-b border-border"}`}>
                   <div className="flex items-center gap-2">
-                    {pendingCount > 0
-                      ? <AlertTriangle className="w-4 h-4 text-warning" />
-                      : <CheckCircle className="w-4 h-4 text-success" />}
-                    <h3 className="font-semibold text-sm text-foreground">
-                      Pending Card Requests
-                      {pendingCount > 0 && (
-                        <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded-full text-xs bg-warning/20 text-warning font-bold">
-                          {pendingCount}
-                        </span>
-                      )}
+                    {hasIssue
+                      ? <AlertTriangle className="w-4 h-4 text-amber-400" />
+                      : pendingCount > 0
+                        ? <Clock className="w-4 h-4 text-primary" />
+                        : <CheckCircle className="w-4 h-4 text-success" />}
+                    <h3 className="font-bold text-sm text-foreground">
+                      Card Request Queue
                     </h3>
-                  </div>
-                  <div className="flex items-center gap-2 text-xs">
-                    <span className="text-muted-foreground">StroWallet Balance:</span>
-                    {balanceLoading ? (
-                      <span className="text-muted-foreground animate-pulse">…</span>
-                    ) : merchantBalance === null ? (
-                      <span className="text-destructive">Error</span>
-                    ) : (
-                      <span className={`font-bold ${balLow ? "text-destructive" : "text-success"}`}>
-                        ${merchantBalance.toFixed(2)}
-                        {balLow && <span className="ml-1 px-1.5 py-0.5 bg-destructive/20 text-destructive rounded-full">⚠️ Low</span>}
+                    {pendingCount > 0 && (
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold ${hasIssue ? "bg-amber-500/20 text-amber-400" : "bg-primary/20 text-primary"}`}>
+                        {pendingCount} pending
                       </span>
                     )}
+                  </div>
+                  <div className="flex items-center gap-2">
                     <button
-                      onClick={loadMerchantBalance}
-                      disabled={balanceLoading}
-                      className="p-1 bg-secondary rounded border border-border hover:bg-secondary/80 disabled:opacity-50"
-                      title="Refresh balance"
+                      onClick={() => { loadQueue(); loadMerchantBalance(); }}
+                      disabled={queueLoading || balanceLoading}
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 bg-secondary border border-border rounded-lg text-xs font-medium hover:bg-secondary/80 disabled:opacity-50"
                     >
-                      <RefreshCw className={`w-3 h-3 ${balanceLoading ? "animate-spin" : ""}`} />
+                      <RefreshCw className={`w-3 h-3 ${(queueLoading || balanceLoading) ? "animate-spin" : ""}`} />
+                      Refresh
+                    </button>
+                    <button
+                      onClick={processQueue}
+                      disabled={processingQueue}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-xs font-semibold disabled:opacity-50 hover:opacity-90 transition-opacity"
+                    >
+                      <RefreshCw className={`w-3 h-3 ${processingQueue ? "animate-spin" : ""}`} />
+                      {processingQueue ? "Processing…" : "Process Queue"}
                     </button>
                   </div>
                 </div>
 
-                {queueLoading ? (
-                  <div className="text-xs text-muted-foreground py-4 text-center">Loading queue…</div>
-                ) : queue.length === 0 ? (
-                  <div className="text-xs text-muted-foreground py-4 text-center">✅ No pending requests</div>
-                ) : (
-                  <div className="overflow-x-auto rounded-lg border border-border mb-4">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="border-b border-border text-muted-foreground">
-                          <th className="text-left px-3 py-2 font-medium">ID</th>
-                          <th className="text-left px-3 py-2 font-medium">User</th>
-                          <th className="text-left px-3 py-2 font-medium">Type</th>
-                          <th className="text-left px-3 py-2 font-medium">Amount</th>
-                          <th className="text-left px-3 py-2 font-medium">Status</th>
-                          <th className="text-left px-3 py-2 font-medium">Tries</th>
-                          <th className="text-left px-3 py-2 font-medium">Error</th>
-                          <th className="text-left px-3 py-2 font-medium">Created</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {queue.map((item) => (
-                          <tr key={item.id} className="border-b border-border last:border-0 hover:bg-secondary/30">
-                            <td className="px-3 py-2 font-mono text-muted-foreground">#{item.id}</td>
-                            <td className="px-3 py-2">
-                              <div className="font-medium">{item.userName ?? `User #${item.userId}`}</div>
-                              <div className="text-muted-foreground">{item.userEmail ?? ""}</div>
-                            </td>
-                            <td className="px-3 py-2 capitalize font-medium">{item.type}</td>
-                            <td className="px-3 py-2 font-mono font-bold">${parseFloat(item.amount ?? "0").toFixed(2)}</td>
-                            <td className="px-3 py-2">
-                              <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium capitalize ${QUEUE_STATUS_STYLE[item.status] ?? "bg-muted text-muted-foreground"}`}>
-                                {item.status}
-                              </span>
-                            </td>
-                            <td className="px-3 py-2 text-muted-foreground">{item.attempts ?? 0}</td>
-                            <td className="px-3 py-2 text-muted-foreground max-w-[160px] truncate" title={item.errorMessage ?? ""}>{item.errorMessage ?? "—"}</td>
-                            <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">{timeAgo(item.createdAt)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                {/* Summary stat tiles */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-0 border-b border-border divide-x divide-border">
+                  {/* StroWallet Balance */}
+                  <div className="px-4 py-4">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <Wallet className="w-3 h-3 text-muted-foreground" />
+                      <span className="text-xs text-muted-foreground">StroWallet Balance</span>
+                    </div>
+                    {balanceLoading ? (
+                      <div className="h-6 w-16 bg-secondary animate-pulse rounded" />
+                    ) : merchantBalance === null ? (
+                      <span className="text-sm font-bold text-destructive">Error</span>
+                    ) : (
+                      <div className="flex items-baseline gap-1.5">
+                        <span className={`text-lg font-bold ${balLow ? "text-destructive" : "text-success"}`}>${merchantBalance.toFixed(2)}</span>
+                        {balLow && <span className="text-xs text-destructive font-medium">⚠ Low</span>}
+                      </div>
+                    )}
+                    <button
+                      onClick={loadMerchantBalance}
+                      disabled={balanceLoading}
+                      className="mt-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50 flex items-center gap-1"
+                    >
+                      <RefreshCw className="w-2.5 h-2.5" /> refresh
+                    </button>
+                  </div>
+
+                  {/* Pending Count */}
+                  <div className="px-4 py-4">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <Clock className="w-3 h-3 text-muted-foreground" />
+                      <span className="text-xs text-muted-foreground">Pending Requests</span>
+                    </div>
+                    <span className={`text-lg font-bold ${pendingCount > 0 ? "text-amber-400" : "text-success"}`}>{pendingCount}</span>
+                    <p className="text-xs text-muted-foreground mt-0.5">{pendingCount === 0 ? "all clear" : `user${pendingCount !== 1 ? "s" : ""} waiting`}</p>
+                  </div>
+
+                  {/* Total Amount Needed */}
+                  <div className="px-4 py-4">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <DollarSign className="w-3 h-3 text-muted-foreground" />
+                      <span className="text-xs text-muted-foreground">Total Requested</span>
+                    </div>
+                    <span className={`text-lg font-bold ${pendingCount > 0 ? "text-foreground" : "text-muted-foreground"}`}>${totalPendingAmount.toFixed(2)}</span>
+                    <p className="text-xs text-muted-foreground mt-0.5">USDT needed</p>
+                  </div>
+
+                  {/* Deposit Needed */}
+                  <div className="px-4 py-4">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <ArrowUpCircle className="w-3 h-3 text-muted-foreground" />
+                      <span className="text-xs text-muted-foreground">Deposit Needed</span>
+                    </div>
+                    {amountShort > 0 ? (
+                      <>
+                        <span className="text-lg font-bold text-destructive">${amountShort.toFixed(2)}</span>
+                        <p className="text-xs text-destructive/70 mt-0.5">more to deposit</p>
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-lg font-bold text-success">$0.00</span>
+                        <p className="text-xs text-muted-foreground mt-0.5">{pendingCount > 0 ? "ready to process" : "no requests"}</p>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {/* Deposit CTA when balance is insufficient */}
+                {hasIssue && amountShort > 0 && (
+                  <div className="mx-5 mt-4 mb-1 flex items-center gap-3 bg-amber-500/8 border border-amber-500/25 rounded-xl p-4">
+                    <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-amber-300 mb-0.5">
+                        Deposit at least <span className="font-mono">${amountShort.toFixed(2)}</span> to StroWallet to process all {pendingCount} waiting request{pendingCount !== 1 ? "s" : ""}
+                      </p>
+                      <p className="text-xs text-muted-foreground">After depositing, click "Process Queue" — users will get a push notification instantly.</p>
+                    </div>
+                    <a
+                      href="https://strowallet.com/dashboard"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-2 bg-amber-500 text-black rounded-lg text-xs font-bold hover:bg-amber-400 transition-colors"
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                      Deposit Now
+                    </a>
                   </div>
                 )}
 
+                {/* Queue feedback message */}
                 {queueMsg && (
-                  <div className={`text-xs px-3 py-2 rounded-lg mb-3 ${queueMsg.ok ? "bg-success/10 text-success border border-success/20" : "bg-destructive/10 text-destructive border border-destructive/20"}`}>
+                  <div className={`mx-5 mt-3 text-xs px-3 py-2 rounded-lg ${queueMsg.ok ? "bg-success/10 text-success border border-success/20" : "bg-destructive/10 text-destructive border border-destructive/20"}`}>
                     {queueMsg.text}
                   </div>
                 )}
 
-                <div className="flex gap-2 flex-wrap">
-                  <button
-                    onClick={processQueue}
-                    disabled={processingQueue}
-                    className="flex items-center gap-1.5 px-3 py-2 bg-primary text-primary-foreground rounded-lg text-xs font-semibold disabled:opacity-50 hover:opacity-90 transition-opacity"
-                  >
-                    <RefreshCw className={`w-3 h-3 ${processingQueue ? "animate-spin" : ""}`} />
-                    {processingQueue ? "Processing…" : "🔄 Process Queue Now"}
-                  </button>
-                  <button
-                    onClick={() => { loadQueue(); loadMerchantBalance(); }}
-                    disabled={queueLoading}
-                    className="flex items-center gap-1.5 px-3 py-2 bg-secondary border border-border rounded-lg text-xs font-medium hover:bg-secondary/80 disabled:opacity-50"
-                  >
-                    <RefreshCw className={`w-3 h-3 ${queueLoading ? "animate-spin" : ""}`} />
-                    Refresh
-                  </button>
+                {/* Pending items — rich user cards */}
+                <div className="p-5 space-y-3">
+                  {queueLoading ? (
+                    <div className="py-6 text-center text-xs text-muted-foreground animate-pulse">Loading requests…</div>
+                  ) : queue.length === 0 ? (
+                    <div className="py-6 text-center">
+                      <CheckCircle className="w-8 h-8 text-success mx-auto mb-2 opacity-60" />
+                      <p className="text-sm text-muted-foreground">No card requests in the queue</p>
+                    </div>
+                  ) : (
+                    <>
+                      {/* Section labels */}
+                      {pendingItems.length > 0 && (
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">⏳ Pending ({pendingItems.length})</p>
+                      )}
+
+                      {/* Pending first */}
+                      {queue
+                        .slice()
+                        .sort((a, b) => {
+                          const order: Record<string, number> = { pending: 0, processing: 1, completed: 2, failed: 3 };
+                          return (order[a.status] ?? 4) - (order[b.status] ?? 4);
+                        })
+                        .map((item, idx, arr) => {
+                          const prevStatus = idx > 0 ? arr[idx - 1].status : item.status;
+                          const showCompletedLabel = (item.status === "completed" || item.status === "failed") && prevStatus !== item.status && (idx === 0 || arr[idx - 1].status === "pending" || arr[idx - 1].status === "processing");
+                          const displayName = item.userDisplayName || item.userName || `User #${item.userId}`;
+                          const initials = displayName.split(" ").slice(0, 2).map((w: string) => w[0]).join("").toUpperCase() || "U";
+                          const isPending = item.status === "pending" || item.status === "processing";
+                          const isFund = item.type === "fund";
+
+                          return (
+                            <div key={item.id}>
+                              {showCompletedLabel && (
+                                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 mt-4">✅ Completed / Failed</p>
+                              )}
+                              <div className={`rounded-xl border p-4 ${isPending ? "bg-amber-500/5 border-amber-500/25" : item.status === "completed" ? "bg-success/5 border-success/20" : "bg-destructive/5 border-destructive/20"}`}>
+                                <div className="flex items-start gap-3">
+                                  {/* Avatar */}
+                                  <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${isPending ? "bg-amber-500/20 text-amber-300" : item.status === "completed" ? "bg-success/20 text-success" : "bg-destructive/20 text-destructive"}`}>
+                                    {initials}
+                                  </div>
+
+                                  {/* User info */}
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                                      <span className="font-semibold text-sm text-foreground truncate">{displayName}</span>
+                                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${QUEUE_STATUS_STYLE[item.status] ?? "bg-muted text-muted-foreground"}`}>
+                                        {item.status === "pending" && <Clock className="w-2.5 h-2.5" />}
+                                        {item.status === "completed" && <CheckCircle className="w-2.5 h-2.5" />}
+                                        {item.status}
+                                      </span>
+                                    </div>
+                                    <div className="flex flex-wrap gap-x-3 gap-y-0.5 mb-2">
+                                      {item.userEmail && <span className="text-xs text-muted-foreground">{item.userEmail}</span>}
+                                      {item.userPhone && <span className="text-xs text-muted-foreground">{item.userPhone}</span>}
+                                      <span className="text-xs text-muted-foreground">ID #{item.userId}</span>
+                                    </div>
+
+                                    {/* Request details row */}
+                                    <div className="flex items-center gap-3 flex-wrap">
+                                      <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold ${isFund ? "bg-blue-500/15 text-blue-400" : "bg-purple-500/15 text-purple-400"}`}>
+                                        {isFund ? <ArrowUpCircle className="w-3 h-3" /> : <Plus className="w-3 h-3" />}
+                                        {isFund ? "Card Top-Up" : "Card Creation"}
+                                      </div>
+                                      <div className="flex items-center gap-1">
+                                        <DollarSign className="w-3.5 h-3.5 text-muted-foreground" />
+                                        <span className="font-mono font-bold text-sm text-foreground">${parseFloat(item.amount ?? "0").toFixed(2)}</span>
+                                        <span className="text-xs text-muted-foreground">USDT</span>
+                                      </div>
+                                      <span className="text-xs text-muted-foreground">{timeAgo(item.createdAt)}</span>
+                                      {(item.attempts ?? 0) > 0 && (
+                                        <span className="text-xs text-muted-foreground">{item.attempts} attempt{item.attempts !== 1 ? "s" : ""}</span>
+                                      )}
+                                    </div>
+
+                                    {item.errorMessage && (
+                                      <p className="mt-2 text-xs text-muted-foreground bg-secondary/50 rounded-lg px-2.5 py-1.5 border border-border" title={item.errorMessage}>
+                                        ⚠ {item.errorMessage.length > 120 ? item.errorMessage.slice(0, 120) + "…" : item.errorMessage}
+                                      </p>
+                                    )}
+                                  </div>
+
+                                  {/* Queue ID */}
+                                  <span className="text-xs text-muted-foreground font-mono flex-shrink-0">#{item.id}</span>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </>
+                  )}
                 </div>
               </div>
             );

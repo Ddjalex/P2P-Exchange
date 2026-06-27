@@ -2147,8 +2147,10 @@ router.get("/cards/queue", adminAuth, async (req, res) => {
         attempts: cardQueueTable.attempts,
         createdAt: cardQueueTable.createdAt,
         updatedAt: cardQueueTable.updatedAt,
-        userName: usersTable.name,
+        userName: usersTable.username,
+        userDisplayName: usersTable.name,
         userEmail: usersTable.email,
+        userPhone: usersTable.phone,
       })
       .from(cardQueueTable)
       .leftJoin(usersTable, eqOp(usersTable.id, cardQueueTable.userId))
