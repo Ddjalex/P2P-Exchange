@@ -125,7 +125,6 @@ router.post("/create", userAuth, async (req: any, res) => {
 
     const newBalance = (avail - 2).toFixed(6);
     await db.update(walletsTable).set({ availableBalance: newBalance, updatedAt: new Date() }).where(eq(walletsTable.userId, userId));
-    await db.insert(transactionsTable).values({ userId, type: "withdraw", amount: "2.00", status: "completed", note: "Card creation fee" });
 
     console.log("[Card] Step 2 — Balance deducted ($2 fee). New balance:", newBalance);
 
@@ -225,6 +224,10 @@ router.post("/create", userAuth, async (req: any, res) => {
       .values({ userId, cardId, cardUserId, customerId, nameOnCard, cardStatus, cardNumber, last4, cvv, expiry, balance: cardBalance })
       .returning();
 
+    // Only record the fee transaction AFTER both StroWallet confirmed AND card is saved to DB
+    await db.insert(transactionsTable).values({ userId, type: "withdraw", amount: "2.00", status: "completed", note: "Card creation fee" });
+    console.log("[Card] Step — Fee transaction recorded after card saved successfully");
+
     return res.json({ card: saved, message: "Card created successfully" });
   } catch (err) {
     console.error("[Card] Create error:", err);
@@ -287,7 +290,7 @@ router.get("/my-card", userAuth, async (req: any, res) => {
 router.post("/fund", userAuth, async (req: any, res) => {
   const userId: number = req.userId;
   const amount = parseFloat(req.body?.amount);
-  if (!amount || amount < 1) return res.status(400).json({ error: "Minimum fund amount is $1" });
+  if (!amount || amount < 2) return res.status(400).json({ error: "Minimum fund amount is $2" });
 
   try {
     const card = await db.query.cardsTable.findFirst({ where: eq(cardsTable.userId, userId) });

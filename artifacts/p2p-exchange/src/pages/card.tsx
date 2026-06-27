@@ -509,15 +509,19 @@ export default function CardPage() {
           </div>
           <input
             type="number" value={amount} onChange={(e) => setAmount(e.target.value)}
-            placeholder="Amount (minimum $1)" min="1"
-            style={{ width: "100%", padding: "12px 16px", background: "rgba(0,229,255,0.05)", border: "1px solid rgba(0,229,255,0.2)", borderRadius: "12px", color: "#fff", fontSize: "15px", marginBottom: "16px", boxSizing: "border-box", fontFamily: "Poppins, sans-serif", outline: "none" }}
+            placeholder="Amount (minimum $2)" min="2"
+            style={{ width: "100%", padding: "12px 16px", background: "rgba(0,229,255,0.05)", border: "1px solid rgba(0,229,255,0.2)", borderRadius: "12px", color: "#fff", fontSize: "15px", marginBottom: "6px", boxSizing: "border-box", fontFamily: "Poppins, sans-serif", outline: "none" }}
           />
+          <p style={{ color: "#8899aa", fontSize: "11px", marginBottom: "10px" }}>Minimum: $2.00</p>
+          {amount && parseFloat(amount) > 0 && parseFloat(amount) < 2 && (
+            <p style={{ color: "#ff8888", fontSize: "12px", marginBottom: "10px" }}>Minimum fund amount is $2</p>
+          )}
           {!walletLoading && amount && parseFloat(amount) > walletBalance && (
             <p style={{ color: "#ff8888", fontSize: "12px", marginBottom: "10px" }}>Insufficient wallet balance — you have ${walletBalance.toFixed(2)} USDT</p>
           )}
           <div style={{ display: "flex", gap: "10px" }}>
             <Btn variant="secondary" onClick={() => setModal(null)}>Cancel</Btn>
-            <Btn onClick={() => fundMutation.mutate(parseFloat(amount))} disabled={mutBusy || walletLoading || !amount || parseFloat(amount) < 1 || (!walletLoading && parseFloat(amount) > walletBalance)}>
+            <Btn onClick={() => fundMutation.mutate(parseFloat(amount))} disabled={mutBusy || walletLoading || !amount || parseFloat(amount) < 2 || (!walletLoading && parseFloat(amount) > walletBalance)}>
               {fundMutation.isPending ? "Funding…" : "Fund Card"}
             </Btn>
           </div>
