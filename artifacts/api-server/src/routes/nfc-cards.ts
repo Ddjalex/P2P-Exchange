@@ -457,11 +457,9 @@ router.post("/freeze", userAuth, async (req: any, res) => {
     console.log("[Card] Freeze request — user:", userId, "card:", card.cardId);
     console.log("[Card] Current status:", card.cardStatus, "→ new status:", newStatus);
 
-    const url = new URL("https://strowallet.com/api/bitvcard/nfc-cards/status");
-    url.searchParams.set("public_key", cleanKey(process.env.STROWALLET_PUBLIC_KEY));
+    const url = stroBaseUrl("nfc-cards/status");
     url.searchParams.set("card_id", card.cardId!);
     url.searchParams.set("status", newStatus);
-    url.searchParams.set("mode", "live");
 
     console.log("[Card] Freeze URL:", url.toString().replace(cleanKey(process.env.STROWALLET_PUBLIC_KEY), "***"));
 
