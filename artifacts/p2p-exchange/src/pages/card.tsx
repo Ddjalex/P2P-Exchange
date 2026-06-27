@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AppLayout } from "@/components/layout";
@@ -211,6 +211,11 @@ export default function CardPage() {
   const [terminatePassword, setTerminatePassword] = useState("");
   const [terminateError, setTerminateError] = useState("");
   const [country, setCountry] = useState("ETH");
+  const [line1, setLine1] = useState("");
+  const [addrCity, setAddrCity] = useState("");
+  const [addrState, setAddrState] = useState("");
+  const [postalCode, setPostalCode] = useState("");
+  const [phone, setPhone] = useState("");
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
 
   const showToast = (msg: string, ok = true) => {
@@ -220,6 +225,12 @@ export default function CardPage() {
 
   const { data: feesData } = useQuery({ queryKey: ["card-fees"], queryFn: () => apiFetch("/api/cards/fees") });
   const { data: meData } = useQuery({ queryKey: ["me-card"], queryFn: () => apiFetch("/api/auth/me") });
+
+  // Pre-fill phone from user profile when data loads
+  useEffect(() => {
+    const p = (meData as any)?.phone ?? "";
+    if (p && !phone) setPhone(p);
+  }, [meData]);
   const { data: cardData, refetch: refetchCard, isFetching: cardFetching, isLoading: cardLoading } = useQuery({
     queryKey: ["my-card"],
     queryFn: () => apiFetch("/api/cards/my-card"),
@@ -241,7 +252,7 @@ export default function CardPage() {
   };
 
   const createMutation = useMutation({
-    mutationFn: () => apiFetch("/api/cards/create", { method: "POST", body: JSON.stringify({ country }) }),
+    mutationFn: () => apiFetch("/api/cards/create", { method: "POST", body: JSON.stringify({ country, line1, city: addrCity, state: addrState || addrCity, postal_code: postalCode, phone }) }),
     onSuccess: (d: any) => {
       invalidate();
       setModal(null);
@@ -507,12 +518,20 @@ export default function CardPage() {
                     : card.billingCountry === "NGA" ? "Nigeria (NGA)"
                     : card.billingCountry === "GHA" ? "Ghana (GHA)"
                     : card.billingCountry === "KEN" ? "Kenya (KEN)"
-                    : card.billingCountry ?? "ETH"
+                    : card.billingCountry === "TZA" ? "Tanzania (TZA)"
+                    : card.billingCountry === "UGA" ? "Uganda (UGA)"
+                    : card.billingCountry === "ZAF" ? "South Africa (ZAF)"
+                    : card.billingCountry === "USA" ? "United States (USA)"
+                    : card.billingCountry === "GBR" ? "United Kingdom (GBR)"
+                    : card.billingCountry ?? "Ethiopia (ETH)"
                   } />
+                  {(meData as any)?.phone && (
+                    <InfoRow label="Phone" value={(meData as any).phone} />
+                  )}
                 </div>
                 <div style={{ background: "rgba(255,170,0,0.06)", border: "1px solid rgba(255,170,0,0.2)", borderRadius: "10px", padding: "12px 14px", marginBottom: "4px" }}>
                   <p style={{ color: "#ffaa66", fontSize: "12px", lineHeight: 1.6, margin: 0 }}>
-                    💡 Use this billing address when making online purchases that ask for billing information.
+                    💡 Use this billing address and phone number when making online purchases that ask for billing information.
                   </p>
                 </div>
                 <DangerZone card={card} onTerminate={() => setModal("terminate")} />
@@ -564,17 +583,38 @@ export default function CardPage() {
               </div>
             ))}
           </div>
-          <div style={{ marginBottom: "20px" }}>
-            <label style={{ color: "#8899aa", fontSize: "12px", display: "block", marginBottom: "6px" }}>🌍 Your Country</label>
+          <div style={{ marginBottom: "16px" }}>
+            <label style={{ color: "#8899aa", fontSize: "12px", display: "block", marginBottom: "6px" }}>🌍 Country</label>
             <select value={country} onChange={(e) => setCountry(e.target.value)} style={{ width: "100%", padding: "11px 14px", background: "#0d1428", border: "1px solid rgba(0,229,255,0.25)", borderRadius: "10px", color: "#fff", fontSize: "14px", fontFamily: "Poppins, sans-serif", outline: "none", cursor: "pointer" }}>
               {[["ETH","🇪🇹 Ethiopia"],["NGA","🇳🇬 Nigeria"],["GHA","🇬🇭 Ghana"],["KEN","🇰🇪 Kenya"],["TZA","🇹🇿 Tanzania"],["UGA","🇺🇬 Uganda"],["ZAF","🇿🇦 South Africa"],["EGY","🇪🇬 Egypt"],["MAR","🇲🇦 Morocco"],["USA","🇺🇸 United States"],["GBR","🇬🇧 United Kingdom"],["CAN","🇨🇦 Canada"],["DEU","🇩🇪 Germany"],["FRA","🇫🇷 France"],["IND","🇮🇳 India"]].map(([code, label]) => (
                 <option key={code} value={code}>{label}</option>
               ))}
             </select>
           </div>
+          <div style={{ marginBottom: "16px" }}>
+            <p style={{ color: "#00e5ff", fontSize: "12px", fontWeight: 700, letterSpacing: "0.5px", marginBottom: "10px" }}>📍 BILLING ADDRESS</p>
+            <p style={{ color: "#8899aa", fontSize: "11px", marginBottom: "12px", lineHeight: 1.5 }}>Used for online purchases — enter a real, valid address.</p>
+            {[
+              { label: "Street Address *", val: line1, set: setLine1, ph: "e.g. Bole Road, Addis Ababa" },
+              { label: "City *", val: addrCity, set: setAddrCity, ph: "e.g. Addis Ababa" },
+              { label: "State / Region", val: addrState, set: setAddrState, ph: "e.g. Addis Ababa" },
+              { label: "Postal Code *", val: postalCode, set: setPostalCode, ph: "e.g. 1000" },
+              { label: "Phone Number *", val: phone, set: setPhone, ph: "e.g. +251974408281" },
+            ].map(({ label, val, set, ph }) => (
+              <div key={label} style={{ marginBottom: "8px" }}>
+                <label style={{ color: "#8899aa", fontSize: "11px", display: "block", marginBottom: "4px" }}>{label}</label>
+                <input
+                  value={val}
+                  onChange={(e) => set(e.target.value)}
+                  placeholder={ph}
+                  style={{ width: "100%", padding: "10px 12px", background: "#0d1428", border: `1px solid ${val ? "rgba(0,229,255,0.3)" : "rgba(255,255,255,0.1)"}`, borderRadius: "10px", color: "#fff", fontSize: "13px", fontFamily: "Poppins, sans-serif", outline: "none", boxSizing: "border-box" }}
+                />
+              </div>
+            ))}
+          </div>
           <div style={{ display: "flex", gap: "10px" }}>
             <Btn variant="secondary" onClick={() => setModal(null)}>Cancel</Btn>
-            <Btn onClick={() => createMutation.mutate()} disabled={mutBusy}>{createMutation.isPending ? "Creating…" : "Confirm"}</Btn>
+            <Btn onClick={() => createMutation.mutate()} disabled={mutBusy || !line1.trim() || !addrCity.trim() || !postalCode.trim() || !phone.trim()}>{createMutation.isPending ? "Creating…" : "Confirm"}</Btn>
           </div>
         </Modal>
       )}

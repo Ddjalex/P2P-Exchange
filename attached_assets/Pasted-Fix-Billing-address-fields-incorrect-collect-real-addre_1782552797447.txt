@@ -1,0 +1,146 @@
+Fix: Billing address fields incorrect — collect real address during card creation
+According to StroWallet API docs, card creation requires these billing address fields:
+
+line1 — street address
+city — city
+state — state/region
+postal_code — postal/zip code
+country — 3-letter ISO code (e.g. ETH for Ethiopia)
+phone — in local country format
+
+Current problem:
+
+All address fields are set to N/A and 00000 — wrong!
+StroWallet accepted these but they are incorrect billing details
+When user uses card for online purchases, billing address must match
+
+
+Fix 1 — Add address collection form during card creation:
+In card.tsx card creation confirmation screen, add address fields:
+tsx// After showing KYC name and fee breakdown:
+// Add address collection form:
+
+<div className="address-form">
+  <h3>📍 Billing Address</h3>
+  <p className="hint">This address will be used for online purchases. Enter a valid address.</p>
+  
+  <input 
+    placeholder="Street Address *" 
+    value={line1} 
+    onChange={e => setLine1(e.target.value)}
+    required
+  />
+  <input 
+    placeholder="City *" 
+    value={city} 
+    onChange={e => setCity(e.target.value)}
+    required
+  />
+  <input 
+    placeholder="State / Region *" 
+    value={state} 
+    onChange={e => setState(e.target.value)}
+    required
+  />
+  <input 
+    placeholder="Postal Code *" 
+    value={postalCode} 
+    onChange={e => setPostalCode(e.target.value)}
+    required
+  />
+  <input 
+    placeholder="Phone Number *" 
+    value={phone} 
+    onChange={e => setPhone(e.target.value)}
+    defaultValue={userPhone} // pre-fill from user profile
+    required
+  />
+  {/* Country already selected from dropdown */}
+</div>
+Fix 2 — Send real address to backend:
+Update POST /api/cards/create request body:
+typescript// Frontend sends:
+{
+  country: "ETH",
+  line1: "Bole Road, Addis Ababa",
+  city: "Addis Ababa", 
+  state: "Addis Ababa",
+  postal_code: "1000",
+  phone: "+251974408281"
+}
+Fix 3 — Backend uses real address fields:
+In POST /api/cards/create:
+typescript// Read from request body:
+const { country, line1, city, state, postal_code, phone } = req.body;
+
+// Validate required fields:
+if (!line1 || line1 === 'N/A') {
+  return res.status(400).json({ 
+    success: false, 
+    message: 'Street address is required for card creation' 
+  });
+}
+if (!city || city === 'N/A') {
+  return res.status(400).json({ 
+    success: false, 
+    message: 'City is required for card creation' 
+  });
+}
+if (!postal_code || postal_code === '00000') {
+  return res.status(400).json({ 
+    success: false, 
+    message: 'Postal code is required for card creation' 
+  });
+}
+
+// Send to StroWallet:
+params.set('line1', line1);
+params.set('city', city);
+params.set('state', state || city); // use city as state if not provided
+params.set('postal_code', postal_code);
+params.set('country', country || 'ETH');
+params.set('phone', phone || user.phone);
+
+console.log('[Card] Billing address:', { line1, city, state, postal_code, country });
+Fix 4 — Save billing address to database:
+typescript// After successful card creation:
+await db.update(cards)
+  .set({
+    billingLine1: line1,
+    billingCity: city,
+    billingState: state || city,
+    billingPostal: postal_code,
+    billingCountry: country || 'ETH',
+  })
+  .where(eq(cards.userId, userId));
+Fix 5 — Update existing card billing address:
+For the existing card (user 3), update the billing address in database:
+sqlUPDATE cards 
+SET 
+  billing_line1 = 'Bole Road, Addis Ababa',
+  billing_city = 'Addis Ababa',
+  billing_state = 'Addis Ababa',
+  billing_postal = '1000',
+  billing_country = 'ETH'
+WHERE card_id = '019f0416-81ca-7b1f-b9cc-75f0af483861';
+Fix 6 — Show correct billing address on card page:
+In the Billing Address tab:
+🏠 BILLING ADDRESS
+─────────────────────────────────
+Name:         Almeseged Wondimu
+Address:      Bole Road, Addis Ababa
+City:         Addis Ababa
+State:        Addis Ababa
+Postal Code:  1000
+Country:      Ethiopia (ETH)
+Phone:        +251974408281
+─────────────────────────────────
+💡 Use this address when making online purchases
+Fix 7 — Phone number from user profile:
+In card creation, pre-fill phone from user's profile:
+typescript// In frontend — fetch user phone and pre-fill:
+const userPhone = userData?.phone || '';
+
+// In backend — use user phone if not provided:
+const cardPhone = phone || user.phone || '';
+params.set('phone', cardPhone);

@@ -176,6 +176,16 @@ router.post("/create", userAuth, async (req: any, res) => {
     }
 
     const country = (req.body?.country ?? process.env.STROWALLET_COUNTRY ?? "ETH").replace(/\s+/g, "");
+    const reqLine1 = (req.body?.line1 ?? "").trim();
+    const reqCity  = (req.body?.city  ?? "").trim();
+    const reqPostal = (req.body?.postal_code ?? "").trim();
+    const reqPhone  = (req.body?.phone ?? "").trim();
+
+    if (!reqLine1 || reqLine1 === "N/A") return res.status(400).json({ error: "Street address is required for card creation." });
+    if (!reqCity  || reqCity  === "N/A") return res.status(400).json({ error: "City is required for card creation." });
+    if (!reqPostal || reqPostal === "00000") return res.status(400).json({ error: "Postal code is required for card creation." });
+    if (!reqPhone) return res.status(400).json({ error: "Phone number is required for card creation." });
+
     const createUrl = stroBaseUrl("create-nfc-card");
 
     const body = {
