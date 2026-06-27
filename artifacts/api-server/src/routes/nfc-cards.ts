@@ -175,16 +175,13 @@ router.post("/create", userAuth, async (req: any, res) => {
       return res.status(503).json({ error: "Card service not configured. Please contact support." });
     }
 
-    const country = (req.body?.country ?? process.env.STROWALLET_COUNTRY ?? "ETH").replace(/\s+/g, "");
-    const reqLine1 = (req.body?.line1 ?? "").trim();
-    const reqCity  = (req.body?.city  ?? "").trim();
-    const reqPostal = (req.body?.postal_code ?? "").trim();
-    const reqPhone  = (req.body?.phone ?? "").trim();
-
-    if (!reqLine1 || reqLine1 === "N/A") return res.status(400).json({ error: "Street address is required for card creation." });
-    if (!reqCity  || reqCity  === "N/A") return res.status(400).json({ error: "City is required for card creation." });
-    if (!reqPostal || reqPostal === "00000") return res.status(400).json({ error: "Postal code is required for card creation." });
-    if (!reqPhone) return res.status(400).json({ error: "Phone number is required for card creation." });
+    // Fixed billing address used for all cards (StroWallet-registered US address)
+    const FIXED_LINE1    = "3401 N. Miami, Ave. Ste 230";
+    const FIXED_CITY     = "Miami";
+    const FIXED_STATE    = "Florida";
+    const FIXED_POSTAL   = "33127";
+    const FIXED_COUNTRY  = "USA";
+    const reqPhone = (req.body?.phone ?? user.phone ?? "").trim();
 
     const createUrl = stroBaseUrl("create-nfc-card");
 
@@ -198,12 +195,12 @@ router.post("/create", userAuth, async (req: any, res) => {
       id_type: idType,
       id_number: `ETH${String(userId).padStart(8, "0")}`,
       email: user.email,
-      phone: user.phone ?? "0900000000",
-      line1: req.body?.line1 ?? "Bole Road",
-      city: req.body?.city ?? "Addis Ababa",
-      state: req.body?.state ?? "Addis Ababa",
-      postal_code: req.body?.postal_code ?? "1000",
-      country,
+      phone: user.phone ?? reqPhone ?? "0900000000",
+      line1: FIXED_LINE1,
+      city: FIXED_CITY,
+      state: FIXED_STATE,
+      postal_code: FIXED_POSTAL,
+      country: FIXED_COUNTRY,
       amount_usd: String(initialLoad),
       mode: "live",
     };
@@ -289,12 +286,12 @@ router.post("/create", userAuth, async (req: any, res) => {
     const cardCreatedDate: string | null = pick(d1?.card_created_date, d0?.card_created_date, new Date().toISOString());
     const customerEmailFromStro: string | null = pick(d1?.customer_email, d0?.customer_email, user.email);
 
-    // Billing address from request body (sent during creation) or Ethiopian defaults
-    const billingLine1 = (body as any).line1 ?? req.body?.line1 ?? "Bole Road";
-    const billingCity = (body as any).city ?? req.body?.city ?? "Addis Ababa";
-    const billingState = (body as any).state ?? req.body?.state ?? "Addis Ababa";
-    const billingPostal = (body as any).postal_code ?? req.body?.postal_code ?? "1000";
-    const billingCountry = (body as any).country ?? req.body?.country ?? "ETH";
+    // Fixed billing address for all cards
+    const billingLine1 = FIXED_LINE1;
+    const billingCity = FIXED_CITY;
+    const billingState = FIXED_STATE;
+    const billingPostal = FIXED_POSTAL;
+    const billingCountry = FIXED_COUNTRY;
 
     console.log("[Card] Billing address:", billingLine1, billingCity, billingCountry);
 

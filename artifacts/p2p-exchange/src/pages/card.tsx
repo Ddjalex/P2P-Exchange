@@ -607,38 +607,27 @@ export default function CardPage() {
               </div>
             ))}
           </div>
-          <div style={{ marginBottom: "16px" }}>
-            <label style={{ color: "#8899aa", fontSize: "12px", display: "block", marginBottom: "6px" }}>🌍 Country</label>
-            <select value={country} onChange={(e) => setCountry(e.target.value)} style={{ width: "100%", padding: "11px 14px", background: "#0d1428", border: "1px solid rgba(0,229,255,0.25)", borderRadius: "10px", color: "#fff", fontSize: "14px", fontFamily: "Poppins, sans-serif", outline: "none", cursor: "pointer" }}>
-              {[["ETH","🇪🇹 Ethiopia"],["NGA","🇳🇬 Nigeria"],["GHA","🇬🇭 Ghana"],["KEN","🇰🇪 Kenya"],["TZA","🇹🇿 Tanzania"],["UGA","🇺🇬 Uganda"],["ZAF","🇿🇦 South Africa"],["EGY","🇪🇬 Egypt"],["MAR","🇲🇦 Morocco"],["USA","🇺🇸 United States"],["GBR","🇬🇧 United Kingdom"],["CAN","🇨🇦 Canada"],["DEU","🇩🇪 Germany"],["FRA","🇫🇷 France"],["IND","🇮🇳 India"]].map(([code, label]) => (
-                <option key={code} value={code}>{label}</option>
-              ))}
-            </select>
-          </div>
-          <div style={{ marginBottom: "16px" }}>
-            <p style={{ color: "#00e5ff", fontSize: "12px", fontWeight: 700, letterSpacing: "0.5px", marginBottom: "10px" }}>📍 BILLING ADDRESS</p>
-            <p style={{ color: "#8899aa", fontSize: "11px", marginBottom: "12px", lineHeight: 1.5 }}>Used for online purchases — enter a real, valid address.</p>
+          <div style={{ background: "rgba(0,229,255,0.05)", border: "1px solid rgba(0,229,255,0.15)", borderRadius: "10px", padding: "12px 14px", marginBottom: "16px" }}>
+            <p style={{ color: "#00e5ff", fontSize: "11px", fontWeight: 700, letterSpacing: "1px", marginBottom: "8px" }}>📍 BILLING ADDRESS</p>
             {[
-              { label: "Street Address *", val: line1, set: setLine1, ph: "e.g. Bole Road, Addis Ababa" },
-              { label: "City *", val: addrCity, set: setAddrCity, ph: "e.g. Addis Ababa" },
-              { label: "State / Region", val: addrState, set: setAddrState, ph: "e.g. Addis Ababa" },
-              { label: "Postal Code *", val: postalCode, set: setPostalCode, ph: "e.g. 1000" },
-              { label: "Phone Number *", val: phone, set: setPhone, ph: "e.g. +251974408281" },
-            ].map(({ label, val, set, ph }) => (
-              <div key={label} style={{ marginBottom: "8px" }}>
-                <label style={{ color: "#8899aa", fontSize: "11px", display: "block", marginBottom: "4px" }}>{label}</label>
-                <input
-                  value={val}
-                  onChange={(e) => set(e.target.value)}
-                  placeholder={ph}
-                  style={{ width: "100%", padding: "10px 12px", background: "#0d1428", border: `1px solid ${val ? "rgba(0,229,255,0.3)" : "rgba(255,255,255,0.1)"}`, borderRadius: "10px", color: "#fff", fontSize: "13px", fontFamily: "Poppins, sans-serif", outline: "none", boxSizing: "border-box" }}
-                />
+              ["Address", "3401 N. Miami, Ave. Ste 230"],
+              ["City", "Miami"],
+              ["State", "Florida"],
+              ["Postal Code", "33127"],
+              ["Country", "United States"],
+            ].map(([label, value]) => (
+              <div key={label} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: "1px solid rgba(0,229,255,0.06)" }}>
+                <span style={{ color: "#6677aa", fontSize: "12px" }}>{label}</span>
+                <span style={{ color: "#dde", fontSize: "12px", fontWeight: 600 }}>{value}</span>
               </div>
             ))}
+            <p style={{ color: "#8899aa", fontSize: "11px", marginTop: "8px", lineHeight: 1.5 }}>
+              This billing address is automatically assigned to your card.
+            </p>
           </div>
           <div style={{ display: "flex", gap: "10px" }}>
             <Btn variant="secondary" onClick={() => setModal(null)}>Cancel</Btn>
-            <Btn onClick={() => createMutation.mutate()} disabled={mutBusy || !line1.trim() || !addrCity.trim() || !postalCode.trim() || !phone.trim()}>{createMutation.isPending ? "Creating…" : "Confirm"}</Btn>
+            <Btn onClick={() => createMutation.mutate()} disabled={mutBusy}>{createMutation.isPending ? "Creating…" : "Confirm"}</Btn>
           </div>
         </Modal>
       )}
