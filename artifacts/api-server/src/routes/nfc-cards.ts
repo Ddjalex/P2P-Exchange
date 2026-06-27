@@ -456,21 +456,54 @@ router.post("/freeze", userAuth, async (req: any, res) => {
 
     console.log("[Card] Freeze request — user:", userId, "card:", card.cardId);
     console.log("[Card] Current status:", card.cardStatus, "→ new status:", newStatus);
-
-    const url = stroBaseUrl("nfc-cards/status");
-    url.searchParams.set("card_id", card.cardId!);
-    url.searchParams.set("status", newStatus);
-
-    console.log("[Card] Freeze URL:", url.toString().replace(cleanKey(process.env.STROWALLET_PUBLIC_KEY), "***"));
+    console.log("[Card] STROWALLET_PUBLIC_KEY loaded:", !!process.env.STROWALLET_PUBLIC_KEY);
+    console.log("[Card] Key first 8 chars:", cleanKey(process.env.STROWALLET_PUBLIC_KEY).substring(0, 8));
+    console.log("[Card] card_id:", card.cardId);
+    console.log("[Card] new status:", newStatus);
 
     let stroRes: any;
     let httpStatus: number;
     try {
-      const response = await fetch(url.toString(), { method: "POST" });
+      // Try 1 — form-urlencoded body (API rejects public_key in query string)
+      const formData = new URLSearchParams();
+      formData.append("public_key", cleanKey(process.env.STROWALLET_PUBLIC_KEY));
+      formData.append("secret_key", cleanKey(process.env.STROWALLET_SECRET_KEY));
+      formData.append("card_id", card.cardId!);
+      formData.append("status", newStatus);
+      formData.append("mode", "live");
+
+      console.log("[Card] Trying form-urlencoded body...");
+      let response = await fetch(`${STRO_BASE}/nfc-cards/status`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: formData.toString(),
+      });
       httpStatus = response.status;
       stroRes = await response.json();
       console.log("[Card] Freeze HTTP status:", httpStatus);
       console.log("[Card] Freeze response:", JSON.stringify(stroRes));
+
+      // Try 2 — JSON body if form-urlencoded also returns a key error
+      const keyError = !stroRes?.success &&
+        (stroRes?.message ?? stroRes?.error ?? "").toLowerCase().includes("public_key");
+      if (keyError) {
+        console.log("[Card] Form body failed with key error — retrying as JSON body...");
+        response = await fetch(`${STRO_BASE}/nfc-cards/status`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            public_key: cleanKey(process.env.STROWALLET_PUBLIC_KEY),
+            secret_key: cleanKey(process.env.STROWALLET_SECRET_KEY),
+            card_id: card.cardId,
+            status: newStatus,
+            mode: "live",
+          }),
+        });
+        httpStatus = response.status;
+        stroRes = await response.json();
+        console.log("[Card] Freeze JSON HTTP status:", httpStatus);
+        console.log("[Card] Freeze JSON response:", JSON.stringify(stroRes));
+      }
     } catch (e) {
       console.error("[Card] Freeze fetch error:", e);
       return res.status(502).json({ error: "Could not reach card service. Please try again." });
