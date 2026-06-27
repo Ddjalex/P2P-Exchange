@@ -111,11 +111,14 @@ export default function PostAdPage() {
       .catch(() => {});
   }, []);
 
-  // When editing a sell ad, the USDT that backs this ad is already frozen in the
-  // wallet. The amount still available inside the ad (not locked by active orders)
-  // can be re-allocated freely, so add it back to the wallet's free balance to get
-  // the true effective ceiling for the "Total Amount" field.
-  const adAvailableAmount = isEdit && existingAd ? parseFloat(String((existingAd as any).availableAmount ?? 0)) : 0;
+  // When editing a sell ad, the USDT backing this ad is frozen in the wallet.
+  // The "effective ceiling" for the Total Amount field is:
+  //   wallet.availableBalance  (free, uncommitted)
+  // + ad.availableAmount       (frozen for this ad, not locked by active orders — can be reallocated)
+  // = maximum the seller can set this ad to without needing more USDT.
+  const adAvailableAmount = isEdit && existingAd?.type === "sell"
+    ? parseFloat(String((existingAd as any).availableAmount ?? 0))
+    : 0;
   const availableBalance = rawWalletAvailable === null ? null : rawWalletAvailable + adAvailableAmount;
 
   // Minimum the seller can set: only USDT locked in currently ACTIVE orders (unpaid/paid/appeal).

@@ -7,6 +7,7 @@
     "hello": "tsx ./src/hello.ts",
     "seed": "tsx ./src/seed.ts",
     "cleanup": "tsx ./src/cleanup-seed.ts",
+    "fix-frozen": "tsx ./src/fix-sell-ad-frozen.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
