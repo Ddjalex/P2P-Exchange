@@ -1,0 +1,150 @@
+Fix: Admin not notified when card fund is queued — add queue panel to admin cards page
+Problem 1 — Admin push notification not firing:
+In the fund queue code, add admin notification:
+typescript// After saving to card_queue table:
+console.log('[Queue] Fund queued for user:', userId, 'amount:', amount);
+
+// Find admin users and notify:
+const admins = await db.select()
+  .from(users)
+  .where(eq(users.role, 'admin'));
+
+for (const admin of admins) {
+  // Push notification to admin:
+  await PushNotify.send(admin.id, {
+    title: '⚠️ Card Top-up Queued',
+    body: `User ${userId} queued $${amount} top-up. StroWallet balance low. Please top up merchant account.`
+  });
+}
+
+// Also send admin email:
+const adminEmail = process.env.ADMIN_EMAIL || 'admin@xendrx.com';
+await sendBrevoEmail({
+  to: adminEmail,
+  subject: '⚠️ Xendrx — StroWallet Balance Low',
+  html: `
+    <h2>Card Top-up Queued</h2>
+    <p>A card top-up has been queued because StroWallet merchant balance is insufficient.</p>
+    <table>
+      <tr><td>User ID:</td><td>${userId}</td></tr>
+      <tr><td>Amount queued:</td><td>$${amount}</td></tr>
+      <tr><td>StroWallet available:</td><td>$${raw.available ?? 'unknown'}</td></tr>
+      <tr><td>StroWallet required:</td><td>$${raw.required ?? 'unknown'}</td></tr>
+    </table>
+    <p>Please top up your StroWallet merchant account to process pending requests.</p>
+    <a href="https://xendrx.com/admin/cards">Go to Admin Cards Panel</a>
+  `
+});
+
+Problem 2 — Admin cards panel missing queue section:
+Add a Pending Queue section to /admin/cards page:
+⚠️ Pending Card Requests          StroWallet Balance: $6.45
+─────────────────────────────────────────────────────────
+ID  User    Type    Amount   Status    Created      
+1   User 3  fund    $10.00   pending   2 mins ago   
+─────────────────────────────────────────────────────────
+[🔄 Process Queue Now]  [💰 Refresh Balance]
+Add GET /api/admin/cards/queue endpoint:
+typescript// Returns all pending queue items with user info:
+const queue = await db.select({
+  id: cardQueue.id,
+  userId: cardQueue.userId,
+  type: cardQueue.type,
+  amount: cardQueue.amount,
+  status: cardQueue.status,
+  errorMessage: cardQueue.errorMessage,
+  attempts: cardQueue.attempts,
+  createdAt: cardQueue.createdAt,
+  userName: users.name,
+  userEmail: users.email
+})
+.from(cardQueue)
+.leftJoin(users, eq(users.id, cardQueue.userId))
+.orderBy(desc(cardQueue.createdAt));
+
+return res.json({ success: true, queue });
+Add GET /api/admin/cards/merchant-balance endpoint:
+typescript// Returns StroWallet merchant balance:
+const pub = cleanKey(process.env.STROWALLET_PUBLIC_KEY!);
+const res = await fetch(`https://strowallet.com/api/wallet/balance/USD/?public_key=${pub}`);
+const data = await res.json();
+return res.json({ 
+  success: true, 
+  balance: data.balance,
+  currency: 'USD'
+});
+Add POST /api/admin/cards/process-queue endpoint:
+typescript// Manually trigger queue processing:
+await processCardQueue();
+return res.json({ success: true, message: 'Queue processing triggered' });
+Frontend admin cards page — add queue section:
+tsx{/* Queue Section */}
+<div className="queue-section">
+  <div className="queue-header">
+    <h3>⚠️ Pending Card Requests</h3>
+    <div className="merchant-balance">
+      StroWallet Balance: 
+      <span className={merchantBalance < 5 ? 'text-red' : 'text-green'}>
+        ${merchantBalance}
+      </span>
+      {merchantBalance < 5 && <span className="badge-red">⚠️ Low</span>}
+    </div>
+  </div>
+
+  {queue.length > 0 ? (
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>User</th>
+          <th>Type</th>
+          <th>Amount</th>
+          <th>Status</th>
+          <th>Error</th>
+          <th>Created</th>
+        </tr>
+      </thead>
+      <tbody>
+        {queue.map(item => (
+          <tr key={item.id}>
+            <td>{item.id}</td>
+            <td>{item.userName} (#{item.userId})</td>
+            <td>{item.type}</td>
+            <td>${item.amount}</td>
+            <td>
+              <span className={
+                item.status === 'pending' ? 'badge-yellow' :
+                item.status === 'completed' ? 'badge-green' :
+                item.status === 'failed' ? 'badge-red' : 'badge-grey'
+              }>{item.status}</span>
+            </td>
+            <td className="text-sm text-grey">{item.errorMessage}</td>
+            <td>{formatDate(item.createdAt)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  ) : (
+    <p className="text-grey">No pending requests ✅</p>
+  )}
+
+  <div className="queue-actions">
+    <button onClick={processQueue} className="btn-primary">
+      🔄 Process Queue Now
+    </button>
+    <button onClick={refreshBalance} className="btn-secondary">
+      💰 Refresh Balance
+    </button>
+  </div>
+</div>
+Auto-refresh queue every 60 seconds in admin:
+typescriptuseEffect(() => {
+  fetchQueue();
+  fetchMerchantBalance();
+  const interval = setInterval(() => {
+    fetchQueue();
+    fetchMerchantBalance();
+  }, 60000);
+  return () => clearInterval(interval);
+}, []);
+Rebuild both frontend and API, repackage! 🚀

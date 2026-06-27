@@ -2133,13 +2133,46 @@ router.post("/cards/link", adminAuth, async (req, res) => {
 
 router.get("/cards/queue", adminAuth, async (req, res) => {
   try {
-    const { cardQueueTable } = await import("@workspace/db") as any;
-    const { desc: descOrd } = await import("drizzle-orm") as any;
-    const items = await db.select().from(cardQueueTable).orderBy(descOrd(cardQueueTable.createdAt));
+    const { cardQueueTable, usersTable } = await import("@workspace/db") as any;
+    const { desc: descOrd, eq: eqOp } = await import("drizzle-orm") as any;
+    const items = await db
+      .select({
+        id: cardQueueTable.id,
+        userId: cardQueueTable.userId,
+        cardId: cardQueueTable.cardId,
+        type: cardQueueTable.type,
+        amount: cardQueueTable.amount,
+        status: cardQueueTable.status,
+        errorMessage: cardQueueTable.errorMessage,
+        attempts: cardQueueTable.attempts,
+        createdAt: cardQueueTable.createdAt,
+        updatedAt: cardQueueTable.updatedAt,
+        userName: usersTable.name,
+        userEmail: usersTable.email,
+      })
+      .from(cardQueueTable)
+      .leftJoin(usersTable, eqOp(usersTable.id, cardQueueTable.userId))
+      .orderBy(descOrd(cardQueueTable.createdAt));
     res.json({ queue: items });
   } catch (err) {
     req.log.error({ err }, "Admin card queue list failed");
     res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.get("/cards/merchant-balance", adminAuth, async (req, res) => {
+  try {
+    function cleanKey(k: string | undefined) { return (k || "").replace(/\s+/g, ""); }
+    const pub = cleanKey(process.env.STROWALLET_PUBLIC_KEY);
+    const url = new URL("https://strowallet.com/api/wallet/balance/USD/");
+    url.searchParams.set("public_key", pub);
+    const resp = await fetch(url.toString());
+    const data = await resp.json();
+    const balance = parseFloat(data?.balance ?? data?.data?.balance ?? "0") || 0;
+    res.json({ success: true, balance, currency: "USD", raw: data });
+  } catch (err) {
+    req.log.error({ err }, "Admin merchant-balance failed");
+    res.status(502).json({ error: "Could not fetch merchant balance" });
   }
 });
 
