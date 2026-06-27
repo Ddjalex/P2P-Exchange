@@ -228,7 +228,7 @@ export default function CardPage() {
       return c?.card_status === "processing" ? 30000 : false;
     },
   });
-  const { data: walletData } = useQuery({ queryKey: ["wallet-card"], queryFn: () => apiFetch("/api/wallet") });
+  const { data: walletData, isLoading: walletLoading } = useQuery({ queryKey: ["wallet-card"], queryFn: () => apiFetch("/api/wallet") });
   const { data: historyData } = useQuery({ queryKey: ["card-history"], queryFn: () => apiFetch("/api/cards/history"), enabled: showHistory });
 
   const invalidate = () => {
@@ -512,12 +512,12 @@ export default function CardPage() {
             placeholder="Amount (minimum $1)" min="1"
             style={{ width: "100%", padding: "12px 16px", background: "rgba(0,229,255,0.05)", border: "1px solid rgba(0,229,255,0.2)", borderRadius: "12px", color: "#fff", fontSize: "15px", marginBottom: "16px", boxSizing: "border-box", fontFamily: "Poppins, sans-serif", outline: "none" }}
           />
-          {amount && parseFloat(amount) > walletBalance && (
-            <p style={{ color: "#ff8888", fontSize: "12px", marginBottom: "10px" }}>Insufficient wallet balance</p>
+          {!walletLoading && amount && parseFloat(amount) > walletBalance && (
+            <p style={{ color: "#ff8888", fontSize: "12px", marginBottom: "10px" }}>Insufficient wallet balance — you have ${walletBalance.toFixed(2)} USDT</p>
           )}
           <div style={{ display: "flex", gap: "10px" }}>
             <Btn variant="secondary" onClick={() => setModal(null)}>Cancel</Btn>
-            <Btn onClick={() => fundMutation.mutate(parseFloat(amount))} disabled={mutBusy || !amount || parseFloat(amount) < 1 || parseFloat(amount) > walletBalance}>
+            <Btn onClick={() => fundMutation.mutate(parseFloat(amount))} disabled={mutBusy || walletLoading || !amount || parseFloat(amount) < 1 || (!walletLoading && parseFloat(amount) > walletBalance)}>
               {fundMutation.isPending ? "Funding…" : "Fund Card"}
             </Btn>
           </div>

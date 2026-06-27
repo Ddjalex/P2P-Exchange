@@ -294,12 +294,21 @@ router.post("/fund", userAuth, async (req: any, res) => {
     if (!card) return res.status(404).json({ error: "No card found" });
 
     const wallet = await getOrCreateWallet(userId);
-    const avail = parseFloat(wallet.availableBalance);
 
-    console.log(`[Card] Fund — user: ${userId}, amount: ${amount}, card: ${card.cardId}`);
-    console.log("[Card] Platform balance before:", avail);
+    console.log("[Card] Fund request — user:", userId, "amount:", amount);
+    console.log("[Card] Wallet from DB:", JSON.stringify(wallet));
+    console.log("[Card] Wallet availableBalance:", wallet.availableBalance, "type:", typeof wallet.availableBalance);
+    console.log("[Card] Amount requested:", amount, "type:", typeof amount);
+    console.log("[Card] Balance check (wallet >= amount):", Number(wallet.availableBalance) >= Number(amount));
+
+    const avail = Number(wallet.availableBalance);
+    if (isNaN(avail)) {
+      console.error("[Card] availableBalance is NaN — raw value:", wallet.availableBalance);
+      return res.status(500).json({ error: "Could not read wallet balance. Please try again." });
+    }
 
     if (avail < amount) {
+      console.log(`[Card] Insufficient: avail=${avail}, requested=${amount}`);
       return res.status(400).json({ error: `Insufficient balance. Available: $${avail.toFixed(2)} USDT` });
     }
 
