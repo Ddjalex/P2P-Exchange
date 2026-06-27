@@ -389,7 +389,7 @@ export default function AdminCardsPage() {
                         .map((item, idx, arr) => {
                           const prevStatus = idx > 0 ? arr[idx - 1].status : item.status;
                           const showCompletedLabel = (item.status === "completed" || item.status === "failed") && prevStatus !== item.status && (idx === 0 || arr[idx - 1].status === "pending" || arr[idx - 1].status === "processing");
-                          const displayName = item.userDisplayName || item.userName || `User #${item.userId}`;
+                          const displayName = item.userName || `User #${item.userId}`;
                           const initials = displayName.split(" ").slice(0, 2).map((w: string) => w[0]).join("").toUpperCase() || "U";
                           const isPending = item.status === "pending" || item.status === "processing";
                           const isFund = item.type === "fund";

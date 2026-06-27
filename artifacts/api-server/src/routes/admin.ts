@@ -2148,7 +2148,6 @@ router.get("/cards/queue", adminAuth, async (req, res) => {
         createdAt: cardQueueTable.createdAt,
         updatedAt: cardQueueTable.updatedAt,
         userName: usersTable.username,
-        userDisplayName: usersTable.name,
         userEmail: usersTable.email,
         userPhone: usersTable.phone,
       })
