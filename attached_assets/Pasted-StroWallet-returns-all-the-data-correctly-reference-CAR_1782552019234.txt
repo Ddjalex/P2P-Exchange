@@ -1,0 +1,66 @@
+StroWallet returns all the data correctly! ✅
+reference: "CARD_CREATE_019F041681CA" ✅
+customer_email: "almesagadw@gmail.com" ✅
+card_number: "4865550144442464" ✅
+The problem is the Replit secrets are not loading in the running server. Tell Replit:
+
+Fix: StroWallet keys not loading from Replit secrets in the API server
+The API server is not reading STROWALLET_PUBLIC_KEY and STROWALLET_SECRET_KEY from environment. When called directly with keys injected manually it works perfectly — so the keys are correct but not available to the server process.
+Please fix:
+
+Check how the API server loads environment variables — is it using dotenv? Check if .env file exists in artifacts/api-server/:
+
+bashls -la artifacts/api-server/.env
+cat artifacts/api-server/.env | grep STROWALLET
+
+Add STROWALLET keys to the API server .env file:
+
+bashecho "STROWALLET_PUBLIC_KEY=pub_hoAnJXAVOxfE6VibvCya7EiXEnw3YyjLhhLAk4CF" >> artifacts/api-server/.env
+echo "STROWALLET_SECRET_KEY=sec_neCKIYtRYqCwOvHJcBwwBAz4PASKF4gHvvtvdNde" >> artifacts/api-server/.env
+
+Verify keys are loaded when server starts — add this log to server startup:
+
+typescriptconsole.log('[Card] STROWALLET_PUBLIC_KEY:', process.env.STROWALLET_PUBLIC_KEY ? 'loaded (' + process.env.STROWALLET_PUBLIC_KEY.length + ' chars)' : 'NOT SET');
+console.log('[Card] STROWALLET_SECRET_KEY:', process.env.STROWALLET_SECRET_KEY ? 'loaded' : 'NOT SET');
+
+Also confirm the StroWallet response parsing is correct — StroWallet returns:
+
+json{
+  "success": true,
+  "response": {
+    "card_detail": {
+      "reference": "CARD_CREATE_019F041681CA",
+      "customer_email": "almesagadw@gmail.com",
+      "card_number": "4865550144442464"
+    }
+  }
+}
+So parsing must be:
+typescriptconst detail = raw.response?.card_detail;
+const reference = detail?.reference;
+const customerEmail = detail?.customer_email;
+const cardNumber = detail?.card_number;
+
+Force update the database with correct values for existing card:
+
+sqlUPDATE cards 
+SET 
+  reference = 'CARD_CREATE_019F041681CA',
+  customer_email = 'almesagadw@gmail.com',
+  card_number = '4865550144442464'
+WHERE card_id = '019f0416-81ca-7b1f-b9cc-75f0af483861';
+
+Also fix transaction history — run this to check:
+
+bashSTROWALLET_PUBLIC_KEY="pub_hoAnJXAVOxfE6VibvCya7EiXEnw3YyjLhhLAk4CF" STROWALLET_SECRET_KEY="sec_neCKIYtRYqCwOvHJcBwwBAz4PASKF4gHvvtvdNde" node --input-type=module << 'EOF'
+const pub = process.env.STROWALLET_PUBLIC_KEY?.replace(/\s+/g, '') || '';
+const sec = process.env.STROWALLET_SECRET_KEY?.replace(/\s+/g, '') || '';
+const url2 = new URL('https://strowallet.com/api/bitvcard/nfc-card-transactions');
+url2.searchParams.set('public_key', pub);
+url2.searchParams.set('secret_key', sec);
+url2.searchParams.set('card_id', '019f0416-81ca-7b1f-b9cc-75f0af483861');
+url2.searchParams.set('mode', 'live');
+const res2 = await fetch(url2.toString());
+const raw2 = await res2.json();
+console.log('History response:', JSON.stringify(raw2, null, 2));
+EOF
