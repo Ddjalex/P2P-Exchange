@@ -56,6 +56,17 @@ function cleanKey(k: string | undefined): string {
   return (k || "").replace(/\s+/g, "");
 }
 
+function maskKey(k: string | undefined): string {
+  const c = cleanKey(k);
+  if (!c) return "(empty)";
+  if (c.length <= 8) return `(${c.length} chars — too short)`;
+  return `${c.slice(0, 4)}...${c.slice(-4)} (${c.length} chars)`;
+}
+
+// Log key shape on startup so we can verify the correct keys are loaded
+console.log(`[StroWallet] public_key shape: ${maskKey(process.env.STROWALLET_PUBLIC_KEY)}`);
+console.log(`[StroWallet] secret_key shape: ${maskKey(process.env.STROWALLET_SECRET_KEY)}`);
+
 function stroBaseUrl(path: string): URL {
   const url = new URL(`${STRO_BASE}/${path}`);
   url.searchParams.set("public_key", cleanKey(process.env.STROWALLET_PUBLIC_KEY));
