@@ -714,24 +714,37 @@ router.get("/history", userAuth, async (req: any, res) => {
       try {
         const url = stroBaseUrl("nfc-card-transactions");
         url.searchParams.set("card_id", card.cardId);
+        const loggableUrl = url.toString()
+          .replace(cleanKey(process.env.STROWALLET_PUBLIC_KEY ?? ""), "***")
+          .replace(cleanKey(process.env.STROWALLET_SECRET_KEY ?? ""), "***");
+        console.log("[Card] History URL:", loggableUrl);
+
         const response = await fetch(url.toString());
+        console.log("[Card] History HTTP status:", response.status);
         const raw = await response.json();
         console.log("[Card] History raw response:", JSON.stringify(raw));
 
-        const txList = raw?.response?.card_transactions ?? raw?.response?.transactions ?? raw?.data ?? [];
+        const txList =
+          raw?.response?.card_transactions ??
+          raw?.response?.transactions ??
+          raw?.response?.data ??
+          raw?.data ??
+          (Array.isArray(raw?.response) ? raw.response : []) ??
+          [];
+
         transactions = txList.map((tx: any) => ({
           id: tx.id,
           date: tx.createdAt ?? tx.created_at,
           description: tx.narrative ?? tx.narration ?? tx.description ?? "Transaction",
           amount: tx.amount,
-          type: tx.type,
+          type: tx.type ?? (parseFloat(tx.amount ?? "0") >= 0 ? "debit" : "credit"),
           method: tx.method,
           status: tx.status,
           reference: tx.reference,
           currency: tx.currency ?? "USD",
         }));
 
-        console.log(`[Card] History — found: ${transactions.length} transactions`);
+        console.log(`[Card] Transactions found: ${transactions.length}`);
       } catch (e) {
         console.warn("[Card] History fetch failed:", e);
       }

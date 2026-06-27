@@ -322,6 +322,50 @@ export const PushNotify = {
       tag: `appeal-resolved-${orderId}-${userId}`,
     });
   },
+
+  async cardReady(userId: number) {
+    await sendPush(userId, {
+      title: "🎉 Your Xendrx Card is ready!",
+      body: "Your virtual Visa card is active and ready to use.",
+      type: "card_ready",
+      url: "/card",
+      tag: "card-ready",
+    });
+  },
+
+  async cardTopup(userId: number, amount: string) {
+    await sendPush(userId, {
+      title: "💳 Card Topped Up",
+      body: `+$${parseFloat(amount).toFixed(2)} added to your Xendrx card.`,
+      type: "card_topup",
+      url: "/card",
+      tag: `card-topup-${Date.now()}`,
+    });
+  },
+
+  async cardUsed(userId: number, amount: string, merchant?: string) {
+    await sendPush(userId, {
+      title: "💳 Card Used",
+      body: merchant
+        ? `$${parseFloat(amount).toFixed(2)} at ${merchant}`
+        : `$${parseFloat(amount).toFixed(2)} charged to your card`,
+      type: "card_used",
+      url: "/card",
+      tag: `card-used-${Date.now()}`,
+    });
+  },
+
+  async cardDeclined(userId: number, amount: string, reason?: string) {
+    await sendPush(userId, {
+      title: "❌ Card Declined",
+      body: reason
+        ? `$${parseFloat(amount).toFixed(2)} declined — ${reason}`
+        : `$${parseFloat(amount).toFixed(2)} transaction was declined`,
+      type: "card_declined",
+      url: "/card",
+      tag: `card-declined-${Date.now()}`,
+    });
+  },
 };
 
 export async function sendPushBroadcast(

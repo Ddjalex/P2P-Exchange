@@ -1,7 +1,8 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { cardsTable, walletsTable, usersTable } from "@workspace/db";
+import { cardsTable, walletsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import { PushNotify } from "./push.js";
 
 const router = Router();
 
@@ -12,6 +13,8 @@ router.post("/card", async (req, res) => {
     const event: string = body.event ?? body.type ?? body.status ?? "";
     const cardId: string = body.card_id ?? body.cardId ?? "";
     const amount: string = String(body.amount ?? "0");
+    const reason: string = body.reason ?? body.decline_reason ?? "";
+    const merchant: string = body.merchant ?? body.merchant_name ?? body.narrative ?? "";
 
     console.log("[Card] Webhook received — event:", event, "cardId:", cardId);
     console.log("[Card] Webhook body:", JSON.stringify(body));
@@ -26,12 +29,15 @@ router.post("/card", async (req, res) => {
       return res.json({ received: true });
     }
 
+    const userId = card.userId!;
+
     switch (event) {
       case "virtualcard.created.complete": {
         await db.update(cardsTable)
           .set({ cardStatus: "active", updatedAt: new Date() })
           .where(eq(cardsTable.cardId, cardId));
         console.log("[Card] Webhook — card activated:", cardId);
+        PushNotify.cardReady(userId).catch(console.error);
         break;
       }
 
@@ -41,16 +47,19 @@ router.post("/card", async (req, res) => {
           .set({ balance: newBalance, updatedAt: new Date() })
           .where(eq(cardsTable.cardId, cardId));
         console.log("[Card] Webhook — card topped up:", cardId, "amount:", amount);
+        PushNotify.cardTopup(userId, amount).catch(console.error);
         break;
       }
 
       case "virtualcard.transaction.authorization": {
-        console.log("[Card] Webhook — card used for purchase:", cardId, "amount:", amount);
+        console.log("[Card] Webhook — card used for purchase:", cardId, "amount:", amount, "merchant:", merchant);
+        PushNotify.cardUsed(userId, amount, merchant || undefined).catch(console.error);
         break;
       }
 
       case "virtualcard.transaction.declined": {
-        console.log("[Card] Webhook — card declined:", cardId, "amount:", amount);
+        console.log("[Card] Webhook — card declined:", cardId, "amount:", amount, "reason:", reason);
+        PushNotify.cardDeclined(userId, amount, reason || undefined).catch(console.error);
         break;
       }
 
