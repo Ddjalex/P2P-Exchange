@@ -1,0 +1,77 @@
+Fix 1 — Freeze endpoint not reaching StroWallet
+The freeze endpoint is failing with "Could not reach card service". Debug and fix:
+Add detailed logging to POST /api/cards/freeze:
+typescript
+console.log('[Card] Freeze request — user:', userId, 'card:', card.cardId);
+console.log('[Card] Current status:', card.cardStatus);
+console.log('[Card] Action:', card.cardStatus === 'frozen' ? 'unfreeze' : 'freeze');
+
+const url = new URL('https://strowallet.com/api/bitvcard/freeze-unfreeze-nfccard');
+url.searchParams.set('public_key', cleanKey(process.env.STROWALLET_PUBLIC_KEY!));
+url.searchParams.set('secret_key', cleanKey(process.env.STROWALLET_SECRET_KEY!));
+url.searchParams.set('card_id', card.cardId);
+url.searchParams.set('action', card.cardStatus === 'frozen' ? 'unfreeze' : 'freeze');
+url.searchParams.set('mode', 'live');
+
+console.log('[Card] Freeze URL:', url.toString().replace(process.env.STROWALLET_SECRET_KEY!, '***'));
+
+const res = await fetch(url.toString(), { method: 'POST' });
+console.log('[Card] Freeze HTTP status:', res.status);
+const raw = await res.json();
+console.log('[Card] Freeze response:', JSON.stringify(raw));
+Check if StroWallet freeze endpoint requires params in body instead of query string — try sending as form body:
+typescript
+// Try this if query params don't work:
+const formData = new URLSearchParams();
+formData.append('public_key', cleanKey(process.env.STROWALLET_PUBLIC_KEY!));
+formData.append('secret_key', cleanKey(process.env.STROWALLET_SECRET_KEY!));
+formData.append('card_id', card.cardId);
+formData.append('action', card.cardStatus === 'frozen' ? 'unfreeze' : 'freeze');
+formData.append('mode', 'live');
+
+const res = await fetch('https://strowallet.com/api/bitvcard/freeze-unfreeze-nfccard', {
+  method: 'POST',
+  body: formData
+});
+Return the exact StroWallet error message to frontend instead of generic "Could not reach card service"
+Fix 2 — Require platform password to freeze/unfreeze card
+Add password verification before freeze/unfreeze for security:
+Backend — update POST /api/cards/freeze:
+typescript
+// Accept password in request body:
+const { password } = req.body;
+
+// Verify user's platform password:
+const user = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+const passwordMatch = await bcrypt.compare(password, user[0].passwordHash);
+
+if (!passwordMatch) {
+  return res.status(401).json({ 
+    success: false, 
+    message: 'Incorrect password. Please try again.' 
+  });
+}
+
+console.log('[Card] Password verified for freeze — user:', userId);
+// Then proceed with freeze/unfreeze...
+Frontend — update freeze button:
+When user clicks Freeze/Unfreeze — show a confirmation modal with:
+🔒 Freeze Card
+
+For your security, please enter your platform password to freeze this card.
+
+[Password input field] (type="password")
+
+[ Cancel ]  [ Confirm Freeze ]
+For unfreeze:
+🔓 Activate Card
+
+Please enter your platform password to reactivate this card.
+
+[Password input field] (type="password")
+
+[ Cancel ]  [ Confirm Activate ]
+Show loading state while verifying
+Show error if password wrong: "Incorrect password. Please try again."
+On success → show toast: "Card frozen successfully" or "Card activated successfully"
+Update card visual immediately

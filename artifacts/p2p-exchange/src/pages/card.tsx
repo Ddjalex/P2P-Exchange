@@ -210,6 +210,8 @@ export default function CardPage() {
   const queryClient = useQueryClient();
   const [modal, setModal] = useState<"fund" | "withdraw" | "freeze" | "confirm-create" | null>(null);
   const [amount, setAmount] = useState("");
+  const [freezePassword, setFreezePassword] = useState("");
+  const [freezeError, setFreezeError] = useState("");
   const [country, setCountry] = useState("ETH");
   const [showHistory, setShowHistory] = useState(false);
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
@@ -265,9 +267,9 @@ export default function CardPage() {
     onError: (e: any) => showToast(e.message, false),
   });
   const freezeMutation = useMutation({
-    mutationFn: () => apiFetch("/api/cards/freeze", { method: "POST" }),
-    onSuccess: (d: any) => { invalidate(); setModal(null); showToast(d.message); },
-    onError: (e: any) => { setModal(null); showToast(e.message, false); },
+    mutationFn: (pwd: string) => apiFetch("/api/cards/freeze", { method: "POST", body: JSON.stringify({ password: pwd }) }),
+    onSuccess: (d: any) => { invalidate(); setModal(null); setFreezePassword(""); setFreezeError(""); showToast(d.message); },
+    onError: (e: any) => { setFreezeError(e.message); },
   });
 
   const kycStatus = meData?.kycStatus;
@@ -562,16 +564,31 @@ export default function CardPage() {
       )}
 
       {modal === "freeze" && (
-        <Modal title={isFrozen ? "Activate Card" : "Freeze Card"} onClose={() => setModal(null)}>
-          <p style={{ color: "#8899aa", fontSize: "14px", marginBottom: "20px", lineHeight: 1.6 }}>
+        <Modal
+          title={isFrozen ? "🔓 Activate Card" : "🔒 Freeze Card"}
+          onClose={() => { setModal(null); setFreezePassword(""); setFreezeError(""); }}
+        >
+          <p style={{ color: "#8899aa", fontSize: "13px", marginBottom: "16px", lineHeight: 1.6 }}>
             {isFrozen
-              ? "Activate your card to start making payments again."
-              : "Freeze your card to block all payments immediately."}
+              ? "Please enter your platform password to reactivate this card."
+              : "For your security, please enter your platform password to freeze this card."}
           </p>
+          <input
+            type="password"
+            value={freezePassword}
+            onChange={(e) => { setFreezePassword(e.target.value); setFreezeError(""); }}
+            placeholder="Enter your password"
+            autoFocus
+            style={{ width: "100%", padding: "12px 16px", background: "rgba(0,229,255,0.05)", border: `1px solid ${freezeError ? "rgba(255,68,68,0.5)" : "rgba(0,229,255,0.2)"}`, borderRadius: "12px", color: "#fff", fontSize: "15px", marginBottom: freezeError ? "8px" : "16px", boxSizing: "border-box", fontFamily: "Poppins, sans-serif", outline: "none" }}
+            onKeyDown={(e) => { if (e.key === "Enter" && freezePassword && !mutBusy) freezeMutation.mutate(freezePassword); }}
+          />
+          {freezeError && (
+            <p style={{ color: "#ff8888", fontSize: "12px", marginBottom: "12px" }}>{freezeError}</p>
+          )}
           <div style={{ display: "flex", gap: "10px" }}>
-            <Btn variant="secondary" onClick={() => setModal(null)}>Cancel</Btn>
-            <Btn variant={isFrozen ? "primary" : "danger"} onClick={() => freezeMutation.mutate()} disabled={mutBusy}>
-              {freezeMutation.isPending ? "Please wait…" : isFrozen ? "Activate" : "Freeze"}
+            <Btn variant="secondary" onClick={() => { setModal(null); setFreezePassword(""); setFreezeError(""); }}>Cancel</Btn>
+            <Btn variant={isFrozen ? "primary" : "danger"} onClick={() => freezeMutation.mutate(freezePassword)} disabled={mutBusy || !freezePassword}>
+              {freezeMutation.isPending ? "Verifying…" : isFrozen ? "Confirm Activate" : "Confirm Freeze"}
             </Btn>
           </div>
         </Modal>

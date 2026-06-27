@@ -8,6 +8,7 @@ import {
   transactionsTable,
 } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import bcrypt from "bcryptjs";
 import { userAuth } from "../middleware/user-auth";
 
 const router = Router();
@@ -430,30 +431,63 @@ router.post("/withdraw", userAuth, async (req: any, res) => {
 // POST /api/cards/freeze
 router.post("/freeze", userAuth, async (req: any, res) => {
   const userId: number = req.userId;
+  const { password } = req.body ?? {};
+
   try {
+    // Verify platform password before allowing freeze/unfreeze
+    if (!password) {
+      return res.status(400).json({ error: "Password is required to freeze or unfreeze your card." });
+    }
+    const user = await db.query.usersTable.findFirst({ where: eq(usersTable.id, userId) });
+    if (!user?.passwordHash) {
+      return res.status(401).json({ error: "Unable to verify password. Please contact support." });
+    }
+    const passwordMatch = await bcrypt.compare(password, user.passwordHash);
+    if (!passwordMatch) {
+      return res.status(401).json({ error: "Incorrect password. Please try again." });
+    }
+    console.log("[Card] Password verified for freeze — user:", userId);
+
     const card = await db.query.cardsTable.findFirst({ where: eq(cardsTable.userId, userId) });
     if (!card) return res.status(404).json({ error: "No card found" });
 
     const isFrozen = card.cardStatus === "inactive" || card.cardStatus === "frozen";
     const action = isFrozen ? "unfreeze" : "freeze";
 
-    console.log(`[Card] Freeze — card: ${card.cardId}, action: ${action}`);
+    console.log("[Card] Freeze request — user:", userId, "card:", card.cardId);
+    console.log("[Card] Current status:", card.cardStatus);
+    console.log("[Card] Action:", action);
 
-    const url = stroBaseUrl("freeze-unfreeze-nfccard");
-    url.searchParams.set("card_id", card.cardId!);
-    url.searchParams.set("action", action);
+    // Send as form body — StroWallet may require body params, not query string
+    const formData = new URLSearchParams();
+    formData.append("public_key", cleanKey(process.env.STROWALLET_PUBLIC_KEY));
+    formData.append("secret_key", cleanKey(process.env.STROWALLET_SECRET_KEY));
+    formData.append("card_id", card.cardId!);
+    formData.append("action", action);
+    formData.append("mode", "live");
+
+    console.log("[Card] Freeze URL: https://strowallet.com/api/bitvcard/freeze-unfreeze-nfccard (keys redacted)");
 
     let stroRes: any;
+    let httpStatus: number;
     try {
-      const response = await fetch(url.toString(), { method: "POST" });
+      const response = await fetch("https://strowallet.com/api/bitvcard/freeze-unfreeze-nfccard", {
+        method: "POST",
+        body: formData,
+      });
+      httpStatus = response.status;
       stroRes = await response.json();
+      console.log("[Card] Freeze HTTP status:", httpStatus);
       console.log("[Card] Freeze response:", JSON.stringify(stroRes));
     } catch (e) {
-      return res.status(502).json({ error: "Could not reach card service." });
+      console.error("[Card] Freeze fetch error:", e);
+      return res.status(502).json({ error: "Could not reach card service. Please try again." });
     }
 
     if (!stroRes?.success) {
-      return res.status(502).json({ error: stroErrMsg(stroRes, `Card ${action} failed.`) });
+      const errMsg = stroErrMsg(stroRes, `Card ${action} failed.`);
+      console.error("[Card] Freeze rejected by StroWallet:", errMsg);
+      return res.status(422).json({ error: errMsg });
     }
 
     const newStatus = isFrozen ? "active" : "frozen";
