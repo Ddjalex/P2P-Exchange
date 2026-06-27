@@ -508,18 +508,18 @@ export default function CardPage() {
               <div style={{ width: "100%", maxWidth: "380px" }}>
                 <div style={{ background: "rgba(0,229,255,0.04)", border: "1px solid rgba(0,229,255,0.12)", borderRadius: "14px", padding: "16px 20px", marginBottom: "12px" }}>
                   <p style={{ color: "#00e5ff", fontSize: "12px", fontWeight: 700, letterSpacing: "1px", marginBottom: "4px" }}>🏠 BILLING ADDRESS</p>
-                  <InfoRow label="Name" value={card.billing?.name ?? card.nameOnCard} />
-                  <InfoRow label="Address" value={card.billing?.line1 ?? card.billingLine1 ?? "N/A"} />
-                  <InfoRow label="City" value={card.billing?.city ?? card.billingCity ?? "N/A"} />
-                  <InfoRow label="State" value={card.billing?.state ?? card.billingState ?? "N/A"} />
-                  <InfoRow label="Postal Code" value={card.billing?.postalCode ?? card.billingPostal ?? "00000"} />
+                  <InfoRow label="Name" value={card.billing?.name ?? card.nameOnCard} copyable />
+                  <InfoRow label="Address" value={card.billing?.line1 ?? card.billingLine1 ?? "N/A"} copyable />
+                  <InfoRow label="City" value={card.billing?.city ?? card.billingCity ?? "N/A"} copyable />
+                  <InfoRow label="State" value={card.billing?.state ?? card.billingState ?? "N/A"} copyable />
+                  <InfoRow label="Postal Code" value={card.billing?.postalCode ?? card.billingPostal ?? "00000"} copyable />
                   <InfoRow label="Country" value={(() => {
                     const c = card.billing?.country ?? card.billingCountry ?? "ETH";
                     const map: Record<string, string> = { ETH: "Ethiopia (ETH)", NGA: "Nigeria (NGA)", GHA: "Ghana (GHA)", KEN: "Kenya (KEN)", TZA: "Tanzania (TZA)", UGA: "Uganda (UGA)", ZAF: "South Africa (ZAF)", EGY: "Egypt (EGY)", USA: "United States (USA)", GBR: "United Kingdom (GBR)", CAN: "Canada (CAN)", DEU: "Germany (DEU)", FRA: "France (FRA)", IND: "India (IND)" };
                     return map[c] ?? c;
-                  })()} />
+                  })()} copyable />
                   {(card.billing?.phone || (meData as any)?.phone) && (
-                    <InfoRow label="Phone" value={card.billing?.phone || (meData as any)?.phone} />
+                    <InfoRow label="Phone" value={card.billing?.phone || (meData as any)?.phone} copyable />
                   )}
                 </div>
                 <div style={{ background: "rgba(0,229,255,0.04)", border: "1px solid rgba(0,229,255,0.12)", borderRadius: "10px", padding: "12px 14px", marginBottom: "12px" }}>
