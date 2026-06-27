@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 60">
+  <!-- Mini hex icon -->
+  <polygon points="28,3 48,14 48,36 28,47 8,36 8,14"
+    fill="#060c16" stroke="#00e5ff" stroke-width="1.5"/>
+  <polygon points="28,10 42,18 42,32 28,40 14,32 14,18"
+    fill="none" stroke="#00e5ff" stroke-width="0.5" opacity="0.2"/>
+  <polygon points="28,11 40,25 28,39 16,25"
+    fill="none" stroke="#00e5ff" stroke-width="1.5"/>
+  <polygon points="28,11 40,25 28,25" fill="#00e5ff" opacity="0.1"/>
+  <polygon points="16,25 28,25 28,39" fill="#00e5ff" opacity="0.07"/>
+  <polygon points="28,18 34,25 28,32 22,25" fill="#00e5ff" opacity="0.95"/>
+  <polygon points="28,20 32,25 28,30 24,25" fill="#b2f0ff" opacity="0.8"/>
+  <polygon points="28,22 30,25 28,28 26,25" fill="#ffffff" opacity="0.9"/>
+  <!-- Wordmark -->
+  <text x="62" y="34" font-family="'Poppins',sans-serif"
+    font-size="24" font-weight="800" fill="#ffffff">xen<tspan fill="#00e5ff">drx</tspan></text>
+  <text x="63" y="49" font-family="'Poppins',sans-serif"
+    font-size="8" fill="rgba(255,255,255,0.3)" letter-spacing="2.5">P2P CRYPTO EXCHANGE</text>
+</svg>
