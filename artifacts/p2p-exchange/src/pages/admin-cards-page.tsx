@@ -36,13 +36,13 @@ export default function AdminCardsPage() {
   useEffect(() => { load(); }, []);
 
   const filtered = cards.filter((c) => {
-    const matchStatus = statusFilter === "all" || c.card_status === statusFilter;
+    const matchStatus = statusFilter === "all" || c.cardStatus === statusFilter;
     const q = search.toLowerCase();
     const matchSearch =
       !q ||
-      String(c.user_id).includes(q) ||
-      (c.name_on_card ?? "").toLowerCase().includes(q) ||
-      (c.card_id ?? "").toLowerCase().includes(q);
+      String(c.userId).includes(q) ||
+      (c.nameOnCard ?? "").toLowerCase().includes(q) ||
+      (c.cardId ?? "").toLowerCase().includes(q);
     return matchStatus && matchSearch;
   });
 
@@ -52,7 +52,7 @@ export default function AdminCardsPage() {
     setLinkResult(null);
     try {
       const data = await adminPost<any>("/cards/link", { userId: parseInt(linkUserId), cardId: linkCardId.trim() });
-      setLinkResult({ ok: true, msg: `Linked! Card ID: ${data.card?.card_id ?? linkCardId}` });
+      setLinkResult({ ok: true, msg: `Linked! Card ID: ${data.card?.cardId ?? linkCardId}` });
       setLinkUserId("");
       setLinkCardId("");
       load();
@@ -143,9 +143,9 @@ export default function AdminCardsPage() {
                         onClick={() => setSelected(card)}
                         className="border-b border-border hover:bg-secondary/30 cursor-pointer transition-colors"
                       >
-                        <td className="px-4 py-3 font-mono text-xs">{card.user_id}</td>
-                        <td className="px-4 py-3 font-medium">{card.name_on_card ?? "—"}</td>
-                        <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{card.card_id ?? "—"}</td>
+                        <td className="px-4 py-3 font-mono text-xs">{card.userId}</td>
+                        <td className="px-4 py-3 font-medium">{card.nameOnCard ?? "—"}</td>
+                        <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{card.cardId ?? "—"}</td>
                         <td className="px-4 py-3 font-mono">
                           {card.last4 ? `•••• ${card.last4}` : "—"}
                         </td>
@@ -153,15 +153,15 @@ export default function AdminCardsPage() {
                         <td className="px-4 py-3">
                           <span
                             className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium capitalize ${
-                              STATUS_COLORS[card.card_status] ?? "bg-muted text-muted-foreground"
+                              STATUS_COLORS[card.cardStatus] ?? "bg-muted text-muted-foreground"
                             }`}
                           >
-                            {card.card_status}
+                            {card.cardStatus}
                           </span>
                         </td>
                         <td className="px-4 py-3 text-muted-foreground text-xs">
-                          {card.created_at
-                            ? new Date(card.created_at).toLocaleDateString()
+                          {card.createdAt
+                            ? new Date(card.createdAt).toLocaleDateString()
                             : "—"}
                         </td>
                       </tr>
@@ -192,28 +192,28 @@ export default function AdminCardsPage() {
                   <CreditCard className="w-5 h-5 text-primary" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-foreground">{selected.name_on_card}</h3>
-                  <p className="text-xs text-muted-foreground">User #{selected.user_id}</p>
+                  <h3 className="font-bold text-foreground">{selected.nameOnCard}</h3>
+                  <p className="text-xs text-muted-foreground">User #{selected.userId}</p>
                 </div>
                 <span
                   className={`ml-auto inline-flex px-2 py-0.5 rounded-full text-xs font-medium capitalize ${
-                    STATUS_COLORS[selected.card_status] ?? "bg-muted text-muted-foreground"
+                    STATUS_COLORS[selected.cardStatus] ?? "bg-muted text-muted-foreground"
                   }`}
                 >
-                  {selected.card_status}
+                  {selected.cardStatus}
                 </span>
               </div>
 
               <div className="grid grid-cols-2 gap-3 text-sm">
                 {[
-                  ["Card ID", selected.card_id],
-                  ["Card User ID", selected.card_user_id],
-                  ["Customer ID", selected.customer_id],
+                  ["Card ID", selected.cardId],
+                  ["Card User ID", selected.cardUserId],
+                  ["Customer ID", selected.customerId],
                   ["Last 4", selected.last4 ? `•••• ${selected.last4}` : "—"],
                   ["Expiry", selected.expiry ?? "—"],
                   ["Balance", `$${parseFloat(selected.balance ?? "0").toFixed(2)}`],
-                  ["Created", selected.created_at ? new Date(selected.created_at).toLocaleString() : "—"],
-                  ["Updated", selected.updated_at ? new Date(selected.updated_at).toLocaleString() : "—"],
+                  ["Created", selected.createdAt ? new Date(selected.createdAt).toLocaleString() : "—"],
+                  ["Updated", selected.updatedAt ? new Date(selected.updatedAt).toLocaleString() : "—"],
                 ].map(([label, value]) => (
                   <div key={label} className="bg-secondary/50 rounded-lg p-3">
                     <div className="text-xs text-muted-foreground mb-1">{label}</div>

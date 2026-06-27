@@ -1,0 +1,57 @@
+Add card fee settings section to /admin/cards page
+The current /admin/cards page shows the card table correctly. Now add a Card Settings section at the top of the page.
+1. Add Card Settings panel above the cards table:
+┌─────────────────────────────────────────┐
+│ ⚙️ Card Settings                        │
+├─────────────────────────────────────────┤
+│ Card Creation Fee ($):  [ 2.00 ]        │
+│ Initial Card Load ($):  [ 3.00 ]        │  
+│ Minimum Top-up ($):     [ 2.00 ]        │
+│                                         │
+│ Total user pays to create: $5.00        │
+│                                         │
+│           [ Save Settings ]             │
+└─────────────────────────────────────────┘
+2. Also fix the cards table — missing data:
+The table shows — for User ID, Name, and Created date. Fix:
+
+Join cards table with users table to get user name and email
+Show created_at date formatted nicely
+Show card status badge with correct color:
+
+active → green
+processing → yellow
+frozen → red
+inactive → grey
+
+
+
+3. Add GET /api/admin/cards/settings endpoint:
+typescript// Returns current fee settings:
+{
+  cardCreationFee: "2.00",
+  cardInitialLoad: "3.00", 
+  cardMinFund: "2.00"
+}
+4. Add PUT /api/admin/cards/settings endpoint:
+typescript// Body: { cardCreationFee, cardInitialLoad, cardMinFund }
+// Saves to system_settings table
+// Returns updated settings
+5. Card creation endpoint reads fees from settings:
+In POST /api/cards/create replace all hardcoded fee values:
+typescript// Instead of hardcoded $2 and $3:
+const settings = await getCardSettings();
+const creationFee = Number(settings.cardCreationFee);
+const initialLoad = Number(settings.cardInitialLoad);
+const totalRequired = creationFee + initialLoad;
+6. Card fund endpoint reads minimum from settings:
+typescriptconst settings = await getCardSettings();
+const minFund = Number(settings.cardMinFund);
+if (amount < minFund) throw new Error(`Minimum top-up is $${minFund}`);
+7. Frontend card creation page shows dynamic fees:
+Call GET /api/cards/fees and show:
+Card Creation Fee:    $X.XX
+Initial Card Balance: $X.XX
+─────────────────────────
+Total Required:       $X.XX
+Your Balance:         $X.XX USDT
