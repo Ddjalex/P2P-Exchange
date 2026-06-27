@@ -298,12 +298,14 @@ router.post("/create", userAuth, async (req: any, res) => {
 
     console.log("[Card] Billing address:", billingLine1, billingCity, billingCountry);
 
+    const billingPhone = reqPhone || user.phone || "";
+
     const [saved] = await db
       .insert(cardsTable)
       .values({
         userId, cardId, cardUserId, customerId, nameOnCard, cardStatus, cardNumber, last4, cvv, expiry, balance: cardBalance,
         cardType, cardBrand, reference, cardCreatedDate, customerEmail: customerEmailFromStro,
-        billingLine1, billingCity, billingState, billingPostal, billingCountry,
+        billingLine1, billingCity, billingState, billingPostal, billingCountry, billingPhone,
       })
       .returning();
 
@@ -329,6 +331,20 @@ router.get("/my-card", userAuth, async (req: any, res) => {
     console.log("[Card] Card from DB:", { cardId: card.cardId, status: card.cardStatus, last4: card.last4 });
 
     const cardIdIsReal = card.cardId && !/^\d+$/.test(card.cardId);
+
+    // Helper to attach billing object from DB fields
+    const withBilling = (c: typeof card & Record<string, any>) => ({
+      ...c,
+      billing: {
+        name: c.nameOnCard ?? "",
+        line1: c.billingLine1 ?? "N/A",
+        city: c.billingCity ?? "N/A",
+        state: c.billingState ?? "N/A",
+        postalCode: c.billingPostal ?? "00000",
+        country: c.billingCountry ?? "ETH",
+        phone: c.billingPhone ?? "",
+      },
+    });
 
     if (cardIdIsReal && process.env.STROWALLET_PUBLIC_KEY) {
       try {
@@ -367,7 +383,7 @@ router.get("/my-card", userAuth, async (req: any, res) => {
           if (Object.keys(updates).length > 0) {
             updates.updatedAt = new Date();
             await db.update(cardsTable).set(updates).where(eq(cardsTable.userId, userId));
-            return res.json({ card: { ...card, ...updates } });
+            return res.json({ card: withBilling({ ...card, ...updates }) });
           }
         }
       } catch (e) {
@@ -375,7 +391,7 @@ router.get("/my-card", userAuth, async (req: any, res) => {
       }
     }
 
-    return res.json({ card });
+    return res.json({ card: withBilling(card as any) });
   } catch (err) {
     console.error("[Card] my-card error:", err);
     return res.status(500).json({ error: "Internal server error" });

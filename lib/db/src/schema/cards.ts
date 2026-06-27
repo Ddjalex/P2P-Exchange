@@ -25,6 +25,7 @@ export const cardsTable = pgTable("cards", {
   billingState: text("billing_state").default("N/A"),
   billingPostal: text("billing_postal").default("00000"),
   billingCountry: text("billing_country").default("ETH"),
+  billingPhone: text("billing_phone").default(""),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

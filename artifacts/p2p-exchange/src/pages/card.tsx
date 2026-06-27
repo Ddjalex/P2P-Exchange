@@ -67,9 +67,7 @@ function CardVisual({
         <line x1="24" y1="98" x2="68" y2="98" stroke="rgb(170,136,0)" strokeWidth="0.8" strokeOpacity="0.5" />
         <line x1="46" y1="78" x2="46" y2="110" stroke="rgb(170,136,0)" strokeWidth="0.8" strokeOpacity="0.5" />
         <text x="24" y="58" fontFamily="Poppins, sans-serif" fontSize="14" fontWeight="800" fill="white">xen<tspan fill={accent}>drx</tspan></text>
-        <circle cx="340" cy="52" r="10" fill="rgb(255,68,68)" fillOpacity="0.8" />
-        <circle cx="352" cy="52" r="10" fill="rgb(255,170,0)" fillOpacity="0.8" />
-        <circle cx="346" cy="52" r="6" fill="rgb(255,119,0)" fillOpacity="0.6" />
+        <image href="/visa-logo.png" x="300" y="28" width="68" height="44" preserveAspectRatio="xMidYMid meet" style={{ borderRadius: "4px" }} />
         <text x="24" y="145" fontFamily="'Courier New', monospace" fontSize="13" fontWeight="600" fill="white" letterSpacing="2">{displayNumber}</text>
         <text x="24" y="174" fontFamily="Poppins, sans-serif" fontSize="9" fill={accentDim} letterSpacing="2">CARD HOLDER</text>
         <text x="24" y="192" fontFamily="Poppins, sans-serif" fontSize="12" fontWeight="600" fill="white" letterSpacing="1">{holderName.toUpperCase().slice(0, 22)}</text>
@@ -508,25 +506,18 @@ export default function CardPage() {
               <div style={{ width: "100%", maxWidth: "380px" }}>
                 <div style={{ background: "rgba(0,229,255,0.04)", border: "1px solid rgba(0,229,255,0.12)", borderRadius: "14px", padding: "16px 20px", marginBottom: "12px" }}>
                   <p style={{ color: "#00e5ff", fontSize: "12px", fontWeight: 700, letterSpacing: "1px", marginBottom: "4px" }}>🏠 BILLING ADDRESS</p>
-                  <InfoRow label="Name" value={card.nameOnCard} />
-                  <InfoRow label="Address" value={card.billingLine1 ?? "N/A"} />
-                  <InfoRow label="City" value={card.billingCity ?? "N/A"} />
-                  <InfoRow label="State" value={card.billingState ?? "N/A"} />
-                  <InfoRow label="Postal Code" value={card.billingPostal ?? "00000"} />
-                  <InfoRow label="Country" value={
-                    card.billingCountry === "ETH" ? "Ethiopia (ETH)"
-                    : card.billingCountry === "NGA" ? "Nigeria (NGA)"
-                    : card.billingCountry === "GHA" ? "Ghana (GHA)"
-                    : card.billingCountry === "KEN" ? "Kenya (KEN)"
-                    : card.billingCountry === "TZA" ? "Tanzania (TZA)"
-                    : card.billingCountry === "UGA" ? "Uganda (UGA)"
-                    : card.billingCountry === "ZAF" ? "South Africa (ZAF)"
-                    : card.billingCountry === "USA" ? "United States (USA)"
-                    : card.billingCountry === "GBR" ? "United Kingdom (GBR)"
-                    : card.billingCountry ?? "Ethiopia (ETH)"
-                  } />
-                  {(meData as any)?.phone && (
-                    <InfoRow label="Phone" value={(meData as any).phone} />
+                  <InfoRow label="Name" value={card.billing?.name ?? card.nameOnCard} />
+                  <InfoRow label="Address" value={card.billing?.line1 ?? card.billingLine1 ?? "N/A"} />
+                  <InfoRow label="City" value={card.billing?.city ?? card.billingCity ?? "N/A"} />
+                  <InfoRow label="State" value={card.billing?.state ?? card.billingState ?? "N/A"} />
+                  <InfoRow label="Postal Code" value={card.billing?.postalCode ?? card.billingPostal ?? "00000"} />
+                  <InfoRow label="Country" value={(() => {
+                    const c = card.billing?.country ?? card.billingCountry ?? "ETH";
+                    const map: Record<string, string> = { ETH: "Ethiopia (ETH)", NGA: "Nigeria (NGA)", GHA: "Ghana (GHA)", KEN: "Kenya (KEN)", TZA: "Tanzania (TZA)", UGA: "Uganda (UGA)", ZAF: "South Africa (ZAF)", EGY: "Egypt (EGY)", USA: "United States (USA)", GBR: "United Kingdom (GBR)", CAN: "Canada (CAN)", DEU: "Germany (DEU)", FRA: "France (FRA)", IND: "India (IND)" };
+                    return map[c] ?? c;
+                  })()} />
+                  {(card.billing?.phone || (meData as any)?.phone) && (
+                    <InfoRow label="Phone" value={card.billing?.phone || (meData as any)?.phone} />
                   )}
                 </div>
                 <div style={{ background: "rgba(255,170,0,0.06)", border: "1px solid rgba(255,170,0,0.2)", borderRadius: "10px", padding: "12px 14px", marginBottom: "4px" }}>
