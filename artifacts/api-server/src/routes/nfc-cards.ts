@@ -227,19 +227,42 @@ router.post("/create", userAuth, async (req: any, res) => {
 
     if (!stroOk) {
       const rawMsg: string = stroRes?.message ?? stroRes?.error ?? "";
-      const isLowBalance = rawMsg.toLowerCase().includes("insufficient") || stroRes?.required;
+      const lc = rawMsg.toLowerCase();
+
+      const isConfigError =
+        (lc.includes("invalid") && (lc.includes("key") || lc.includes("public"))) ||
+        lc.includes("unauthorized") ||
+        lc.includes("authentication");
+
+      const isLowBalance =
+        !isConfigError && (
+          lc.includes("insufficient") ||
+          lc.includes("balance") ||
+          stroRes?.required !== undefined ||
+          stroRes?.available !== undefined
+        );
+
       if (isLowBalance) {
         // Keep fee deducted — will be used when queue processes
         await enqueueCardCreate(userId, creationFee, `StroWallet: ${rawMsg}`);
+        try {
+          await PushNotify.adminAlert(
+            `⚠️ StroWallet balance low — card creation queued for user ${userId}. Available: $${stroRes?.available ?? "unknown"}`
+          );
+        } catch {}
         return res.json({
           success: true,
           queued: true,
           message: "Your card creation request has been queued. You will be notified once your card is ready. No additional charges will apply.",
         });
       }
-      const errMsg = stroErrMsg(stroRes, "Card creation failed. Please try again.");
-      console.error(`[Card] StroWallet rejected: ${errMsg}`);
+
+      // Refund fee for all non-queue errors
       await db.update(walletsTable).set({ availableBalance: avail.toFixed(6), updatedAt: new Date() }).where(eq(walletsTable.userId, userId));
+      const errMsg = isConfigError
+        ? "Card service is temporarily unavailable. Your fee has been refunded. Please try again later."
+        : stroErrMsg(stroRes, "Card creation failed. Fee has been refunded.");
+      console.error(`[Card] StroWallet rejected: ${errMsg}`);
       return res.status(422).json({ error: errMsg });
     }
 
@@ -459,21 +482,41 @@ router.post("/fund", userAuth, async (req: any, res) => {
 
     if (!stroRes?.success) {
       const rawMsg: string = stroRes?.message ?? stroRes?.error ?? "";
+      const lc = rawMsg.toLowerCase();
       console.log("[Card] StroWallet fund rejected:", rawMsg, "| full response:", JSON.stringify(stroRes));
-      const isLowBalance = rawMsg.toLowerCase().includes("insufficient") || stroRes?.required;
+
+      const isConfigError =
+        (lc.includes("invalid") && (lc.includes("key") || lc.includes("public"))) ||
+        lc.includes("unauthorized") ||
+        lc.includes("authentication");
+
+      const isLowBalance =
+        !isConfigError && (
+          lc.includes("insufficient") ||
+          lc.includes("balance") ||
+          stroRes?.required !== undefined ||
+          stroRes?.available !== undefined
+        );
+
       if (isLowBalance) {
         // Keep the balance deducted — queue will process it when merchant balance is topped up
         await enqueueCardFund(userId, card.cardId!, amount, `StroWallet: ${rawMsg}`);
+        try {
+          await PushNotify.adminAlert(
+            `⚠️ StroWallet balance low — $${amount} top-up queued for user ${userId}. Available: $${stroRes?.available ?? "unknown"}, Required: $${stroRes?.required ?? "unknown"}`
+          );
+        } catch {}
         return res.json({
           success: true,
           queued: true,
           message: `Your top-up of $${amount.toFixed(2)} has been queued. Your balance has been reserved and will be credited to your card shortly. You'll get a push notification when it's done.`,
         });
       }
-      // Other errors — refund immediately
+
+      // Refund for all non-queue errors
       await db.update(walletsTable).set({ availableBalance: avail.toFixed(6), updatedAt: new Date() }).where(eq(walletsTable.userId, userId));
-      const userMsg = rawMsg.toLowerCase().includes("invalid") && rawMsg.toLowerCase().includes("key")
-        ? "Card service configuration error. Please contact support."
+      const userMsg = isConfigError
+        ? "Card service is temporarily unavailable. Your balance has been refunded. Please try again later."
         : rawMsg || "Card top-up failed. Your balance has been refunded.";
       return res.status(502).json({ error: userMsg });
     }
