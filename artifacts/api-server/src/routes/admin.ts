@@ -2129,6 +2129,31 @@ router.post("/cards/link", adminAuth, async (req, res) => {
   }
 });
 
+// ─── Card queue ──────────────────────────────────────────────────────────────
+
+router.get("/cards/queue", adminAuth, async (req, res) => {
+  try {
+    const { cardQueueTable } = await import("@workspace/db") as any;
+    const { desc: descOrd } = await import("drizzle-orm") as any;
+    const items = await db.select().from(cardQueueTable).orderBy(descOrd(cardQueueTable.createdAt));
+    res.json({ queue: items });
+  } catch (err) {
+    req.log.error({ err }, "Admin card queue list failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/cards/process-queue", adminAuth, async (req, res) => {
+  try {
+    const { processCardQueue } = await import("../lib/card-queue.js") as any;
+    processCardQueue().catch(console.error);
+    res.json({ success: true, message: "Queue processing triggered" });
+  } catch (err) {
+    req.log.error({ err }, "Admin process queue failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // ─── Manual sweep trigger ────────────────────────────────────────────────────
 
 router.post("/sweep-stuck-funds", adminAuth, async (req, res) => {

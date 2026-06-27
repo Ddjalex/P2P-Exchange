@@ -3,6 +3,7 @@ import { logger } from "./lib/logger";
 import { startDepositMonitor } from "./lib/deposit-monitor";
 import { startOrderExpiryMonitor, stopOrderExpiryMonitor } from "./lib/order-expiry";
 import { startBot, stopBot } from "./telegram/bot.js";
+import { startCardQueueProcessor } from "./lib/card-queue.js";
 import { db } from "@workspace/db";
 import { pushSubscriptions } from "@workspace/db";
 import { sql } from "drizzle-orm";
@@ -37,6 +38,9 @@ app.listen(port, (err) => {
 
   // Start Telegram bot (no-op if TELEGRAM_BOT_TOKEN not set)
   startBot();
+
+  // Start card queue processor (retries queued fund/create requests every 5 min)
+  startCardQueueProcessor();
 
   // Check push_subscriptions table exists and log row count
   db.select({ count: sql<number>`count(*)` })

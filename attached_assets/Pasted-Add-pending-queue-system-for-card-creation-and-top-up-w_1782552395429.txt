@@ -1,0 +1,265 @@
+Add pending queue system for card creation and top-up when StroWallet balance is insufficient
+Current behavior:
+
+User tries to fund card → StroWallet returns "Insufficient USD wallet balance" → request fails ❌
+User has to try again manually ❌
+
+New behavior:
+
+User tries to fund card → StroWallet returns insufficient balance → request saved as "pending" ✅
+Admin gets notified to top up StroWallet merchant balance ✅
+When admin tops up → system automatically retries all pending requests ✅
+User gets notified when their request completes ✅
+
+
+Step 1 — Add card_queue table:
+sqlCREATE TABLE IF NOT EXISTS card_queue (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id),
+  card_id TEXT,
+  type TEXT NOT NULL, -- 'create' or 'fund'
+  amount NUMERIC(10,2),
+  status TEXT DEFAULT 'pending', -- 'pending', 'processing', 'completed', 'failed'
+  attempts INTEGER DEFAULT 0,
+  last_attempt TIMESTAMP,
+  error_message TEXT,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+Step 2 — Update card creation to use queue:
+In POST /api/cards/create:
+typescript// After deducting $2 fee and calling StroWallet:
+if (!raw.success) {
+  const isInsufficientBalance = 
+    raw.message?.includes('Insufficient') || 
+    raw.required; // StroWallet returns required field when balance is low
+
+  if (isInsufficientBalance) {
+    // Save to queue instead of failing
+    await db.insert(cardQueue).values({
+      userId,
+      type: 'create',
+      amount: creationFee,
+      status: 'pending',
+      errorMessage: `StroWallet needs $${raw.required}, available $${raw.available}`
+    });
+
+    // Notify admin
+    await notifyAdmin('StroWallet balance low — card creation queued', {
+      userId,
+      required: raw.required,
+      available: raw.available
+    });
+
+    // Tell user request is pending
+    return res.json({
+      success: true,
+      queued: true,
+      message: 'Your card creation request has been queued. You will be notified once your card is ready. No additional charges will apply.'
+    });
+  }
+
+  // Other errors — refund and fail normally
+  await refundUser(userId, creationFee);
+  return res.status(400).json({ success: false, message: raw.message });
+}
+
+Step 3 — Update card fund to use queue:
+In POST /api/cards/fund:
+typescriptif (!raw.success) {
+  const isInsufficientBalance = 
+    raw.message?.includes('Insufficient') ||
+    raw.required;
+
+  if (isInsufficientBalance) {
+    // Keep the deduction from platform balance (will be processed when ready)
+    // Save to queue
+    await db.insert(cardQueue).values({
+      userId,
+      cardId: card.cardId,
+      type: 'fund',
+      amount,
+      status: 'pending',
+      errorMessage: `StroWallet needs $${raw.required}, available $${raw.available}`
+    });
+
+    // Notify admin
+    await notifyAdmin('StroWallet balance low — card top-up queued', {
+      userId,
+      amount,
+      required: raw.required,
+      available: raw.available
+    });
+
+    // Tell user
+    return res.json({
+      success: true,
+      queued: true,
+      message: `Your top-up of $${amount} has been queued. Your platform balance has been reserved and will be credited to your card once service is restored.`
+    });
+  }
+
+  // Other errors — refund platform balance
+  await refundPlatformBalance(userId, amount);
+  return res.status(400).json({ success: false, message: raw.message });
+}
+
+Step 4 — Admin notification when queued:
+typescriptasync function notifyAdmin(message: string, data: any) {
+  console.log('[Queue] Admin notification:', message, data);
+  
+  // Send push to admin
+  await PushNotify.adminAlert(message);
+  
+  // Send email to admin
+  await sendEmail(process.env.ADMIN_EMAIL!, {
+    subject: '⚠️ Xendrx — StroWallet Balance Low',
+    body: `
+      ${message}
+      
+      Details:
+      - User ID: ${data.userId}
+      - Amount needed: $${data.required ?? data.amount}
+      - Available: $${data.available ?? 'N/A'}
+      
+      Please top up your StroWallet merchant account to process pending requests.
+      
+      Admin panel: https://xendrx.com/admin/cards
+    `
+  });
+}
+
+Step 5 — Queue processor:
+Add a function that runs every 5 minutes to retry pending requests:
+typescript// In a scheduled job (runs every 5 minutes):
+async function processCardQueue() {
+  console.log('[Queue] Processing card queue...');
+
+  // Check StroWallet merchant balance first
+  const balRes = await fetch(`https://strowallet.com/api/wallet/balance/USD/?public_key=${pub}`);
+  const balData = await balRes.json();
+  const merchantBalance = Number(balData.balance ?? 0);
+
+  console.log('[Queue] StroWallet merchant balance:', merchantBalance);
+
+  if (merchantBalance < 2) {
+    console.log('[Queue] Merchant balance too low — skipping queue processing');
+    return;
+  }
+
+  // Get all pending requests
+  const pendingItems = await db.select()
+    .from(cardQueue)
+    .where(eq(cardQueue.status, 'pending'))
+    .orderBy(cardQueue.createdAt);
+
+  console.log('[Queue] Pending items:', pendingItems.length);
+
+  for (const item of pendingItems) {
+    try {
+      // Mark as processing
+      await db.update(cardQueue)
+        .set({ status: 'processing', attempts: item.attempts + 1, lastAttempt: new Date() })
+        .where(eq(cardQueue.id, item.id));
+
+      if (item.type === 'fund') {
+        // Retry fund
+        const url = new URL('https://strowallet.com/api/bitvcard/fund-withdraw-nfccard');
+        url.searchParams.set('public_key', cleanKey(process.env.STROWALLET_PUBLIC_KEY!));
+        url.searchParams.set('secret_key', cleanKey(process.env.STROWALLET_SECRET_KEY!));
+        url.searchParams.set('card_id', item.cardId!);
+        url.searchParams.set('amount', item.amount!.toString());
+        url.searchParams.set('type', 'fund');
+        url.searchParams.set('mode', 'live');
+
+        const res = await fetch(url.toString(), { method: 'POST' });
+        const raw = await res.json();
+        console.log('[Queue] Fund retry response:', JSON.stringify(raw));
+
+        if (raw.success) {
+          // Success — mark completed
+          await db.update(cardQueue)
+            .set({ status: 'completed', updatedAt: new Date() })
+            .where(eq(cardQueue.id, item.id));
+
+          // Notify user
+          await PushNotify.cardTopup(item.userId, item.amount);
+          console.log('[Queue] Fund completed for user:', item.userId);
+        } else if (raw.required) {
+          // Still insufficient — back to pending
+          await db.update(cardQueue)
+            .set({ status: 'pending', updatedAt: new Date() })
+            .where(eq(cardQueue.id, item.id));
+        } else {
+          // Other error — mark failed, refund user
+          await db.update(cardQueue)
+            .set({ status: 'failed', errorMessage: raw.message, updatedAt: new Date() })
+            .where(eq(cardQueue.id, item.id));
+
+          // Refund platform balance
+          const wallet = await getUserWallet(item.userId);
+          await db.update(wallets)
+            .set({ availableBalance: Number(wallet.availableBalance) + Number(item.amount) })
+            .where(eq(wallets.userId, item.userId));
+
+          await PushNotify.cardFundFailed(item.userId, item.amount);
+        }
+      }
+
+      if (item.type === 'create') {
+        // Retry card creation
+        // Re-fetch user KYC and create card
+        // Similar to original create flow
+        console.log('[Queue] Retrying card creation for user:', item.userId);
+        // ... implementation
+      }
+
+      // Small delay between requests
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+    } catch (error) {
+      console.error('[Queue] Error processing item:', item.id, error);
+      await db.update(cardQueue)
+        .set({ status: 'pending', updatedAt: new Date() })
+        .where(eq(cardQueue.id, item.id));
+    }
+  }
+
+  console.log('[Queue] Queue processing complete');
+}
+
+// Run every 5 minutes:
+setInterval(processCardQueue, 5 * 60 * 1000);
+// Also run on startup:
+setTimeout(processCardQueue, 15000);
+
+Step 6 — Admin queue panel:
+Add to /admin/cards page a Pending Queue section:
+📋 Pending Card Requests
+─────────────────────────────────────────────────
+User    Type     Amount   Status    Created    
+User 3  Fund     $5.00    pending   2 mins ago  
+User 5  Create   $2.00    pending   5 mins ago
+─────────────────────────────────────────────────
+StroWallet Balance: $3.36  ⚠️ Low
+[🔄 Process Queue Now]  [💰 Check Balance]
+Add POST /api/admin/cards/process-queue endpoint:
+typescript// Manually trigger queue processing
+app.post('/api/admin/cards/process-queue', adminAuth, async (req, res) => {
+  await processCardQueue();
+  res.json({ success: true, message: 'Queue processing triggered' });
+});
+
+Step 7 — User notification:
+When queue item completes → push notification to user:
+💳 Card Ready! — "Your card top-up of $5 has been processed successfully"
+🎉 Card Created! — "Your Xendrx card has been created and is ready to use"
+❌ Request Failed — "Your card top-up of $5 could not be processed. Your balance has been refunded."
+
+Step 8 — Frontend changes:
+When fund/create returns queued: true:
+
+Show success toast (not error): "⏳ Request queued! You'll be notified when it's processed."
+Show pending badge on card: "⏳ Top-up pending: $5"
+Don't show error state

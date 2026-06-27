@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import {
   cardsTable,
+  cardQueueTable,
   kycSubmissionsTable,
   usersTable,
   walletsTable,
@@ -11,6 +12,8 @@ import {
 import { eq, or } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { userAuth } from "../middleware/user-auth";
+import { enqueueCardFund, enqueueCardCreate } from "../lib/card-queue.js";
+import { PushNotify } from "./push.js";
 
 const router = Router();
 
@@ -186,10 +189,10 @@ router.post("/create", userAuth, async (req: any, res) => {
       id_number: `ETH${String(userId).padStart(8, "0")}`,
       email: user.email,
       phone: user.phone ?? "0900000000",
-      line1: "N/A",
-      city: "N/A",
-      state: "N/A",
-      postal_code: "00000",
+      line1: req.body?.line1 ?? "Bole Road",
+      city: req.body?.city ?? "Addis Ababa",
+      state: req.body?.state ?? "Addis Ababa",
+      postal_code: req.body?.postal_code ?? "1000",
       country,
       amount_usd: String(initialLoad),
       mode: "live",
@@ -216,6 +219,17 @@ router.post("/create", userAuth, async (req: any, res) => {
     }
 
     if (!stroOk) {
+      const rawMsg: string = stroRes?.message ?? stroRes?.error ?? "";
+      const isLowBalance = rawMsg.toLowerCase().includes("insufficient") || stroRes?.required;
+      if (isLowBalance) {
+        // Keep fee deducted — will be used when queue processes
+        await enqueueCardCreate(userId, creationFee, `StroWallet: ${rawMsg}`);
+        return res.json({
+          success: true,
+          queued: true,
+          message: "Your card creation request has been queued. You will be notified once your card is ready. No additional charges will apply.",
+        });
+      }
       const errMsg = stroErrMsg(stroRes, "Card creation failed. Please try again.");
       console.error(`[Card] StroWallet rejected: ${errMsg}`);
       await db.update(walletsTable).set({ availableBalance: avail.toFixed(6), updatedAt: new Date() }).where(eq(walletsTable.userId, userId));
@@ -265,12 +279,12 @@ router.post("/create", userAuth, async (req: any, res) => {
     const cardCreatedDate: string | null = pick(d1?.card_created_date, d0?.card_created_date, new Date().toISOString());
     const customerEmailFromStro: string | null = pick(d1?.customer_email, d0?.customer_email, user.email);
 
-    // Billing address from request body (sent during creation) or defaults
-    const billingLine1 = (body as any).line1 ?? "N/A";
-    const billingCity = (body as any).city ?? "N/A";
-    const billingState = (body as any).state ?? "N/A";
-    const billingPostal = (body as any).postal_code ?? "00000";
-    const billingCountry = (body as any).country ?? "ETH";
+    // Billing address from request body (sent during creation) or Ethiopian defaults
+    const billingLine1 = (body as any).line1 ?? req.body?.line1 ?? "Bole Road";
+    const billingCity = (body as any).city ?? req.body?.city ?? "Addis Ababa";
+    const billingState = (body as any).state ?? req.body?.state ?? "Addis Ababa";
+    const billingPostal = (body as any).postal_code ?? req.body?.postal_code ?? "1000";
+    const billingCountry = (body as any).country ?? req.body?.country ?? "ETH";
 
     console.log("[Card] Billing address:", billingLine1, billingCity, billingCountry);
 
@@ -409,14 +423,21 @@ router.post("/fund", userAuth, async (req: any, res) => {
     }
 
     if (!stroRes?.success) {
-      // Refund the user's platform balance
-      await db.update(walletsTable).set({ availableBalance: avail.toFixed(6), updatedAt: new Date() }).where(eq(walletsTable.userId, userId));
       const rawMsg: string = stroRes?.message ?? stroRes?.error ?? "";
       console.log("[Card] StroWallet fund rejected:", rawMsg, "| full response:", JSON.stringify(stroRes));
-      // StroWallet "Insufficient USD wallet balance" = merchant account low, not user's fault
-      const userMsg = rawMsg.toLowerCase().includes("insufficient")
-        ? "Card top-up service is temporarily unavailable. Your balance has NOT been deducted. Please try again later or contact support."
-        : rawMsg || "Card top-up failed. Your balance has been refunded.";
+      const isLowBalance = rawMsg.toLowerCase().includes("insufficient") || stroRes?.required;
+      if (isLowBalance) {
+        // Keep the balance deducted — queue will process it when merchant balance is topped up
+        await enqueueCardFund(userId, card.cardId!, amount, `StroWallet: ${rawMsg}`);
+        return res.json({
+          success: true,
+          queued: true,
+          message: `Your top-up of $${amount.toFixed(2)} has been queued. Your balance has been reserved and will be credited to your card shortly. You'll get a push notification when it's done.`,
+        });
+      }
+      // Other errors — refund immediately
+      await db.update(walletsTable).set({ availableBalance: avail.toFixed(6), updatedAt: new Date() }).where(eq(walletsTable.userId, userId));
+      const userMsg = rawMsg || "Card top-up failed. Your balance has been refunded.";
       return res.status(502).json({ error: userMsg });
     }
 

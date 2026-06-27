@@ -242,7 +242,15 @@ export default function CardPage() {
 
   const createMutation = useMutation({
     mutationFn: () => apiFetch("/api/cards/create", { method: "POST", body: JSON.stringify({ country }) }),
-    onSuccess: () => { invalidate(); setModal(null); showToast("Card created! It will be ready in a few minutes."); },
+    onSuccess: (d: any) => {
+      invalidate();
+      setModal(null);
+      if (d?.queued) {
+        showToast("⏳ Request queued! You'll be notified when your card is ready. No extra charges.");
+      } else {
+        showToast("Card created! It will be ready in a few minutes.");
+      }
+    },
     onError: (e: any) => { setModal(null); showToast(e.message, false); },
   });
   const fundMutation = useMutation({
@@ -251,6 +259,10 @@ export default function CardPage() {
       invalidate();
       setModal(null);
       setAmount("");
+      if (d?.queued) {
+        showToast("⏳ Top-up queued! Your balance is reserved and will be credited to your card shortly.");
+        return;
+      }
       const cardBal = d?.newCardBalance ? `$${parseFloat(d.newCardBalance).toFixed(2)}` : "";
       const walBal = d?.newPlatformBalance ? `$${parseFloat(d.newPlatformBalance).toFixed(2)}` : "";
       showToast(`✅ Card topped up! Card balance: ${cardBal} | Wallet: ${walBal}`);
