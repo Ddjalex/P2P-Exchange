@@ -487,86 +487,107 @@ router.post("/forgot-password", forgotPasswordLimiter, async (req, res) => {
     console.log(`\n🔐 RESET OTP for ${normalized}: ${otp}\n`);
 
     let delivered = false;
-    let deliveryError = "";
+    let deliveryMethod = "";
 
-    if (isEmail) {
-      // Try Brevo email delivery
+    const emailHtml = `
+      <div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;background:#080d18;color:#fff;border-radius:12px;padding:32px;">
+        <div style="text-align:center;margin-bottom:24px;">
+          <span style="font-size:24px;font-weight:700;">xen</span><span style="font-size:24px;font-weight:700;color:#00e5ff;">drx</span>
+        </div>
+        <h2 style="margin:0 0 8px;font-size:20px;">Password Reset Code</h2>
+        <p style="color:rgba(255,255,255,.6);font-size:14px;margin:0 0 24px;">Use the code below to reset your password. It expires in 15 minutes.</p>
+        <div style="background:#0d0d1a;border:2px solid #00e5ff33;border-radius:8px;padding:20px;text-align:center;letter-spacing:10px;font-size:36px;font-weight:700;color:#00e5ff;">${otp}</div>
+        <p style="color:rgba(255,255,255,.4);font-size:12px;margin-top:24px;text-align:center;">If you did not request this, ignore this email.</p>
+      </div>
+    `;
+
+    async function sendEmail(toEmail: string): Promise<boolean> {
       const apiKey = await getSetting("brevoApiKey");
       const senderEmail = await getSetting("brevoSenderEmail");
       const senderName = await getSetting("brevoSenderName");
-      if (apiKey) {
+      if (!apiKey) return false;
+      try {
+        const r = await fetch("https://api.brevo.com/v3/smtp/email", {
+          method: "POST",
+          headers: { "api-key": apiKey, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sender: { name: senderName || "Xendrx", email: senderEmail || "noreply@xendrx.com" },
+            to: [{ email: toEmail }],
+            subject: "Your Xendrx Password Reset Code",
+            htmlContent: emailHtml,
+          }),
+        });
+        return r.ok;
+      } catch { return false; }
+    }
+
+    // ── 1. EMAIL (primary) ────────────────────────────────────────────────────
+    // Send via email if: user typed an email, OR user has a verified real email on file
+    const hasVerifiedEmail = !!(user.emailVerified && user.email && !user.email.endsWith("@phone.xendrx.com"));
+    if (!delivered && (isEmail || hasVerifiedEmail)) {
+      const emailTarget = isEmail ? normalized : user.email!;
+      console.log(`[ForgotPwd] Trying email (primary) to: ${emailTarget}`);
+      const ok = await sendEmail(emailTarget);
+      if (ok) { delivered = true; deliveryMethod = "email"; }
+      else req.log.warn({ emailTarget }, "forgot-password: email delivery failed");
+    }
+
+    // ── 2. TELEGRAM BOT (secondary) ───────────────────────────────────────────
+    // If email wasn't sent (or user has no verified email), try via linked Telegram bot
+    if (!delivered) {
+      const tgUser = await db.select().from(telegramUsersTable)
+        .where(eq(telegramUsersTable.userId, user.id)).then(r => r[0]);
+      if (tgUser?.telegramId) {
+        console.log(`[ForgotPwd] Trying Telegram bot (secondary) for userId: ${user.id}`);
         try {
-          const emailHtml = `
-            <div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;background:#080d18;color:#fff;border-radius:12px;padding:32px;">
-              <div style="text-align:center;margin-bottom:24px;">
-                <span style="font-size:24px;font-weight:700;">xen</span><span style="font-size:24px;font-weight:700;color:#00e5ff;">drx</span>
-              </div>
-              <h2 style="margin:0 0 8px;font-size:20px;">Password Reset Code</h2>
-              <p style="color:rgba(255,255,255,.6);font-size:14px;margin:0 0 24px;">Use the code below to reset your password. It expires in 15 minutes.</p>
-              <div style="background:#0d0d1a;border:2px solid #00e5ff33;border-radius:8px;padding:20px;text-align:center;letter-spacing:10px;font-size:36px;font-weight:700;color:#00e5ff;">${otp}</div>
-              <p style="color:rgba(255,255,255,.4);font-size:12px;margin-top:24px;text-align:center;">If you did not request this, ignore this email.</p>
-            </div>
-          `;
-          const res2 = await fetch("https://api.brevo.com/v3/smtp/email", {
-            method: "POST",
-            headers: { "api-key": apiKey, "Content-Type": "application/json" },
-            body: JSON.stringify({
-              sender: { name: senderName || "Xendrx", email: senderEmail || "noreply@xendrx.com" },
-              to: [{ email: normalized }],
-              subject: "Your Xendrx Password Reset Code",
-              htmlContent: emailHtml,
-            }),
-          });
-          if (res2.ok) delivered = true;
-          else deliveryError = `Email error ${res2.status}`;
-        } catch (e: any) {
-          deliveryError = e?.message || "Email send failed";
-        }
-      } else {
-        deliveryError = "Email service not configured";
-      }
-    } else {
-      // Try FastSMS delivery
-      const apiKey = await getSetting("fastsmsApiKey");
-      if (apiKey) {
-        try {
-          const phone = user.phone || normalized;
-          await sendSms(phone, `Your Xendrx password reset code is: ${otp}. Valid for 15 minutes. Do not share this code.`, apiKey);
+          const { sendTelegramMessage } = await import("../telegram/bot.js");
+          await sendTelegramMessage(
+            tgUser.telegramId,
+            `🔐 *Xendrx Password Reset*\n\nYour reset code is:\n\n\`${otp}\`\n\nThis code expires in *15 minutes*.\nIf you did not request this, ignore this message.`
+          );
           delivered = true;
+          deliveryMethod = "telegram";
         } catch (e: any) {
-          deliveryError = e?.message || "SMS send failed";
+          req.log.warn({ err: e }, "forgot-password: Telegram bot delivery failed");
         }
-      } else {
-        deliveryError = "SMS service not configured";
       }
     }
 
-    // Try Telegram as fallback (or in addition) if user has bot linked
-    const tgUser = await db.select().from(telegramUsersTable)
-      .where(eq(telegramUsersTable.userId, user.id)).then(r => r[0]);
-    if (tgUser?.telegramId) {
-      try {
-        const { sendTelegramMessage } = await import("../telegram/bot.js");
-        await sendTelegramMessage(
-          tgUser.telegramId,
-          `🔐 *Xendrx Password Reset*\n\nYour reset code is:\n\n\`${otp}\`\n\nThis code expires in *15 minutes*.\nIf you did not request this, ignore this message.`
-        );
-        delivered = true;
-      } catch {
-        // Telegram is optional
+    // ── 3. SMS (fallback) ─────────────────────────────────────────────────────
+    if (!delivered) {
+      const phoneTarget = user.phone || (!isEmail ? normalized : null);
+      if (phoneTarget) {
+        console.log(`[ForgotPwd] Trying SMS (fallback) to: ${phoneTarget}`);
+        const apiKey = await getSetting("fastsmsApiKey");
+        if (apiKey) {
+          try {
+            await sendSms(phoneTarget, `Your Xendrx password reset code is: ${otp}. Valid for 15 minutes. Do not share this code.`, apiKey);
+            delivered = true;
+            deliveryMethod = "sms";
+          } catch (e: any) {
+            req.log.warn({ err: e }, "forgot-password: SMS delivery failed");
+          }
+        }
       }
     }
 
     if (!delivered) {
-      req.log.warn({ deliveryError }, "OTP delivery failed, returning devOtp");
+      req.log.warn({ userId: user.id }, "forgot-password: all delivery channels failed");
+    } else {
+      console.log(`[ForgotPwd] OTP delivered via: ${deliveryMethod}`);
     }
+
+    const methodLabel = deliveryMethod === "email" ? "email"
+      : deliveryMethod === "telegram" ? "Telegram"
+      : deliveryMethod === "sms" ? "phone"
+      : "your registered contact";
 
     return res.json({
       success: true,
+      method: deliveryMethod || null,
       message: delivered
-        ? `Reset code sent to your ${isEmail ? "email" : "phone"}.`
+        ? `Reset code sent to your ${methodLabel}.`
         : "Reset code sent successfully.",
-      // Always expose in dev mode so testing works without configured services
       ...(isDev && { devOtp: otp }),
     });
   } catch (err: any) {
