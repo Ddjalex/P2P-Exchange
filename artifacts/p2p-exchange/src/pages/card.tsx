@@ -305,9 +305,13 @@ export default function CardPage() {
 
 
   const fees = (feesData as any) ?? { cardCreationFee: "2.00", cardInitialLoad: "3.00", cardMinFund: "2.00", totalRequired: "5.00" };
+  console.log('[Card] fees object from API:', fees);
+  console.log('[Card] creationFee:', fees?.cardCreationFee);
+  console.log('[Card] initialLoad:', fees?.cardInitialLoad);
+  console.log('[Card] totalRequired (from API, should be used directly):', fees?.totalRequired);
   const creationFee = parseFloat(fees.cardCreationFee);
   const initialLoad = parseFloat(fees.cardInitialLoad);
-  const totalRequired = parseFloat(fees.totalRequired ?? fees.cardCreationFee) + parseFloat(fees.cardInitialLoad ?? "0");
+  const totalRequired = parseFloat(fees.totalRequired);
   const minFund = parseFloat(fees.cardMinFund);
   const pendingQueueItems: any[] = (myQueueData as any)?.pending ?? [];
 
