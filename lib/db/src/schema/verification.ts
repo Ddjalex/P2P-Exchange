@@ -8,6 +8,8 @@ export const verificationCodesTable = pgTable("verification_codes", {
   used: boolean("used").notNull().default(false),
   expiresAt: timestamp("expires_at").notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+  method: text("method"),
+  telegramRequestId: text("telegram_request_id"),
 });
 
 export type VerificationCode = typeof verificationCodesTable.$inferSelect;

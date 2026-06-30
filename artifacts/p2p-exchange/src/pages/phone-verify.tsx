@@ -26,6 +26,7 @@ export default function PhoneVerifyPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [done, setDone] = useState(false);
+  const [otpMethod, setOtpMethod] = useState<"telegram" | "sms" | "email" | null>(null);
 
   const fullPhone = `${dialCode}${phone.replace(/^0+/, "")}`;
 
@@ -70,9 +71,12 @@ export default function PhoneVerifyPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to send code");
       setStep("code");
+      setOtpMethod(data.method ?? null);
       if (data.devCode) {
         setCode(data.devCode);
         toast({ title: "Dev mode: code auto-filled", description: `OTP: ${data.devCode}` });
+      } else if (data.method === 'telegram') {
+        toast({ title: "Code sent via Telegram", description: "Open the Telegram app to view your code." });
       } else {
         toast({ title: `Verification code sent to ${fullPhone}` });
       }

@@ -5,6 +5,7 @@ import { usersTable, walletsTable, verificationCodesTable, systemSettingsTable, 
 import { eq, and, gt } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import { checkSendAbility, sendTelegramOtp, checkTelegramOtp, formatToE164 } from "../lib/telegram-gateway.js";
 
 const router = Router();
 
@@ -152,24 +153,50 @@ router.post("/send-code", sendCodeLimiter, async (req, res) => {
       return res.status(400).json({ error: "Security check failed. Please try again." });
     }
 
-    const code = generateCode();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
-    await db.insert(verificationCodesTable).values({ target, type, code, expiresAt });
-
     const isDev = process.env.NODE_ENV !== "production";
 
     if (type === "phone") {
+      const phoneE164 = formatToE164(target);
+      console.log('[Auth] Attempting Telegram Gateway OTP for:', phoneE164);
+
+      const abilityCheck = await checkSendAbility(phoneE164);
+      console.log('[Auth] Telegram checkSendAbility result:', JSON.stringify(abilityCheck));
+
+      if (abilityCheck?.request_id) {
+        const sendResult = await sendTelegramOtp(phoneE164, abilityCheck.request_id);
+        console.log('[Auth] Telegram sendVerificationMessage result:', JSON.stringify(sendResult));
+        if (sendResult?.request_id) {
+          await db.insert(verificationCodesTable).values({
+            target, type, code: 'TELEGRAM', expiresAt, method: 'telegram', telegramRequestId: sendResult.request_id,
+          });
+          console.log('[Auth] OTP method chosen: telegram for phone:', target);
+          return res.json({ sent: true, method: 'telegram' });
+        }
+      }
+
+      // Fallback to SMS
+      console.log('[Auth] Telegram unavailable for:', phoneE164, '— falling back to SMS');
+      const code = generateCode();
+      await db.insert(verificationCodesTable).values({ target, type, code, expiresAt, method: 'sms' });
+
       const apiKey = await getSetting("fastsmsApiKey");
       if (!apiKey) {
         if (isDev) {
           req.log.info({ target, code }, "DEV MODE — SMS not configured, OTP logged");
           console.log(`\n📱 DEV OTP for ${target}: ${code}\n`);
-          return res.json({ sent: true, devCode: code });
+          return res.json({ sent: true, devCode: code, method: 'sms' });
         }
         return res.status(503).json({ error: "SMS service not configured. Contact admin." });
       }
       await sendSms(target, `Your Xendrx verification code is: ${code}. Valid for 10 minutes.`, apiKey);
+      console.log('[Auth] OTP method chosen: sms for phone:', target);
+      return res.json({ sent: true, method: 'sms' });
     } else {
+      // Email
+      const code = generateCode();
+      await db.insert(verificationCodesTable).values({ target, type, code, expiresAt, method: 'email' });
+
       const apiKey = await getSetting("brevoApiKey");
       const senderEmail = await getSetting("brevoSenderEmail");
       const senderName = await getSetting("brevoSenderName");
@@ -177,14 +204,14 @@ router.post("/send-code", sendCodeLimiter, async (req, res) => {
         if (isDev) {
           req.log.info({ target, code }, "DEV MODE — Email not configured, OTP logged");
           console.log(`\n📧 DEV OTP for ${target}: ${code}\n`);
-          return res.json({ sent: true, devCode: code });
+          return res.json({ sent: true, devCode: code, method: 'email' });
         }
         return res.status(503).json({ error: "Email service not configured. Contact admin." });
       }
       await sendBrevoEmail(target, code, senderEmail ?? "", senderName ?? "", apiKey);
+      console.log('[Auth] OTP method chosen: email for target:', target);
+      return res.json({ sent: true, method: 'email' });
     }
-
-    res.json({ sent: true });
   } catch (err: any) {
     req.log.error({ err }, "send-code failed");
     res.status(500).json({ error: err?.message || "Failed to send verification code" });
@@ -201,12 +228,19 @@ router.post("/verify-code", async (req, res) => {
     const records = await db.select().from(verificationCodesTable)
       .where(and(
         eq(verificationCodesTable.target, target),
-        eq(verificationCodesTable.code, String(code)),
         eq(verificationCodesTable.used, false),
         gt(verificationCodesTable.expiresAt, now),
       ));
     const record = records[records.length - 1];
     if (!record) return res.status(400).json({ error: "Invalid or expired verification code" });
+
+    if (record.method === 'telegram' && record.telegramRequestId) {
+      const isValid = await checkTelegramOtp(record.telegramRequestId, String(code));
+      console.log('[Auth] Telegram code verification result:', isValid);
+      if (!isValid) return res.status(400).json({ error: "Invalid or expired code" });
+    } else {
+      if (record.code !== String(code)) return res.status(400).json({ error: "Invalid or expired verification code" });
+    }
 
     await db.update(verificationCodesTable).set({ used: true }).where(eq(verificationCodesTable.id, record.id));
     res.json({ verified: true });
@@ -268,12 +302,20 @@ router.post("/register", async (req, res) => {
     const codeRecords = await db.select().from(verificationCodesTable)
       .where(and(
         eq(verificationCodesTable.target, codeTarget),
-        eq(verificationCodesTable.code, String(code)),
         eq(verificationCodesTable.used, false),
         gt(verificationCodesTable.expiresAt, now),
       ));
     const codeRecord = codeRecords[codeRecords.length - 1];
     if (!codeRecord) return res.status(400).json({ error: "Invalid or expired verification code" });
+
+    if (codeRecord.method === 'telegram' && codeRecord.telegramRequestId) {
+      const isValid = await checkTelegramOtp(codeRecord.telegramRequestId, String(code));
+      console.log('[Auth] Telegram register code verification result:', isValid);
+      if (!isValid) return res.status(400).json({ error: "Invalid or expired verification code" });
+    } else {
+      if (codeRecord.code !== String(code)) return res.status(400).json({ error: "Invalid or expired verification code" });
+    }
+
     await db.update(verificationCodesTable).set({ used: true }).where(eq(verificationCodesTable.id, codeRecord.id));
 
     // Check username taken

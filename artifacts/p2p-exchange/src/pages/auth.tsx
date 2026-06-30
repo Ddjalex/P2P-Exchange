@@ -119,6 +119,7 @@ export default function AuthPage() {
   const [otpErr, setOtpErr] = useState("");
   const [otpCooldown, setOtpCooldown] = useState(0);
   const [devCodeActive, setDevCodeActive] = useState(false);
+  const [otpMethod, setOtpMethod] = useState<"telegram" | "sms" | "email" | null>(null);
   const cooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Country modal (top pill)
@@ -341,6 +342,7 @@ export default function AuthPage() {
         return;
       }
       setOtpStep(true);
+      setOtpMethod(data.method ?? null);
       if (data.devCode) { setOtpCode(data.devCode); setDevCodeActive(true); }
       else { setOtpCode(""); setDevCodeActive(false); }
       startCooldown();
@@ -363,6 +365,7 @@ export default function AuthPage() {
       });
       if (res.ok) {
         const d = await res.json();
+        setOtpMethod(d.method ?? null);
         if (d.devCode) { setOtpCode(d.devCode); setDevCodeActive(true); }
         startCooldown();
       } else { const d = await res.json(); setOtpErr(d.error || "Failed to resend"); }
@@ -708,7 +711,13 @@ export default function AuthPage() {
             <>
               <h2 className="slide-element">Verify</h2>
               <p className="slide-element" style={{ fontSize: 12, color: "rgba(255,255,255,.5)", marginBottom: 8 }}>
-                {regType === "phone" ? `Code sent to ${regC.dial} ${regPhone}` : `Code sent to ${regEmail}`}
+                {otpMethod === 'telegram'
+                  ? `📨 We sent a code to your Telegram. Open the Telegram app to view it.`
+                  : otpMethod === 'sms'
+                  ? `📱 Code sent via SMS to ${regC.dial} ${regPhone}`
+                  : otpMethod === 'email'
+                  ? `📧 Code sent to ${regEmail}`
+                  : regType === "phone" ? `Code sent to ${regC.dial} ${regPhone}` : `Code sent to ${regEmail}`}
               </p>
 
               {devCodeActive && (
