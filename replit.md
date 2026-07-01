@@ -11,7 +11,7 @@ A Binance-style peer-to-peer cryptocurrency exchange — mobile-first dark-theme
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
 - `pnpm --filter @workspace/scripts run cleanup` — remove seeded demo data from Neon
-- Required env: `DATABASE_URL` — Replit PostgreSQL connection string (auto-provisioned)
+- Required env: `NEON_DATABASE_URL` — Neon PostgreSQL connection string (stored in Replit Secrets)
 
 ## Stack
 
@@ -37,7 +37,7 @@ A Binance-style peer-to-peer cryptocurrency exchange — mobile-first dark-theme
 - **All monetary amounts stored as TEXT** to avoid float precision issues (parseFloat only for arithmetic)
 - **ETB exchange rate and deposit addresses** stored in `system_settings` table, configured via Admin → Settings
 - **Payment methods stored as JSON text** in ads table (array of bank/wallet names), not FK relations
-- **Database is Replit PostgreSQL** — `DATABASE_URL` is auto-provisioned by Replit; `NEON_DATABASE_URL` is no longer used
+- **Database is Neon** — `NEON_DATABASE_URL` is required and stored in Replit Secrets; falls back to `DATABASE_URL` if unset
 - **API routes mounted under `/api/`** via the global proxy; frontend uses relative URLs
 
 ## Product
