@@ -18,26 +18,27 @@ const app: Express = express();
 // Required for express-rate-limit to correctly read X-Forwarded-For headers
 app.set("trust proxy", 1);
 
-// Serve uploaded files — explicit wildcard route with logging + traversal protection.
+// Serve uploaded files via express.static — avoids Express 5 route-param issues.
 // /api/files/kyc/filename.jpg  →  <uploadsDir>/kyc/filename.jpg
-app.get("/api/files/*splat", (req: any, res: any) => {
-  const filePath: string = (req.params as any).splat as string; // e.g. "kyc/filename.jpg"
-  const resolvedUploads = path.resolve(uploadsDir);
-  const fullPath = path.resolve(resolvedUploads, filePath);
+app.use(
+  "/api/files",
+  (req: any, res: any, next: any) => {
+    console.log("[Files] Request:", req.path, "→", path.join(uploadsDir, req.path));
+    const safePath = path.normalize(req.path);
+    if (safePath.includes("..")) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    next();
+  },
+  express.static(uploadsDir, { fallthrough: false }),
+);
 
-  console.log("[Files] Request:", req.path, "→", fullPath);
-
-  // Prevent directory traversal
-  if (!fullPath.startsWith(resolvedUploads + path.sep) && fullPath !== resolvedUploads) {
-    return res.status(403).json({ error: "Forbidden" });
-  }
-
-  if (!fs.existsSync(fullPath)) {
-    console.log("[Files] Not found:", fullPath);
+// 404 handler for missing files under /api/files
+app.use("/api/files", (err: any, _req: any, res: any, next: any) => {
+  if (err.status === 404) {
     return res.status(404).json({ error: "File not found" });
   }
-
-  res.sendFile(fullPath);
+  next(err);
 });
 
 // Keep /uploads for backward compatibility with existing DB records
