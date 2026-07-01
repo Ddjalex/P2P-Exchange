@@ -1,0 +1,65 @@
+Fix 5 remaining issues in one build:
+Fix 1 — rawMsg crash fix in routes/nfc-cards.ts:
+Add this helper function at the top of the file:
+typescriptfunction stroMessageToString(msg: any): string {
+  if (typeof msg === 'string') return msg;
+  if (msg && typeof msg === 'object') {
+    return Object.entries(msg)
+      .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`)
+      .join(' | ');
+  }
+  return String(msg ?? '');
+}
+Then find ALL occurrences of:
+typescriptconst rawMsg = stroRes?.message ?? stroRes?.error ?? "";
+const lc = rawMsg.toLowerCase();
+Replace with:
+typescriptconst rawMsg = stroMessageToString(stroRes?.message ?? stroRes?.error ?? '');
+const lc = rawMsg.toLowerCase();
+This prevents the crash when StroWallet returns message as an object like {"country":["invalid"]} instead of a string. Without this fix, users lose their card creation fee silently.
+
+Fix 2 — Initial load minimum $3 enforced in code:
+In POST /api/cards/create, find where amount_usd is set and replace with:
+typescriptconst initialLoadSetting = await getCardSetting('cardInitialLoad');
+const initialLoad = Math.max(3, Number(initialLoadSetting ?? 3));
+params.set('amount_usd', initialLoad.toString());
+console.log('[Card] Initial load amount:', initialLoad, '(minimum $3 enforced)');
+
+Fix 3 — Phone validation BEFORE fee deduction:
+In POST /api/cards/create, add this check BEFORE the balance deduction step:
+typescriptconst userPhone = (reqPhone || user.phone || '').trim();
+if (!userPhone) {
+  return res.status(400).json({
+    error: 'Phone number is required for card creation. Please add your phone number in your profile settings and try again.'
+  });
+}
+console.log('[Card] Phone validated:', userPhone);
+
+Fix 4 — Suspicious balance detector false positive:
+In detectSuspiciousActivity() function in security.ts, find the SQL query that checks for suspicious balances and change the income sources from chain deposits only to ALL legitimate income:
+typescript// Change FROM:
+WHERE type = 'deposit' AND network IN ('BEP20', 'TRC20') AND status = 'completed'
+
+// Change TO:
+WHERE type IN ('deposit', 'p2p_buy', 'p2p_sell', 'internal_receive') 
+AND status = 'completed'
+This stops user 4 (Addisu) being flagged every 5 minutes — their $1,221 balance is legitimate P2P trading profits, not an exploit.
+
+Fix 5 — Remove duplicate security headers from Express:
+In api/index.ts or wherever the security headers middleware is defined, remove these headers since Nginx already adds them (sending them twice causes issues):
+typescript// REMOVE these lines (Nginx handles them):
+// res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+// res.setHeader('Strict-Transport-Security', '...');
+// res.setHeader('Referrer-Policy', '...');
+// res.setHeader('Permissions-Policy', '...');
+// res.setHeader('Content-Security-Policy', '...');
+
+// KEEP only this one (Nginx doesn't remove it):
+res.removeHeader('X-Powered-By');
+
+After all fixes, verify in Replit shell:
+bashgrep -n "stroMessageToString" /home/runner/workspace/xendrx-deploy/api/index.mjs | head -3
+grep -n "Math.max(3" /home/runner/workspace/xendrx-deploy/api/index.mjs | head -3
+grep -n "phone.*required\|Phone number is required" /home/runner/workspace/xendrx-deploy/api/index.mjs | head -3
+grep -n "p2p_buy.*p2p_sell\|p2p_sell.*internal_receive" /home/runner/workspace/xendrx-deploy/api/index.mjs | head -3
+grep -c "X-Frame-Options" /home/runner/workspace/xendrx-deploy/api/index.mjs
