@@ -98,7 +98,7 @@ export default function AdminCardsPage() {
       const data = await adminGet<any>("/cards/merchant-balance");
       setMerchantBalanceRaw(data.debug ?? data.raw ?? null);
       if (data.error) setMerchantBalanceError(data.error);
-      setMerchantBalance(data.balance != null ? data.balance : null);
+      setMerchantBalance(data.balance != null ? parseFloat(data.balance) : null);
     } catch {
       setMerchantBalance(null);
       setMerchantBalanceError("API call failed");

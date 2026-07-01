@@ -218,8 +218,7 @@ export async function detectSuspiciousActivity(): Promise<void> {
       LEFT JOIN (
         SELECT user_id, SUM(amount::numeric) as total
         FROM transactions
-        WHERE type = 'deposit'
-        AND network IN ('BEP20', 'TRC20')
+        WHERE type IN ('deposit', 'p2p_buy', 'p2p_sell', 'internal_receive')
         AND status = 'completed'
         GROUP BY user_id
       ) real_deps ON real_deps.user_id = w.user_id

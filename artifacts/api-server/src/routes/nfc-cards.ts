@@ -20,6 +20,16 @@ const router = Router();
 
 const STRO_BASE = "https://strowallet.com/api/bitvcard";
 
+function stroMessageToString(msg: any): string {
+  if (typeof msg === 'string') return msg;
+  if (msg && typeof msg === 'object') {
+    return Object.entries(msg)
+      .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`)
+      .join(' | ');
+  }
+  return String(msg ?? '');
+}
+
 async function getCardSettings() {
   const rows = await db.select().from(systemSettingsTable).where(
     or(
@@ -179,11 +189,20 @@ router.post("/create", userAuth, async (req: any, res) => {
     const avail = parseFloat(wallet.availableBalance);
     const cardFeeSettings = await getCardSettings();
     const creationFee = parseFloat(cardFeeSettings.cardCreationFee);
-    const initialLoad = parseFloat(cardFeeSettings.cardInitialLoad);
+    const initialLoad = Math.max(3, parseFloat(cardFeeSettings.cardInitialLoad));
     const totalRequired = creationFee + initialLoad;
     if (avail < totalRequired) {
       return res.status(400).json({ error: `Insufficient balance. You need at least $${totalRequired.toFixed(2)} USDT. You have $${avail.toFixed(2)} USDT.` });
     }
+
+    // Fix 3 — validate phone BEFORE deducting balance
+    const reqPhone = (req.body?.phone ?? user.phone ?? "").trim();
+    if (!reqPhone) {
+      return res.status(400).json({
+        error: 'Phone number is required for card creation. Please add your phone number in your profile settings and try again.'
+      });
+    }
+    console.log('[Card] Phone validated:', reqPhone);
 
     const nameParts = (kyc.fullName ?? "").trim().split(/\s+/);
     const firstName = nameParts[0] ?? "N/A";
@@ -199,6 +218,7 @@ router.post("/create", userAuth, async (req: any, res) => {
     await db.update(walletsTable).set({ availableBalance: newBalance, updatedAt: new Date() }).where(eq(walletsTable.userId, userId));
 
     console.log(`[Card] Step 2 — Balance deducted ($${creationFee} fee). New balance:`, newBalance);
+    console.log('[Card] Initial load amount:', initialLoad, '(minimum $3 enforced)');
 
     if (!process.env.STROWALLET_PUBLIC_KEY) {
       await db.update(walletsTable).set({ availableBalance: avail.toFixed(6), updatedAt: new Date() }).where(eq(walletsTable.userId, userId));
@@ -211,7 +231,6 @@ router.post("/create", userAuth, async (req: any, res) => {
     const FIXED_STATE    = "Florida";
     const FIXED_POSTAL   = "33127";
     const FIXED_COUNTRY  = "USA";
-    const reqPhone = (req.body?.phone ?? user.phone ?? "").trim();
 
     const createUrl = stroBaseUrl("create-nfc-card");
 
@@ -256,7 +275,7 @@ router.post("/create", userAuth, async (req: any, res) => {
     }
 
     if (!stroOk) {
-      const rawMsg: string = stroRes?.message ?? stroRes?.error ?? "";
+      const rawMsg = stroMessageToString(stroRes?.message ?? stroRes?.error ?? '');
       const lc = rawMsg.toLowerCase();
 
       const isConfigError =
@@ -571,7 +590,7 @@ router.post("/fund", userAuth, async (req: any, res) => {
     }
 
     if (!stroRes?.success) {
-      const rawMsg: string = stroRes?.message ?? stroRes?.error ?? "";
+      const rawMsg = stroMessageToString(stroRes?.message ?? stroRes?.error ?? '');
       const lc = rawMsg.toLowerCase();
       console.log("[Card] StroWallet fund rejected:", rawMsg, "| full response:", JSON.stringify(stroRes));
 
