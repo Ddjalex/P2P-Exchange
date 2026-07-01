@@ -1,6 +1,6 @@
 import { db } from "@workspace/db";
 import { cardQueueTable, cardsTable, walletsTable, transactionsTable, kycSubmissionsTable, usersTable, systemSettingsTable } from "@workspace/db";
-import { eq, or } from "drizzle-orm";
+import { eq, or, sql } from "drizzle-orm";
 import { PushNotify } from "../routes/push.js";
 
 function formatDob(dob: string): string {
@@ -96,6 +96,14 @@ export async function processCardQueue() {
     return;
   }
 
+  // Reset any items stuck in "processing" for more than 10 minutes (server restart mid-run)
+  try {
+    await db.update(cardQueueTable)
+      .set({ status: "pending", updatedAt: new Date() })
+      .where(sql`${cardQueueTable.status} = 'processing' AND ${cardQueueTable.lastAttempt} < NOW() - INTERVAL '10 minutes'`);
+    console.log("[Queue] Recovered any stuck 'processing' items back to pending");
+  } catch { /* ignore */ }
+
   const pending = await db.select().from(cardQueueTable)
     .where(eq(cardQueueTable.status, "pending"));
 
@@ -173,19 +181,37 @@ export async function processCardQueue() {
         const stroOk = raw?.success === true || raw?.status === true || raw?.card_id;
 
         if (stroOk) {
-          const cardId = raw?.card_id ?? raw?.data?.card_id ?? raw?.response?.card_id;
-          const maskedPan = raw?.masked_pan ?? raw?.data?.masked_pan ?? raw?.response?.masked_pan ?? "";
+          const resp = raw?.response ?? raw?.data ?? raw;
+          const cardId = resp?.card_id ?? raw?.card_id;
+          const cardUserId = resp?.card_user_id ?? "";
+          const customerId = resp?.customer_id ?? "";
+          const nameOnCard = resp?.name_on_card ?? "";
+          const cardType = resp?.card_type ?? "";
+          const cardBrand = resp?.card_brand ?? "";
+          const reference = resp?.reference ?? "";
+          const cardCreatedDate = resp?.card_created_date ?? "";
 
+          // Mark completed FIRST — before any further logic that might throw
           await db.update(cardQueueTable).set({ status: "completed", updatedAt: new Date() }).where(eq(cardQueueTable.id, item.id));
 
-          if (cardId) {
+          // Guard against duplicates — only insert if no card exists for this user yet
+          const existing = await db.select().from(cardsTable).where(eq(cardsTable.userId, item.userId)).limit(1);
+          if (cardId && existing.length === 0) {
             await db.insert(cardsTable).values({
               userId: item.userId,
               cardId,
-              maskedPan,
-              status: "active",
+              cardUserId,
+              customerId,
+              nameOnCard,
+              cardStatus: "processing",
+              cardType,
+              cardBrand,
+              reference,
+              cardCreatedDate,
               balance: String(initialLoad),
-            }).catch(() => {});
+            }).catch(e => console.error("[Queue] Card insert error:", e));
+          } else if (existing.length > 0) {
+            console.log(`[Queue] Card already exists for user ${item.userId} — skipping insert`);
           }
 
           // Deduct the initial load from user wallet (creation fee was already deducted earlier)
@@ -200,7 +226,7 @@ export async function processCardQueue() {
             status: "completed", note: "Card created (queued)",
           }).catch(() => {});
 
-          PushNotify.cardCreated(item.userId).catch(console.error);
+          PushNotify.cardReady(item.userId).catch(console.error);
           console.log(`[Queue] Card created for user ${item.userId}, cardId: ${cardId}`);
         } else {
           const msg = typeof raw?.message === "object"
@@ -274,7 +300,11 @@ export async function processCardQueue() {
       await new Promise(r => setTimeout(r, 1000));
     } catch (err) {
       console.error(`[Queue] Error processing item #${item.id}:`, err);
-      await db.update(cardQueueTable).set({ status: "pending", updatedAt: new Date() }).where(eq(cardQueueTable.id, item.id));
+      // Only reset to pending if not already completed — prevents re-running successful items
+      const current = await db.select({ status: cardQueueTable.status }).from(cardQueueTable).where(eq(cardQueueTable.id, item.id)).limit(1);
+      if (current[0]?.status !== "completed" && current[0]?.status !== "failed") {
+        await db.update(cardQueueTable).set({ status: "pending", updatedAt: new Date() }).where(eq(cardQueueTable.id, item.id));
+      }
     }
   }
 
