@@ -9,7 +9,7 @@ import {
   transactionsTable,
   systemSettingsTable,
 } from "@workspace/db";
-import { eq, or } from "drizzle-orm";
+import { eq, or, and, like, gte } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { userAuth } from "../middleware/user-auth";
 import { enqueueCardFund, enqueueCardCreate } from "../lib/card-queue.js";
@@ -451,6 +451,34 @@ router.post("/fund", userAuth, async (req: any, res) => {
   if (!amount || amount < minFund) return res.status(400).json({ error: `Minimum fund amount is $${minFund.toFixed(2)}` });
 
   try {
+    // Block if there's already a pending fund queue entry for this user
+    const existingQueue = await db.select()
+      .from(cardQueueTable)
+      .where(
+        and(
+          eq(cardQueueTable.userId, userId),
+          eq(cardQueueTable.status, "pending"),
+          eq(cardQueueTable.type, "fund")
+        )
+      );
+    if (existingQueue.length > 0) {
+      return res.status(429).json({ error: "You already have a pending card top-up. Please wait for it to complete before making another." });
+    }
+
+    // Block rapid re-submissions — 60s cooldown between successful fund attempts
+    const recentFund = await db.select()
+      .from(transactionsTable)
+      .where(
+        and(
+          eq(transactionsTable.userId, userId),
+          like(transactionsTable.note, "%Funded Xendrx card%"),
+          gte(transactionsTable.createdAt, new Date(Date.now() - 60_000))
+        )
+      );
+    if (recentFund.length > 0) {
+      return res.status(429).json({ error: "Please wait 60 seconds between card top-ups." });
+    }
+
     // Security checks
     const [velocity, balCheck, dailyCheck] = await Promise.all([
       checkVelocity(userId),
@@ -583,7 +611,11 @@ router.get("/my-queue", userAuth, async (req: any, res) => {
 });
 
 // POST /api/cards/withdraw
-router.post("/withdraw", userAuth, async (req: any, res) => {
+router.post("/withdraw", userAuth, async (_req: any, res) => {
+  return res.status(403).json({ error: "Card withdrawal feature is not available." });
+
+  // === DISABLED — kept for future re-enable ===
+  const req = _req;
   const userId: number = req.userId;
   const amount = parseFloat(req.body?.amount);
   if (!amount || amount < 1) return res.status(400).json({ error: "Minimum withdraw amount is $1" });
