@@ -1,5 +1,31 @@
 import { toast } from "sonner";
 
+// ── PWA Install Prompt ─────────────────────────────────────────────────────
+// Capture the browser's install prompt as early as possible (before React
+// renders). The event fires only once and is lost if not captured here.
+
+let _deferredInstallPrompt: any = null;
+
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();          // stop the mini-infobar / native prompt
+  _deferredInstallPrompt = e;  // stash it for later
+});
+
+export function getInstallPrompt(): any {
+  return _deferredInstallPrompt;
+}
+
+export function clearInstallPrompt(): void {
+  _deferredInstallPrompt = null;
+}
+
+export function isAppInstalled(): boolean {
+  return (
+    window.matchMedia("(display-mode: standalone)").matches ||
+    (window.navigator as any).standalone === true
+  );
+}
+
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');

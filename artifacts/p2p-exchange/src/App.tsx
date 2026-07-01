@@ -8,6 +8,7 @@ import { AdminAuthProvider } from "@/hooks/use-admin-auth";
 import { useSse } from "@/hooks/use-sse";
 import { KycGate } from "@/components/kyc-gate";
 import { NotificationPermissionModal } from "@/components/notification-permission";
+import { InstallAppModal } from "@/components/install-app-modal";
 
 // Regular pages
 import AuthPage from "@/pages/auth";
@@ -169,6 +170,7 @@ function Router() {
       <Route component={NotFound} />
     </Switch>
     {user && <NotificationPermissionModal userId={user.id} />}
+    {user && <InstallAppModal />}
     </>
   );
 }
