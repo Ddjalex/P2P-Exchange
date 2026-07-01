@@ -1,0 +1,357 @@
+[6/30/2026 11:51 PM] DJ ALEX: Great mindset — let's build a comprehensive security system. Here's a complete prompt for Replit:
+
+---
+
+Add comprehensive security system to Xendrx platform
+
+Based on a confirmed exploit where a user bypassed frontend UI to call API endpoints directly, implement these security layers:
+
+---
+
+Security Layer 1 — API Rate Limiting (prevent rapid API abuse)
+
+Install and configure rate limiting:
+import rateLimit from 'express-rate-limit';
+import slowDown from 'express-slow-down';
+
+// Global rate limit — all endpoints
+const globalLimit = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 100, // max 100 requests per minute per IP
+  message: { error: 'Too many requests. Please slow down.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use(globalLimit);
+
+// Strict limit for financial endpoints
+const financialLimit = rateLimit({
+  windowMs: 60 * 1000,
+  max: 5, // max 5 per minute
+  keyGenerator: (req: any) => `financial_${req.userId || req.ip}`,
+  message: { error: 'Too many financial requests. Please wait.' }
+});
+
+// Apply to all financial routes:
+app.use('/api/cards', financialLimit);
+app.use('/api/wallet/withdraw', financialLimit);
+app.use('/api/wallet/send', financialLimit);
+---
+
+Security Layer 2 — Transaction Velocity Check (detect unusual activity)
+
+Before processing ANY financial transaction (withdraw, card fund, internal transfer):
+
+async function checkVelocity(userId: number, type: string): Promise<boolean> {
+  const last5Min = await db.select()
+    .from(transactionsTable)
+    .where(
+      and(
+        eq(transactionsTable.userId, userId),
+        gte(transactionsTable.createdAt, new Date(Date.now() - 5 * 60 * 1000))
+      )
+    );
+
+  const last1Hour = await db.select()
+    .from(transactionsTable)
+    .where(
+      and(
+        eq(transactionsTable.userId, userId),
+        gte(transactionsTable.createdAt, new Date(Date.now() - 60 * 60 * 1000))
+      )
+    );
+
+  // Alert if more than 5 transactions in 5 minutes
+  if (last5Min.length >= 5) {
+    await PushNotify.adminAlert(
+      `⚠️ VELOCITY ALERT: User ${userId} made ${last5Min.length} transactions in 5 minutes`
+    );
+    return false; // block
+  }
+
+  // Alert if more than 20 transactions in 1 hour
+  if (last1Hour.length >= 20) {
+    await PushNotify.adminAlert(
+      `⚠️ VELOCITY ALERT: User ${userId} made ${last1Hour.length} transactions in 1 hour`
+    );
+    return false; // block
+  }
+
+  return true; // allow
+}
+---
+
+Security Layer 3 — Balance Integrity Check (prevent negative/impossible balances)
+
+Before ANY deduction from wallet:
+
+async function safeDeduct(userId: number, amount: number, reason: string): Promise<boolean> {
+  const wallet = await getWallet(userId);
+  const available = Number(wallet.availableBalance);
+
+  // Never allow deduction that would make balance negative
+  if (available < amount) {
+    console.error(`[Security] Balance check failed — user: ${userId}, available: ${available}, requested: ${amount}, reason: ${reason}`);
+    await PushNotify.adminAlert(`⚠️ Balance check failed for user ${userId}: tried to deduct $${amount} but only has $${available}`);
+    return false;
+  }
+
+  // Never allow if balance seems impossibly large (fraud indicator)
+  if (available > 100000) {
+    console.error(`[Security] Suspicious balance detected — user: ${userId}, balance: ${available}`);
+    await PushNotify.adminAlert(`🚨 SUSPICIOUS BALANCE: User ${userId} has $${available} — possible exploit!`);
+    return false; // block ALL transactions until admin reviews
+  }
+
+  return true;
+}
+---
+
+Security Layer 4 — Daily Transaction Limits
+
+`typescript
+const DAILY_LIMITS = {
+  withdraw: 1000,      // max $1000 BEP20 withdrawal per day
+  card_fund: 500,      // max $500 card funding per day
+  internal_send: 5000, // max $5000 internal transfer per day
+};
+[6/30/2026 11:51 PM] DJ ALEX: async function checkDailyLimit(userId: number, type: string, amount: number): Promise<boolean> {
+  const todayTotal = await db.select({
+    total: sqlSUM(amount::numeric)
+  })
+  .from(transactionsTable)
+  .where(
+    and(
+      eq(transactionsTable.userId, userId),
+      eq(transactionsTable.type, type),
+      gte(transactionsTable.createdAt, new Date(new Date().setHours(0,0,0,0)))
+    )
+  );
+
+  const used = Number(todayTotal[0]?.total ?? 0);
+  const limit = DAILY_LIMITS[type] ?? 1000;
+
+  if (used + amount > limit) {
+    return false;
+  }
+  return true;
+}
+
+---
+
+**Security Layer 5 — Withdrawal Whitelist / Cooldown**
+
+typescript
+// First time a user withdraws to a new address — 24 hour cooldown
+async function checkWithdrawalAddress(userId: number, address: string): Promise<{ allowed: boolean, reason?: string }> {
+  // Check if user has withdrawn to this address before
+  const previousWithdraw = await db.select()
+    .from(transactionsTable)
+    .where(
+      and(
+        eq(transactionsTable.userId, userId),
+        eq(transactionsTable.address, address),
+        eq(transactionsTable.status, 'completed')
+      )
+    )
+    .limit(1);
+
+  if (previousWithdraw.length === 0) {
+    // First time withdrawing to this address — check account age
+    const user = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+    const accountAge = Date.now() - new Date(user[0].createdAt).getTime();
+    const accountAgeHours = accountAge / (1000 * 60 * 60);
+
+    if (accountAgeHours < 24) {
+      return { allowed: false, reason: 'New accounts must wait 24 hours before withdrawing to a new address.' };
+    }
+
+    // Alert admin for first withdrawal to new address
+    await PushNotify.adminAlert(
+      ℹ️ First withdrawal to new address — User: ${userId}, Address: ${address}
+    );
+  }
+
+  return { allowed: true };
+}
+
+---
+
+**Security Layer 6 — Suspicious Pattern Detection**
+
+typescript
+// Run every 5 minutes — detect and alert on suspicious patterns
+async function detectSuspiciousActivity() {
+  // 1. Users with impossibly large balances
+  const largeBalances = await db.select()
+    .from(walletsTable)
+    .where(sqlavailable_balance::numeric > 10000);
+
+  for (const wallet of largeBalances) {
+    console.warn([Security] Large balance detected — user: ${wallet.userId}, balance: ${wallet.availableBalance});
+    await PushNotify.adminAlert(⚠️ Large balance: User ${wallet.userId} has $${wallet.availableBalance});
+  }
+
+  // 2. Negative frozen balances (broken state — indicates exploit)
+  const negativeBalances = await db.select()
+    .from(walletsTable)
+    .where(sqlfrozen_balance::numeric < 0);
+
+  for (const wallet of negativeBalances) {
+    console.error([Security] Negative frozen balance — user: ${wallet.userId}, frozen: ${wallet.frozenBalance});
+    await PushNotify.adminAlert(🚨 NEGATIVE FROZEN BALANCE: User ${wallet.userId} has frozen: $${wallet.frozenBalance} — possible exploit!);
+  }
+
+  // 3. Users with more card withdrawals than card fundings
+  const cardExploits = await db.execute(sql
+    SELECT user_id,
+      SUM(CASE WHEN note = 'Withdrawn from Xendrx card' THEN amount::numeric ELSE 0 END) as withdrawn,
+      SUM(CASE WHEN note = 'Funded Xendrx card' THEN amount::numeric ELSE 0 END) as funded
+    FROM transactions
+    WHERE created_at > NOW() - INTERVAL '24 hours'
+    GROUP BY user_id
+    HAVING SUM(CASE WHEN note = 'Withdrawn from Xendrx card' THEN amount::numeric ELSE 0 END) >
+           SUM(CASE WHEN note = 'Funded Xendrx card' THEN amount::numeric ELSE 0 END)
+  );
+
+  for (const exploit of cardExploits.rows) {
+    await PushNotify.adminAlert(
+      🚨 CARD EXPLOIT DETECTED: User ${exploit.user_id} withdrew $${exploit.withdrawn} but only funded $${exploit.funded}!
+    );
+  }
+}
+
+// Run every 5 minutes
+setInterval(detectSuspiciousActivity, 5 * 60 * 1000);
+// Run on startup
+setTimeout(detectSuspiciousActivity, 10000);
+`
+
+---
+
+**Security Layer 7 — Admin Security Dashboard**
+
+Add `/admin/security` page showing:
+[6/30/2026 11:51 PM] DJ ALEX: 🔒 Security Dashboard
+─────────────────────────────────────────
+⚠️ Alerts (last 24h):         3
+🚨 Blocked transactions:      12
+👥 Flagged users:              1
+─────────────────────────────────────────
+
+Recent Alerts:
+[18:00] Large balance: User 210 has $984,605
+[17:16] Internal transfer: $9,999 to Kiki
+[16:43] Large withdrawal: $499 pending
+
+Flagged Users:
+User 210 — jintom2406@gmail.com — SUSPICIOUS
+  Balance: $984,605 | Card withdrawals: $44.10 | Funded: $9.10
+  [🔒 Freeze Account] [❌ Ban User] [📋 View All Transactions]
+
+Daily Limits Usage:
+User 4    — withdrawals: $0/$1000
+User 3    — withdrawals: $0/$1000
+─────────────────────────────────────────
+Backend endpoints needed:
+GET /api/admin/security/alerts
+GET /api/admin/security/flagged-users
+GET /api/admin/security/daily-limits
+POST /api/admin/security/freeze/:userId
+POST /api/admin/security/ban/:userId
+POST /api/admin/security/unfreeze/:userId
+---
+
+Security Layer 8 — Account Freeze System
+
+Add is_frozen and is_banned columns to users table:
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS is_frozen BOOLEAN DEFAULT FALSE;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS is_banned BOOLEAN DEFAULT FALSE;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS freeze_reason TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS frozen_at TIMESTAMP;
+Add middleware to check frozen status on every authenticated request:
+
+async function checkAccountStatus(req: any, res: any, next: any) {
+  const userId = req.userId;
+  if (!userId) return next();
+
+  const user = await db.select()
+    .from(usersTable)
+    .where(eq(usersTable.id, userId))
+    .limit(1);
+
+  if (user[0]?.is_banned) {
+    return res.status(403).json({ error: 'Your account has been suspended. Contact support.' });
+  }
+
+  if (user[0]?.is_frozen) {
+    // Allow read-only endpoints but block all financial transactions
+    const blockedPaths = ['/withdraw', '/send', '/transfer', '/cards/fund', '/cards/withdraw'];
+    if (blockedPaths.some(path => req.path.includes(path))) {
+      return res.status(403).json({ error: 'Your account is temporarily frozen. Contact support.' });
+    }
+  }
+
+  next();
+}
+
+// Apply after userAuth middleware
+app.use('/api', userAuth, checkAccountStatus);
+---
+
+Security Layer 9 — Audit Log
+
+Create an audit_logs table to track all security-relevant actions:
+
+CREATE TABLE IF NOT EXISTS audit_logs (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER,
+  action TEXT NOT NULL,
+  details JSONB,
+  ip_address TEXT,
+  user_agent TEXT,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+Log every financial action:
+async function auditLog(userId: number, action: string, details: any, req: any) {
+  await db.insert(auditLogsTable).values({
+    userId,
+    action,
+    details: JSON.stringify(details),
+    ipAddress: req.ip,
+    userAgent: req.headers['user-agent'],
+  });
+}
+
+// Use like:
+await auditLog(userId, 'CARD_FUND', { amount, cardId, result: 'success' }, req);
+await auditLog(userId, 'WITHDRAWAL', { amount, address, status: 'pending' }, req);
+await auditLog(userId, 'INTERNAL_TRANSFER', { amount, receiverId }, req);
+---
+
+Security Layer 10 — IP-based suspicious activity
+
+// Track IPs making too many requests
+const ipRequestCounts = new Map();
+
+app.use((req: any, res: any, next: any) => {
+  const ip = req.ip;
+  const count = (ipRequestCounts.get(ip) || 0) + 1;
+  ipRequestCounts.set(ip, count);
+
+  // Reset every minute
+  setTimeout(() => {
+    ipRequestCounts.set(ip, Math.max(0, (ipRequestCounts.get(ip) || 0) - 1));
+  }, 60000);
+
+  if (count > 200) {
+    console.warn(`[Security] IP rate limit exceeded: ${ip}`);
+    return res.status(429).json({ error: 'Too many requests from this IP.' });
+  }
+
+  next();
+});
+---
+
+Rebuild both frontend and API, repackage. This is a critical security upgrade! 🔒
