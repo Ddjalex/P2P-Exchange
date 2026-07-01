@@ -5,9 +5,11 @@ import rateLimit from "express-rate-limit";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import path from "node:path";
-import { mkdirSync } from "node:fs";
+import fs, { mkdirSync } from "node:fs";
 
-const uploadsDir = path.resolve(process.cwd(), "uploads");
+// UPLOADS_DIR env var lets the VPS override the path (e.g. /root/app/xendrx/uploads).
+// Falls back to <cwd>/uploads for local/dev use.
+const uploadsDir = process.env.UPLOADS_DIR ?? path.resolve(process.cwd(), "uploads");
 mkdirSync(uploadsDir, { recursive: true });
 
 const app: Express = express();
@@ -16,9 +18,29 @@ const app: Express = express();
 // Required for express-rate-limit to correctly read X-Forwarded-For headers
 app.set("trust proxy", 1);
 
-// Serve uploaded files under /api/files so they route through the same proxy as all API calls
-// Also keep /uploads for backward compatibility with existing DB records
-app.use("/api/files", express.static(uploadsDir));
+// Serve uploaded files — explicit wildcard route with logging + traversal protection.
+// /api/files/kyc/filename.jpg  →  <uploadsDir>/kyc/filename.jpg
+app.get("/api/files/*", (req: any, res: any) => {
+  const filePath: string = (req.params as any)[0] as string; // e.g. "kyc/filename.jpg"
+  const resolvedUploads = path.resolve(uploadsDir);
+  const fullPath = path.resolve(resolvedUploads, filePath);
+
+  console.log("[Files] Request:", req.path, "→", fullPath);
+
+  // Prevent directory traversal
+  if (!fullPath.startsWith(resolvedUploads + path.sep) && fullPath !== resolvedUploads) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+
+  if (!fs.existsSync(fullPath)) {
+    console.log("[Files] Not found:", fullPath);
+    return res.status(404).json({ error: "File not found" });
+  }
+
+  res.sendFile(fullPath);
+});
+
+// Keep /uploads for backward compatibility with existing DB records
 app.use("/uploads", express.static(uploadsDir));
 
 app.use(
