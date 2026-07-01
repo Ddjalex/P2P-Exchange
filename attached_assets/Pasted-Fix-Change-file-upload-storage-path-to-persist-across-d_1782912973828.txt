@@ -1,0 +1,44 @@
+Fix: Change file upload storage path to persist across deployments
+Problem: KYC uploaded files are being saved to a path relative to the app's working directory, which gets wiped on every deployment. Users who uploaded KYC on Replit have their files on Replit's filesystem, not on the VPS.
+Fix — Change upload path in kyc.ts and messages.ts to use an absolute persistent path:
+typescript// In multer configuration, change the destination:
+
+// WRONG — relative path gets wiped on deploy:
+destination: './uploads/kyc/'
+
+// CORRECT — use env variable with absolute path:
+const uploadsDir = process.env.UPLOADS_DIR || path.join(process.cwd(), 'uploads');
+
+const kycStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const dir = path.join(uploadsDir, 'kyc');
+    fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    cb(null, `${crypto.randomUUID()}${ext}`);
+  }
+});
+
+const chatStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const dir = path.join(uploadsDir, 'chat');
+    fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    cb(null, `${crypto.randomUUID()}${ext}`);
+  }
+});
+On VPS, UPLOADS_DIR=/root/app/xendrx/uploads is already set in .env — so all new uploads will go directly to the persistent VPS path.
+Also copy the 12 existing files from Replit to the deploy package:
+Include the uploads/ folder in the deploy package so existing files transfer to VPS:
+bash# In the build/package script, include uploads:
+cp -r uploads xendrx-deploy/uploads
+Or better — add this note to the deployment README:
+IMPORTANT: The uploads/ folder is NOT included in the deploy package.
+Files are stored at UPLOADS_DIR on the server (default: /root/app/xendrx/uploads).
+Never run tar extraction with --delete on the uploads directory.
+Rebuild API only and repackage — also include the 12 existing Replit KYC files in the package so they transfer to VPS this time.

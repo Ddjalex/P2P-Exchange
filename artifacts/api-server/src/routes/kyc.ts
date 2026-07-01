@@ -10,7 +10,7 @@ import { randomBytes } from "node:crypto";
 
 const router = Router();
 
-const uploadsDir = path.resolve(process.cwd(), "uploads", "kyc");
+const uploadsDir = path.join(process.env.UPLOADS_DIR ?? path.resolve(process.cwd(), "uploads"), "kyc");
 mkdirSync(uploadsDir, { recursive: true });
 
 const storage = multer.diskStorage({

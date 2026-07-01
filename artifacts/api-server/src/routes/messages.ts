@@ -11,7 +11,7 @@ import path from "node:path";
 import { mkdirSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 
-const chatUploadsDir = path.resolve(process.cwd(), "uploads", "chat");
+const chatUploadsDir = path.join(process.env.UPLOADS_DIR ?? path.resolve(process.cwd(), "uploads"), "chat");
 mkdirSync(chatUploadsDir, { recursive: true });
 
 const chatStorage = multer.diskStorage({
