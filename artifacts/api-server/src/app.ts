@@ -20,8 +20,8 @@ app.set("trust proxy", 1);
 
 // Serve uploaded files — explicit wildcard route with logging + traversal protection.
 // /api/files/kyc/filename.jpg  →  <uploadsDir>/kyc/filename.jpg
-app.get("/api/files/*", (req: any, res: any) => {
-  const filePath: string = (req.params as any)[0] as string; // e.g. "kyc/filename.jpg"
+app.get("/api/files/*splat", (req: any, res: any) => {
+  const filePath: string = (req.params as any).splat as string; // e.g. "kyc/filename.jpg"
   const resolvedUploads = path.resolve(uploadsDir);
   const fullPath = path.resolve(resolvedUploads, filePath);
 
