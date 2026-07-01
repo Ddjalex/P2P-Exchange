@@ -3,7 +3,6 @@ import { useLocation } from "wouter";
 import { AdminLayout, AdminGuard } from "@/components/admin-layout";
 import { adminGet, adminPut, adminPost } from "@/lib/admin-api";
 
-const HOT_WALLET_ADDRESS = "TLBskP2mS6hDDxaRxUCeLwCzznBDkMs1P5";
 
 function shortAddr(addr: string) {
   return addr.slice(0, 6) + "…" + addr.slice(-4);
@@ -159,18 +158,26 @@ export default function AdminWalletPage() {
                   <div className="bg-secondary/50 rounded-xl p-4 space-y-3">
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-muted-foreground">USDT Balance</span>
-                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${hw?.usdtLow ? "bg-destructive/20 text-destructive" : "bg-success/20 text-success"}`}>
-                        {hw?.usdtLow ? "⚠️ Low" : "✅ Good"}
-                      </span>
+                      {hw?.usdtBalance != null ? (
+                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${hw.usdtLow ? "bg-destructive/20 text-destructive" : "bg-success/20 text-success"}`}>
+                          {hw.usdtLow ? "⚠️ Low" : "✅ Good"}
+                        </span>
+                      ) : (
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-secondary text-muted-foreground">Unknown</span>
+                      )}
                     </div>
-                    <p className="text-xl font-bold font-mono">${hw?.usdtBalance ? parseFloat(hw.usdtBalance).toFixed(2) : "—"}</p>
+                    <p className="text-xl font-bold font-mono">{hw?.usdtBalance != null ? `$${parseFloat(hw.usdtBalance).toFixed(2)}` : "—"}</p>
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-muted-foreground">BNB Balance</span>
-                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${hw?.bnbLow ? "bg-destructive/20 text-destructive" : "bg-success/20 text-success"}`}>
-                        {hw?.bnbLow ? "⚠️ Low" : "✅ Good"}
-                      </span>
+                      {hw?.bnbBalance != null ? (
+                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${hw.bnbLow ? "bg-destructive/20 text-destructive" : "bg-success/20 text-success"}`}>
+                          {hw.bnbLow ? "⚠️ Low" : "✅ Good"}
+                        </span>
+                      ) : (
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-secondary text-muted-foreground">Unknown</span>
+                      )}
                     </div>
-                    <p className="font-mono text-sm font-semibold">{hw?.bnbBalance != null ? hw.bnbBalance.toFixed(4) + " BNB" : "—"}</p>
+                    <p className="font-mono text-sm font-semibold">{hw?.bnbBalance != null ? `${hw.bnbBalance.toFixed(4)} BNB` : "—"}</p>
                   </div>
                 </div>
               </div>
@@ -305,7 +312,12 @@ export default function AdminWalletPage() {
               <div className={`text-2xl font-bold font-mono ${hotBalanceLow ? "text-destructive" : pendingCount > 0 ? "text-warning" : ""}`}>
                 {overview?.hotWalletBalance != null ? `${parseFloat(overview.hotWalletBalance).toFixed(2)} USDT` : "—"}
               </div>
-              <div className="text-xs text-muted-foreground mt-0.5 font-mono break-all">{HOT_WALLET_ADDRESS}</div>
+              {overview?.hotWalletAddress && (
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span className="text-xs text-muted-foreground font-mono break-all">{overview.hotWalletAddress}</span>
+                  <a href={`https://bscscan.com/address/${overview.hotWalletAddress}`} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline shrink-0">BSCScan ↗</a>
+                </div>
+              )}
             </div>
           </div>
           {pendingCount > 0 && (

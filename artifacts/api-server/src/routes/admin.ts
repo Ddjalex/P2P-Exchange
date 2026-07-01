@@ -945,16 +945,27 @@ router.get("/wallet/overview", adminAuth, async (req, res) => {
     const totalFrozen = wallets.reduce((sum, w) => sum + parseFloat(w.frozenBalance || "0"), 0);
     const [pending] = await db.select({ c: count() }).from(transactionsTable).where(and(eq(transactionsTable.type, "withdraw"), eq(transactionsTable.status, "pending")));
 
-    // Fetch hot wallet USDT balance (BSC)
+    // Fetch hot wallet USDT balance (BSC) — works with private key OR public address
     let hotWalletBalance: string | null = null;
+    let hotWalletAddress: string | null = null;
     const privateKey = process.env["BSC_HOT_WALLET_PRIVATE_KEY"];
+    const publicAddress = process.env["BSC_HOT_WALLET_ADDRESS"];
     if (privateKey) {
       try {
         const { ethers } = await import("ethers");
         const hotWallet = new ethers.Wallet(privateKey);
+        hotWalletAddress = hotWallet.address;
         hotWalletBalance = await getBscUsdtBalance(hotWallet.address);
       } catch (balErr) {
         req.log.warn({ balErr }, "Could not fetch BSC hot wallet balance for overview");
+      }
+    } else if (publicAddress) {
+      // No private key — still fetch balance using the public address
+      hotWalletAddress = publicAddress;
+      try {
+        hotWalletBalance = await getBscUsdtBalance(publicAddress);
+      } catch (balErr) {
+        req.log.warn({ balErr }, "Could not fetch BSC hot wallet balance (public address)");
       }
     }
 
@@ -964,6 +975,7 @@ router.get("/wallet/overview", adminAuth, async (req, res) => {
       totalUsdt: (totalAvailable + totalFrozen).toFixed(2),
       pendingWithdrawals: Number(pending.c),
       hotWalletBalance,
+      hotWalletAddress,
     });
   } catch (err) {
     req.log.error({ err }, "Admin wallet overview failed");
@@ -2504,6 +2516,7 @@ router.post("/security/ban/:userId", adminAuth, async (req, res) => {
 router.get("/wallet/health", adminAuth, async (req: any, res) => {
   try {
     const privateKey = process.env["BSC_HOT_WALLET_PRIVATE_KEY"];
+    const publicAddress = process.env["BSC_HOT_WALLET_ADDRESS"];
     let hotWalletAddress: string | null = null;
     let usdtBalance: string | null = null;
     let bnbBalance: number | null = null;
@@ -2519,6 +2532,17 @@ router.get("/wallet/health", adminAuth, async (req: any, res) => {
         ]);
       } catch (e: any) {
         req.log.warn({ e }, "Could not fetch hot wallet balances");
+      }
+    } else if (publicAddress) {
+      // No private key — fetch balances using the known public address
+      hotWalletAddress = publicAddress;
+      try {
+        [usdtBalance, bnbBalance] = await Promise.all([
+          getBscUsdtBalance(publicAddress),
+          getBnbBalance(publicAddress),
+        ]);
+      } catch (e: any) {
+        req.log.warn({ e }, "Could not fetch hot wallet balances (public address)");
       }
     }
 
