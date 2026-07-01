@@ -203,7 +203,7 @@ export async function processCardQueue() {
               cardUserId,
               customerId,
               nameOnCard,
-              cardStatus: "processing",
+              cardStatus: "active",
               cardType,
               cardBrand,
               reference,
