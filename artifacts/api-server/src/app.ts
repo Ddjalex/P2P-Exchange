@@ -16,6 +16,9 @@ const app: Express = express();
 // Required for express-rate-limit to correctly read X-Forwarded-For headers
 app.set("trust proxy", 1);
 
+// Serve uploaded files under /api/files so they route through the same proxy as all API calls
+// Also keep /uploads for backward compatibility with existing DB records
+app.use("/api/files", express.static(uploadsDir));
 app.use("/uploads", express.static(uploadsDir));
 
 app.use(

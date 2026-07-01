@@ -149,8 +149,10 @@ export default function KycPage() {
   const [capturedSelfieUrl, setCapturedSelfieUrl] = useState<string | null>(null);
   const [selfiePreview, setSelfiePreview] = useState<string | null>(null);
   const [selfieUploading, setSelfieUploading] = useState(false);
+  const [cameraError, setCameraError] = useState<"denied" | "unavailable" | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const selfieInputRef = useRef<HTMLInputElement>(null);
 
   const submitKyc = useSubmitKyc();
   const queryClient = useQueryClient();
@@ -197,17 +199,30 @@ export default function KycPage() {
     }, "image/jpeg", 0.92);
   }, [toast]);
 
+  const startCamera = useCallback(() => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCameraError("unavailable");
+      return;
+    }
+    setCameraError(null);
+    navigator.mediaDevices
+      .getUserMedia({ video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } } })
+      .then(stream => {
+        streamRef.current = stream;
+        if (videoRef.current) videoRef.current.srcObject = stream;
+      })
+      .catch((err: Error) => {
+        if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
+          setCameraError("denied");
+        } else {
+          setCameraError("unavailable");
+        }
+      });
+  }, []);
+
   useEffect(() => {
-    if (step === 3 && livenessStep < 4) {
-      navigator.mediaDevices
-        .getUserMedia({ video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } } })
-        .then(stream => {
-          streamRef.current = stream;
-          if (videoRef.current) videoRef.current.srcObject = stream;
-        })
-        .catch(() => {
-          toast({ title: "Camera access denied", description: "Please allow camera access for face verification", variant: "destructive" });
-        });
+    if (step === 3 && livenessStep < 4 && !cameraError) {
+      startCamera();
 
       const timer = setTimeout(() => {
         setLivenessStep(s => {
@@ -224,7 +239,12 @@ export default function KycPage() {
       streamRef.current.getTracks().forEach(t => t.stop());
       streamRef.current = null;
     }
-  }, [step, livenessStep, captureFrame, toast]);
+  }, [step, livenessStep, cameraError, captureFrame, startCamera]);
+
+  // Reset camera error when entering step 3
+  useEffect(() => {
+    if (step === 3) setCameraError(null);
+  }, [step]);
 
   const stopCamera = useCallback(() => {
     if (streamRef.current) {
@@ -486,79 +506,161 @@ export default function KycPage() {
               </p>
             </div>
 
-            {/* Camera oval — hidden once selfie is captured */}
-            {livenessStep < 4 ? (
-              <div className="relative w-64 h-80 bg-secondary rounded-[100px] overflow-hidden border-4 border-primary shadow-[0_0_30px_rgba(0,229,255,0.3)]">
-                <video
-                  ref={videoRef}
-                  autoPlay
-                  playsInline
-                  muted
-                  className="w-full h-full object-cover transform -scale-x-100"
-                />
-                <div className="absolute inset-0 border-[20px] border-background/80 rounded-[100px] pointer-events-none"></div>
+            {/* Hidden file input for manual selfie upload fallback */}
+            <input
+              ref={selfieInputRef}
+              type="file"
+              accept="image/*"
+              capture="user"
+              className="hidden"
+              onChange={async e => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                e.target.value = "";
+                const preview = URL.createObjectURL(file);
+                setSelfiePreview(preview);
+                setSelfieUploading(true);
+                setLivenessStep(4);
+                try {
+                  const url = await uploadFile(file);
+                  setCapturedSelfieUrl(url);
+                } catch {
+                  toast({ title: "Selfie upload failed", description: "Please try again", variant: "destructive" });
+                } finally {
+                  setSelfieUploading(false);
+                }
+              }}
+            />
+
+            {/* Camera error state */}
+            {cameraError ? (
+              <div className="w-full space-y-4">
+                <div className="bg-destructive/10 border border-destructive/30 rounded-2xl p-5 text-center space-y-3">
+                  <div className="text-3xl">📷</div>
+                  <h3 className="font-bold text-destructive">
+                    {cameraError === "denied" ? "Camera Access Denied" : "Camera Not Available"}
+                  </h3>
+                  <p className="text-sm text-muted-foreground">
+                    {cameraError === "denied"
+                      ? "Your browser blocked camera access. To fix this, tap the camera or lock icon in your browser's address bar and allow camera access, then tap Retry."
+                      : "Your device camera could not be accessed. Please use the upload option below instead."}
+                  </p>
+                </div>
+                <div className="flex flex-col gap-3">
+                  {cameraError === "denied" && (
+                    <button
+                      onClick={() => {
+                        setLivenessStep(0);
+                        startCamera();
+                      }}
+                      className="w-full py-3 border border-primary text-primary font-semibold rounded-xl"
+                    >
+                      Retry Camera
+                    </button>
+                  )}
+                  <button
+                    onClick={() => selfieInputRef.current?.click()}
+                    className="w-full py-3 bg-primary text-background font-bold rounded-xl"
+                  >
+                    Upload a Selfie Photo Instead
+                  </button>
+                </div>
+                {/* Show submit once selfie uploaded via fallback */}
+                {capturedSelfieUrl && (
+                  <div className="space-y-3">
+                    {selfiePreview && (
+                      <div className="w-32 h-40 mx-auto rounded-2xl overflow-hidden border-2 border-primary">
+                        <img src={selfiePreview} alt="Selfie" className="w-full h-full object-cover" />
+                      </div>
+                    )}
+                    <button
+                      onClick={handleSubmit}
+                      disabled={submitKyc.isPending || selfieUploading}
+                      className="w-full py-4 bg-primary text-background font-bold rounded-xl flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                      {submitKyc.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
+                      {submitKyc.isPending ? "Submitting…" : "Submit Verification"}
+                    </button>
+                  </div>
+                )}
               </div>
             ) : (
-              /* Show captured selfie after liveness is done */
-              <div className="relative w-64 h-80 rounded-[100px] overflow-hidden border-4 border-primary shadow-[0_0_30px_rgba(0,229,255,0.3)]">
-                {selfiePreview ? (
-                  <img src={selfiePreview} alt="Captured selfie" className="w-full h-full object-cover" />
+              <>
+                {/* Camera oval — hidden once selfie is captured */}
+                {livenessStep < 4 ? (
+                  <div className="relative w-64 h-80 bg-secondary rounded-[100px] overflow-hidden border-4 border-primary shadow-[0_0_30px_rgba(0,229,255,0.3)]">
+                    <video
+                      ref={videoRef}
+                      autoPlay
+                      playsInline
+                      muted
+                      className="w-full h-full object-cover transform -scale-x-100"
+                    />
+                    <div className="absolute inset-0 border-[20px] border-background/80 rounded-[100px] pointer-events-none"></div>
+                  </div>
                 ) : (
-                  <div className="w-full h-full bg-secondary flex items-center justify-center">
-                    <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                  /* Show captured selfie after liveness is done */
+                  <div className="relative w-64 h-80 rounded-[100px] overflow-hidden border-4 border-primary shadow-[0_0_30px_rgba(0,229,255,0.3)]">
+                    {selfiePreview ? (
+                      <img src={selfiePreview} alt="Captured selfie" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full bg-secondary flex items-center justify-center">
+                        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                      </div>
+                    )}
+                    {selfieUploading && (
+                      <div className="absolute inset-0 bg-background/60 flex items-center justify-center">
+                        <div className="text-center space-y-2">
+                          <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto" />
+                          <p className="text-xs text-primary font-medium">Uploading selfie…</p>
+                        </div>
+                      </div>
+                    )}
+                    {!selfieUploading && capturedSelfieUrl && (
+                      <div className="absolute bottom-0 inset-x-0 bg-primary/90 py-1.5 text-center text-xs font-bold text-background">
+                        ✓ Face captured
+                      </div>
+                    )}
                   </div>
                 )}
-                {selfieUploading && (
-                  <div className="absolute inset-0 bg-background/60 flex items-center justify-center">
-                    <div className="text-center space-y-2">
-                      <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto" />
-                      <p className="text-xs text-primary font-medium">Uploading selfie…</p>
-                    </div>
-                  </div>
-                )}
-                {!selfieUploading && capturedSelfieUrl && (
-                  <div className="absolute bottom-0 inset-x-0 bg-primary/90 py-1.5 text-center text-xs font-bold text-background">
-                    ✓ Face captured
-                  </div>
-                )}
-              </div>
-            )}
 
-            <div className="text-center space-y-4 w-full">
-              <div className="text-lg font-bold text-primary min-h-[28px]">
-                {livenessStep >= 4 && capturedSelfieUrl
-                  ? "✓ Verification complete"
-                  : livenessInstructions[Math.min(livenessStep, 4)]}
-              </div>
-              <div className="flex justify-center space-x-2">
-                {[0, 1, 2, 3].map(i => (
-                  <div
-                    key={i}
-                    className={`w-2 h-2 rounded-full transition-colors ${
-                      i < livenessStep
-                        ? "bg-primary"
-                        : i === livenessStep
-                        ? "bg-primary animate-pulse"
-                        : "bg-secondary"
-                    }`}
-                  />
-                ))}
-              </div>
-            </div>
+                <div className="text-center space-y-4 w-full">
+                  <div className="text-lg font-bold text-primary min-h-[28px]">
+                    {livenessStep >= 4 && capturedSelfieUrl
+                      ? "✓ Verification complete"
+                      : livenessInstructions[Math.min(livenessStep, 4)]}
+                  </div>
+                  <div className="flex justify-center space-x-2">
+                    {[0, 1, 2, 3].map(i => (
+                      <div
+                        key={i}
+                        className={`w-2 h-2 rounded-full transition-colors ${
+                          i < livenessStep
+                            ? "bg-primary"
+                            : i === livenessStep
+                            ? "bg-primary animate-pulse"
+                            : "bg-secondary"
+                        }`}
+                      />
+                    ))}
+                  </div>
+                </div>
 
-            {livenessStep >= 4 && (
-              <button
-                onClick={handleSubmit}
-                disabled={submitKyc.isPending || selfieUploading || !capturedSelfieUrl}
-                className="w-full py-4 bg-primary text-background font-bold rounded-xl mt-6 flex items-center justify-center gap-2 disabled:opacity-50"
-              >
-                {(submitKyc.isPending || selfieUploading) && <Loader2 className="w-4 h-4 animate-spin" />}
-                {selfieUploading
-                  ? "Uploading selfie…"
-                  : submitKyc.isPending
-                  ? "Submitting…"
-                  : "Submit Verification"}
-              </button>
+                {livenessStep >= 4 && (
+                  <button
+                    onClick={handleSubmit}
+                    disabled={submitKyc.isPending || selfieUploading || !capturedSelfieUrl}
+                    className="w-full py-4 bg-primary text-background font-bold rounded-xl mt-6 flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    {(submitKyc.isPending || selfieUploading) && <Loader2 className="w-4 h-4 animate-spin" />}
+                    {selfieUploading
+                      ? "Uploading selfie…"
+                      : submitKyc.isPending
+                      ? "Submitting…"
+                      : "Submit Verification"}
+                  </button>
+                )}
+              </>
             )}
           </div>
         )}

@@ -35,7 +35,7 @@ router.post("/upload", upload.single("file"), (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: "No file uploaded" });
   }
-  const url = `/uploads/kyc/${req.file.filename}`;
+  const url = `/api/files/kyc/${req.file.filename}`;
   res.json({ url });
 });
 

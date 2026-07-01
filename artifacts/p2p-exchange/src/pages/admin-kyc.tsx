@@ -3,6 +3,13 @@ import { AdminLayout, AdminGuard } from "@/components/admin-layout";
 import { adminGet, adminPost, adminFetch } from "@/lib/admin-api";
 import { CheckCircle, XCircle, Clock } from "lucide-react";
 
+/** Normalise KYC image URLs — old records used /uploads/, new ones use /api/files/ */
+function kycImageUrl(url: string | null | undefined): string {
+  if (!url) return "";
+  if (url.startsWith("/uploads/")) return url.replace("/uploads/", "/api/files/");
+  return url;
+}
+
 const STATUS_COLORS: Record<string, { bg: string; text: string; label: string }> = {
   pending: { bg: "bg-warning/20", text: "text-warning", label: "Pending" },
   verified: { bg: "bg-success/20", text: "text-success", label: "Verified" },
@@ -331,9 +338,9 @@ export default function AdminKycPage() {
                   <h3 className="font-semibold text-sm mb-3">Documents</h3>
                   <div className="grid grid-cols-3 gap-3">
                     {[
-                      { label: "ID Front", url: selected.frontImageUrl },
-                      { label: "ID Back", url: selected.backImageUrl },
-                      { label: "Selfie", url: selected.selfieUrl },
+                      { label: "ID Front", url: kycImageUrl(selected.frontImageUrl) },
+                      { label: "ID Back", url: kycImageUrl(selected.backImageUrl) },
+                      { label: "Selfie", url: kycImageUrl(selected.selfieUrl) },
                     ].map(doc => (
                       <div key={doc.label}>
                         <div className="text-xs text-muted-foreground mb-1">{doc.label}</div>
