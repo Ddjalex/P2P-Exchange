@@ -367,6 +367,106 @@ router.get("/kyc/:userId", adminAuth, async (req, res) => {
   }
 });
 
+// ─── KYC email notification helper ──────────────────────────────────────────
+
+async function sendKycEmail(toEmail: string, username: string, approved: boolean, reason?: string): Promise<void> {
+  const rows = await db.select().from(systemSettingsTable).where(
+    or(
+      eq(systemSettingsTable.key, "brevoApiKey"),
+      eq(systemSettingsTable.key, "brevoSenderEmail"),
+      eq(systemSettingsTable.key, "brevoSenderName"),
+    )
+  );
+  const sm: Record<string, string> = {};
+  for (const r of rows) sm[r.key] = r.value;
+  if (!sm.brevoApiKey) return; // Brevo not configured — skip silently
+
+  const senderEmail = sm.brevoSenderEmail || "noreply@xendrx.com";
+  const senderName = sm.brevoSenderName || "Xendrx";
+  const appUrl = process.env.APP_URL ?? "";
+
+  const subject = approved ? "✅ KYC Approved — Welcome to Xendrx!" : "❌ KYC Application Update";
+
+  const htmlContent = approved ? `
+<div style="font-family:'Segoe UI',Arial,sans-serif;background:#080d18;color:#e0e0e0;padding:0;margin:0;">
+  <div style="max-width:520px;margin:0 auto;padding:40px 24px;">
+    <div style="text-align:center;margin-bottom:32px;">
+      <h1 style="color:#00d4ff;font-size:28px;margin:0;letter-spacing:-0.5px;">Xendrx</h1>
+      <p style="color:#666;font-size:12px;margin:4px 0 0;">P2P Crypto Exchange</p>
+    </div>
+    <div style="background:#0f1629;border:1px solid #1e2d4a;border-radius:16px;padding:32px;">
+      <div style="text-align:center;margin-bottom:24px;">
+        <div style="display:inline-block;background:#00d4ff22;border-radius:50%;width:64px;height:64px;line-height:64px;font-size:32px;">✅</div>
+      </div>
+      <h2 style="color:#ffffff;font-size:22px;margin:0 0 12px;text-align:center;">Identity Verified!</h2>
+      <p style="color:#a0aec0;font-size:15px;line-height:1.6;text-align:center;margin:0 0 24px;">
+        Hi <strong style="color:#fff;">${username}</strong>, your KYC application has been <strong style="color:#00d4ff;">approved</strong>!<br>
+        You can now trade on Xendrx without limits.
+      </p>
+      <div style="background:#00d4ff11;border:1px solid #00d4ff33;border-radius:10px;padding:16px;margin-bottom:24px;text-align:center;">
+        <p style="margin:0;color:#00d4ff;font-size:14px;">🚀 Your account is fully verified and ready to trade.</p>
+      </div>
+      <div style="text-align:center;">
+        <a href="${appUrl}/p2p" style="display:inline-block;background:linear-gradient(135deg,#00d4ff,#0099cc);color:#000;font-weight:700;font-size:15px;padding:14px 32px;border-radius:10px;text-decoration:none;">Start Trading →</a>
+      </div>
+    </div>
+    <p style="color:#444;font-size:11px;text-align:center;margin:24px 0 0;">Xendrx P2P Exchange &mdash; If you did not request this, please contact support.</p>
+  </div>
+</div>` : `
+<div style="font-family:'Segoe UI',Arial,sans-serif;background:#080d18;color:#e0e0e0;padding:0;margin:0;">
+  <div style="max-width:520px;margin:0 auto;padding:40px 24px;">
+    <div style="text-align:center;margin-bottom:32px;">
+      <h1 style="color:#00d4ff;font-size:28px;margin:0;letter-spacing:-0.5px;">Xendrx</h1>
+      <p style="color:#666;font-size:12px;margin:4px 0 0;">P2P Crypto Exchange</p>
+    </div>
+    <div style="background:#0f1629;border:1px solid #1e2d4a;border-radius:16px;padding:32px;">
+      <div style="text-align:center;margin-bottom:24px;">
+        <div style="display:inline-block;background:#ff4d4d22;border-radius:50%;width:64px;height:64px;line-height:64px;font-size:32px;">❌</div>
+      </div>
+      <h2 style="color:#ffffff;font-size:22px;margin:0 0 12px;text-align:center;">KYC Application Update</h2>
+      <p style="color:#a0aec0;font-size:15px;line-height:1.6;text-align:center;margin:0 0 20px;">
+        Hi <strong style="color:#fff;">${username}</strong>, unfortunately your KYC application was <strong style="color:#ff6b6b;">not approved</strong> at this time.
+      </p>
+      ${reason ? `<div style="background:#ff4d4d11;border:1px solid #ff4d4d33;border-radius:10px;padding:16px;margin-bottom:20px;">
+        <p style="margin:0 0 6px;color:#ff6b6b;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Reason</p>
+        <p style="margin:0;color:#e0e0e0;font-size:14px;">${reason}</p>
+      </div>` : ""}
+      <p style="color:#a0aec0;font-size:14px;text-align:center;margin:0 0 24px;">Please correct the issue and resubmit your documents.</p>
+      <div style="text-align:center;">
+        <a href="${appUrl}/kyc" style="display:inline-block;background:linear-gradient(135deg,#00d4ff,#0099cc);color:#000;font-weight:700;font-size:15px;padding:14px 32px;border-radius:10px;text-decoration:none;">Resubmit Documents →</a>
+      </div>
+    </div>
+    <p style="color:#444;font-size:11px;text-align:center;margin:24px 0 0;">Xendrx P2P Exchange &mdash; If you need help, contact our support team.</p>
+  </div>
+</div>`;
+
+  await fetch("https://api.brevo.com/v3/smtp/email", {
+    method: "POST",
+    headers: { "api-key": sm.brevoApiKey, "Content-Type": "application/json" },
+    body: JSON.stringify({ sender: { name: senderName, email: senderEmail }, to: [{ email: toEmail, name: username }], subject, htmlContent }),
+  }).catch(e => console.error("[KYC Email] Send failed:", e));
+}
+
+// ─── KYC Telegram Gateway SMS fallback for phone-only users ──────────────────
+
+async function sendKycSms(phone: string, approved: boolean, reason?: string): Promise<void> {
+  const { sendTelegramMessage: _unused, ...rest } = await import("../telegram/bot.js").catch(() => ({ sendTelegramMessage: null })) as any;
+  const { checkSendAbility } = await import("../lib/telegram-gateway.js").catch(() => ({ checkSendAbility: null })) as any;
+  if (!checkSendAbility) return;
+  const message = approved
+    ? `✅ Your Xendrx KYC has been APPROVED! You can now trade on Xendrx. Visit: ${process.env.APP_URL ?? ""}/p2p`
+    : `❌ Your Xendrx KYC was not approved. Reason: ${reason ?? "Documents not accepted"}. Please resubmit: ${process.env.APP_URL ?? ""}/kyc`;
+
+  // Use Telegram Gateway to send SMS to phone number
+  try {
+    const { gatewayRequest } = await import("../lib/telegram-gateway.js").catch(() => ({ gatewayRequest: null })) as any;
+    if (!gatewayRequest) return;
+    await gatewayRequest("sendMessage" as any, { phone_number: phone, message });
+  } catch (e) {
+    console.error("[KYC SMS] Telegram Gateway send failed:", e);
+  }
+}
+
 router.post("/kyc/:userId/review", adminAuth, async (req: any, res) => {
   try {
     const userId = parseInt(req.params.userId);
@@ -380,13 +480,24 @@ router.post("/kyc/:userId/review", adminAuth, async (req: any, res) => {
       rejectionReason: rejectionReason ?? null,
       adminMessage: adminMessage ?? null,
     });
+
+    // Fetch user for email + phone
+    const user = await db.select().from(usersTable).where(eq(usersTable.id, userId)).then(r => r[0]);
+
     if (newStatus === "verified") {
       PushNotify.kycApproved(userId).catch(console.error);
+      // Telegram bot (for Telegram-linked users)
       TelegramNotify.kycApproved(userId).catch(console.error);
+      // Email (for all users with email)
+      if (user?.email) sendKycEmail(user.email, user.username, true).catch(console.error);
     } else if (newStatus === "rejected") {
       PushNotify.kycRejected(userId, rejectionReason ?? "Documents not accepted").catch(console.error);
+      // Telegram bot (for Telegram-linked users)
       TelegramNotify.kycRejected(userId, rejectionReason ?? "Documents not accepted").catch(console.error);
+      // Email (for all users with email)
+      if (user?.email) sendKycEmail(user.email, user.username, false, rejectionReason).catch(console.error);
     }
+
     const sub = await db.select().from(kycSubmissionsTable).where(eq(kycSubmissionsTable.userId, userId)).then(r => r[0]);
     res.json(await formatKyc(sub!));
   } catch (err) {
