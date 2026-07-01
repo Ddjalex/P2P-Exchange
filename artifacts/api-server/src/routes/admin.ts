@@ -8,7 +8,7 @@ import {
   adminLogsTable, systemSettingsTable, notificationHistoryTable, fraudFlagsTable,
   depositVerificationsTable, cardWaitlistTable, feeSettingsTable, platformWalletTable,
   feeTransactionsTable, addressVerificationsTable, adminEmailSendsTable, cardsTable,
-  auditLogsTable,
+  auditLogsTable, cardQueueTable,
 } from "@workspace/db";
 import { eq, desc, and, or, ilike, sql, ne, count, inArray } from "drizzle-orm";
 import { getFeePercents, calculateFees } from "../helpers/fees.js";
@@ -961,6 +961,76 @@ router.put("/wallet/transactions/:id/reject", adminAuth, async (req: any, res) =
     res.json({ success: true });
   } catch (err) {
     req.log.error({ err }, "Admin reject withdrawal failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Cancel pending withdrawal — refunds frozen balance to available
+router.put("/wallet/transactions/:id/cancel", adminAuth, async (req: any, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const tx = await db.select().from(transactionsTable).where(eq(transactionsTable.id, id)).then(r => r[0]);
+    if (!tx) return res.status(404).json({ error: "Transaction not found" });
+    if (tx.status !== "pending") return res.status(400).json({ error: "Only pending withdrawals can be cancelled" });
+    if (tx.type !== "withdraw") return res.status(400).json({ error: "Transaction is not a withdrawal" });
+
+    await db.update(transactionsTable).set({ status: "failed" }).where(eq(transactionsTable.id, id));
+
+    const wallet = await db.select().from(walletsTable)
+      .where(and(eq(walletsTable.userId, tx.userId), eq(walletsTable.asset, "USDT")))
+      .then(r => r[0]);
+    if (wallet) {
+      const newAvailable = (parseFloat(wallet.availableBalance) + parseFloat(tx.amount)).toFixed(6);
+      const newFrozen = Math.max(0, parseFloat(wallet.frozenBalance) - parseFloat(tx.amount)).toFixed(6);
+      await db.update(walletsTable)
+        .set({ availableBalance: newAvailable, frozenBalance: newFrozen })
+        .where(eq(walletsTable.id, wallet.id));
+    }
+
+    PushNotify.withdrawalRejected(tx.userId, tx.amount, "Cancelled by admin").catch(console.error);
+    await log(req.adminEmail, "cancel_withdrawal", "transaction", id, "Cancelled by admin");
+    res.json({ success: true });
+  } catch (err) {
+    req.log.error({ err }, "Admin cancel withdrawal failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Cancel pending card queue item — refunds amount to user wallet
+router.put("/cards/queue/:id/cancel", adminAuth, async (req: any, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const item = await db.select().from(cardQueueTable).where(eq(cardQueueTable.id, id)).then(r => r[0]);
+    if (!item) return res.status(404).json({ error: "Queue item not found" });
+    if (item.status !== "pending") return res.status(400).json({ error: "Only pending queue items can be cancelled" });
+
+    await db.update(cardQueueTable)
+      .set({ status: "failed", errorMessage: "Cancelled by admin", updatedAt: new Date() })
+      .where(eq(cardQueueTable.id, id));
+
+    if (item.userId && item.amount) {
+      const wallet = await db.select().from(walletsTable)
+        .where(and(eq(walletsTable.userId, item.userId), eq(walletsTable.asset, "USDT")))
+        .then(r => r[0]);
+      if (wallet) {
+        const newAvailable = (parseFloat(wallet.availableBalance) + parseFloat(item.amount)).toFixed(6);
+        await db.update(walletsTable)
+          .set({ availableBalance: newAvailable })
+          .where(eq(walletsTable.id, wallet.id));
+        await db.insert(transactionsTable).values({
+          userId: item.userId,
+          type: "deposit",
+          amount: item.amount,
+          status: "completed",
+          note: `Card ${item.type} request cancelled by admin — refunded`,
+        });
+      }
+    }
+
+    await log(req.adminEmail, "cancel_card_queue", "card_queue", id, `Cancelled card queue #${id} for user ${item.userId}`);
+    res.json({ success: true });
+  } catch (err) {
+    req.log.error({ err }, "Admin cancel card queue failed");
     res.status(500).json({ error: "Internal server error" });
   }
 });

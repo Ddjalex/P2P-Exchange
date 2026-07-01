@@ -37,6 +37,12 @@ export default function AdminWalletPage() {
 
   const approve = async (id: number) => { await adminPut(`/wallet/transactions/${id}/approve`); loadTxs(); loadOverview(); };
   const reject = async (id: number) => { await adminPut(`/wallet/transactions/${id}/reject`); loadTxs(); loadOverview(); };
+  const cancel = async (id: number) => {
+    if (!confirm("Cancel this withdrawal and refund the user?")) return;
+    await adminPut(`/wallet/transactions/${id}/cancel`);
+    loadTxs();
+    loadOverview();
+  };
 
   const fixFrozen = async () => {
     setFixing(true); setFixResult(null);
@@ -188,6 +194,7 @@ export default function AdminWalletPage() {
                         <div className="flex space-x-2">
                           <button onClick={() => approve(tx.id)} className="text-xs text-success hover:underline">Approve</button>
                           <button onClick={() => reject(tx.id)} className="text-xs text-destructive hover:underline">Reject</button>
+                          <button onClick={() => cancel(tx.id)} className="text-xs text-muted-foreground hover:underline">Cancel</button>
                         </div>
                       )}
                     </td>

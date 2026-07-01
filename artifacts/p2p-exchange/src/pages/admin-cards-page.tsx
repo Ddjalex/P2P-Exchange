@@ -113,6 +113,17 @@ export default function AdminCardsPage() {
     setProcessingQueue(false);
   };
 
+  const cancelQueueItem = async (id: number) => {
+    if (!confirm("Cancel this card request and refund the user?")) return;
+    try {
+      await adminPut(`/cards/queue/${id}/cancel`);
+      setQueueMsg({ ok: true, text: `Queue item #${id} cancelled and user refunded.` });
+      loadQueue();
+    } catch (e: any) {
+      setQueueMsg({ ok: false, text: e?.message ?? "Cancel failed" });
+    }
+  };
+
   useEffect(() => {
     load();
     loadFees();
@@ -443,6 +454,17 @@ export default function AdminCardsPage() {
                                       <p className="mt-2 text-xs text-muted-foreground bg-secondary/50 rounded-lg px-2.5 py-1.5 border border-border" title={item.errorMessage}>
                                         ⚠ {item.errorMessage.length > 120 ? item.errorMessage.slice(0, 120) + "…" : item.errorMessage}
                                       </p>
+                                    )}
+
+                                    {isPending && (
+                                      <div className="mt-3">
+                                        <button
+                                          onClick={() => cancelQueueItem(item.id)}
+                                          className="px-3 py-1.5 bg-destructive/10 border border-destructive/25 text-destructive text-xs font-medium rounded-lg hover:bg-destructive/20 transition-colors"
+                                        >
+                                          Cancel & Refund
+                                        </button>
+                                      </div>
                                     )}
                                   </div>
 
