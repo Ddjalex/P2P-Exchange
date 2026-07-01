@@ -5,6 +5,10 @@ import { adminGet, adminPut, adminPost } from "@/lib/admin-api";
 
 const HOT_WALLET_ADDRESS = "TLBskP2mS6hDDxaRxUCeLwCzznBDkMs1P5";
 
+function shortAddr(addr: string) {
+  return addr.slice(0, 6) + "…" + addr.slice(-4);
+}
+
 export default function AdminWalletPage() {
   const [, navigate] = useLocation();
   const [overview, setOverview] = useState<any>(null);
@@ -14,6 +18,13 @@ export default function AdminWalletPage() {
   const [statusFilter, setStatusFilter] = useState("pending");
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
+
+  // Health panel state
+  const [health, setHealth] = useState<any>(null);
+  const [healthLoading, setHealthLoading] = useState(false);
+  const [healthError, setHealthError] = useState<string | null>(null);
+  const [sweeping, setSweeping] = useState(false);
+  const [sweepResult, setSweepResult] = useState<any>(null);
 
   const loadOverview = () => adminGet<any>("/wallet/overview").then(setOverview).catch(() => {});
   const loadTxs = async () => {
@@ -29,7 +40,19 @@ export default function AdminWalletPage() {
     setLoading(false);
   };
 
-  useEffect(() => { loadOverview(); }, []);
+  const loadHealth = async () => {
+    setHealthLoading(true);
+    setHealthError(null);
+    try {
+      const data = await adminGet<any>("/wallet/health");
+      setHealth(data);
+    } catch (e: any) {
+      setHealthError(e?.message ?? "Failed to load wallet health");
+    }
+    setHealthLoading(false);
+  };
+
+  useEffect(() => { loadOverview(); loadHealth(); }, []);
   useEffect(() => { loadTxs(); }, [page, typeFilter, statusFilter]);
 
   const [fixing, setFixing] = useState(false);
@@ -54,15 +77,202 @@ export default function AdminWalletPage() {
     setFixing(false);
   };
 
+  const sweepAll = async () => {
+    setSweeping(true); setSweepResult(null);
+    try {
+      const res = await adminPost<any>("/sweep-stuck-funds", {});
+      setSweepResult(res);
+      loadHealth();
+    } catch (e: any) { setSweepResult({ error: e?.message ?? "Sweep failed" }); }
+    setSweeping(false);
+  };
+
+  const freezeUser = async (userId: number) => {
+    if (!confirm(`Freeze user ${userId}?`)) return;
+    await adminPost(`/security/freeze/${userId}`, {});
+    loadHealth();
+  };
+  const banUser = async (userId: number) => {
+    if (!confirm(`Permanently ban user ${userId}? This cannot be undone.`)) return;
+    await adminPost(`/security/ban/${userId}`, {});
+    loadHealth();
+  };
+
   const totalPages = Math.ceil(total / 20);
 
   const pendingCount = Number(overview?.pendingWithdrawals ?? 0);
   const hotBalance = parseFloat(overview?.hotWalletBalance ?? "0");
   const hotBalanceLow = pendingCount > 0 && overview?.hotWalletBalance != null && hotBalance < 50;
 
+  const hw = health?.hotWallet;
+  const audit = health?.audit;
+
   return (
     <AdminGuard>
       <AdminLayout title="Wallet & Transactions">
+
+        {/* ── Wallet Health Panel ── */}
+        <div className="bg-card border border-border rounded-xl overflow-hidden mb-6">
+          <div className="px-5 py-4 border-b border-border flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-2">
+              <span className="text-base">💰</span>
+              <h3 className="font-bold text-sm">Wallet Health</h3>
+              {health?.scannedAt && (
+                <span className="text-xs text-muted-foreground">
+                  Last scanned: {new Date(health.scannedAt).toLocaleTimeString()}
+                </span>
+              )}
+            </div>
+            <button
+              onClick={loadHealth}
+              disabled={healthLoading}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-secondary border border-border rounded-lg text-xs font-medium hover:bg-secondary/80 disabled:opacity-50"
+            >
+              {healthLoading ? "🔄 Scanning…" : "🔄 Refresh All"}
+            </button>
+          </div>
+
+          {healthError ? (
+            <div className="p-5 text-xs text-destructive">{healthError}</div>
+          ) : healthLoading && !health ? (
+            <div className="p-5 text-xs text-muted-foreground animate-pulse">Scanning wallet health…</div>
+          ) : health && (
+            <div className="divide-y divide-border">
+
+              {/* Hot Wallet Status */}
+              <div className="p-5">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">🔑 Hot Wallet Status</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="bg-secondary/50 rounded-xl p-4 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground">Address</span>
+                      {hw?.address && (
+                        <a
+                          href={`https://bscscan.com/address/${hw.address}`}
+                          target="_blank" rel="noopener noreferrer"
+                          className="text-xs text-primary hover:underline"
+                        >BSCScan ↗</a>
+                      )}
+                    </div>
+                    <p className="font-mono text-xs text-foreground break-all">{hw?.address ?? "—"}</p>
+                  </div>
+                  <div className="bg-secondary/50 rounded-xl p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground">USDT Balance</span>
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${hw?.usdtLow ? "bg-destructive/20 text-destructive" : "bg-success/20 text-success"}`}>
+                        {hw?.usdtLow ? "⚠️ Low" : "✅ Good"}
+                      </span>
+                    </div>
+                    <p className="text-xl font-bold font-mono">${hw?.usdtBalance ? parseFloat(hw.usdtBalance).toFixed(2) : "—"}</p>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground">BNB Balance</span>
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${hw?.bnbLow ? "bg-destructive/20 text-destructive" : "bg-success/20 text-success"}`}>
+                        {hw?.bnbLow ? "⚠️ Low" : "✅ Good"}
+                      </span>
+                    </div>
+                    <p className="font-mono text-sm font-semibold">{hw?.bnbBalance != null ? hw.bnbBalance.toFixed(4) + " BNB" : "—"}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Balance Audit */}
+              {audit && (
+                <div className="p-5">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">📊 Balance Audit</p>
+                  <div className="bg-secondary/50 rounded-xl p-4 space-y-2 font-mono text-sm">
+                    {[
+                      ["Hot wallet real USDT", audit.actualHotWallet != null ? `$${audit.actualHotWallet}` : "—"],
+                      ["Total platform balances", `$${audit.totalPlatform}`],
+                      ["Real chain deposits", `$${audit.totalRealDeposits}`],
+                      ["Total withdrawn", `$${audit.totalWithdrawn}`],
+                      ["Expected hot wallet", `$${audit.expectedHotWallet}`],
+                      ["Actual hot wallet", audit.actualHotWallet != null ? `$${audit.actualHotWallet}` : "—"],
+                    ].map(([label, value]) => (
+                      <div key={label} className="flex justify-between gap-4">
+                        <span className="text-muted-foreground text-xs">{label}</span>
+                        <span className="text-xs font-semibold">{value}</span>
+                      </div>
+                    ))}
+                    <div className="flex justify-between gap-4 pt-2 border-t border-border">
+                      <span className="text-muted-foreground text-xs">Discrepancy</span>
+                      <span className={`text-xs font-bold ${audit.discrepancy != null && parseFloat(audit.discrepancy) < -5 ? "text-destructive" : "text-foreground"}`}>
+                        {audit.discrepancy != null ? `$${audit.discrepancy}` : "—"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Stuck Deposits */}
+              <div className="p-5">
+                <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">🔍 Stuck Deposits</p>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">{health.stuckDeposits?.length ?? 0} found</span>
+                    <button
+                      onClick={sweepAll}
+                      disabled={sweeping || !health.stuckDeposits?.length}
+                      className="px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-xs font-semibold disabled:opacity-40 hover:opacity-90"
+                    >
+                      {sweeping ? "Sweeping…" : "🧹 Sweep All"}
+                    </button>
+                  </div>
+                </div>
+                {sweepResult && (
+                  <div className={`mb-3 text-xs px-3 py-2 rounded-lg ${sweepResult.error ? "bg-destructive/10 text-destructive border border-destructive/20" : "bg-success/10 text-success border border-success/20"}`}>
+                    {sweepResult.error ? `Error: ${sweepResult.error}` : `Swept: ${sweepResult.swept}, Failed: ${sweepResult.failed}`}
+                  </div>
+                )}
+                {!health.stuckDeposits?.length ? (
+                  <div className="text-xs text-success bg-success/10 border border-success/20 rounded-xl px-4 py-3">✅ No stuck deposits — all user addresses are clear.</div>
+                ) : (
+                  <div className="space-y-2">
+                    {health.stuckDeposits.map((d: any) => (
+                      <div key={d.address} className="flex items-center justify-between bg-warning/10 border border-warning/25 rounded-xl px-4 py-2.5">
+                        <div>
+                          <span className="text-xs font-medium text-foreground">User #{d.userId}</span>
+                          <span className="text-xs text-muted-foreground ml-2 font-mono">{shortAddr(d.address)}</span>
+                        </div>
+                        <span className="text-xs font-bold font-mono text-warning">${parseFloat(d.balance).toFixed(2)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Suspicious Users */}
+              {health.suspiciousUsers?.length > 0 && (
+                <div className="p-5">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">⚠️ Suspicious Users (balance &gt;&gt; real deposits)</p>
+                  <div className="space-y-3">
+                    {health.suspiciousUsers.map((u: any) => (
+                      <div key={u.userId} className="bg-destructive/5 border border-destructive/25 rounded-xl p-4">
+                        <div className="flex items-start justify-between gap-3 flex-wrap">
+                          <div>
+                            <div className="font-semibold text-sm text-foreground">{u.username ?? `User #${u.userId}`}</div>
+                            <div className="text-xs text-muted-foreground mb-2">{u.email}</div>
+                            <div className="space-y-0.5 font-mono text-xs">
+                              <div className="flex gap-4"><span className="text-muted-foreground">Platform balance:</span><span className="font-bold text-foreground">${u.platformBalance}</span></div>
+                              <div className="flex gap-4"><span className="text-muted-foreground">Real deposits:</span><span>${u.realDeposits}</span></div>
+                              <div className="flex gap-4"><span className="text-muted-foreground">Difference:</span><span className="text-destructive font-bold">🚨 ${u.difference}</span></div>
+                            </div>
+                          </div>
+                          <div className="flex flex-col gap-2">
+                            <button onClick={() => freezeUser(u.userId)} className="px-3 py-1.5 bg-warning/20 text-warning text-xs font-semibold rounded-lg hover:bg-warning/30 border border-warning/30">🔒 Freeze</button>
+                            <button onClick={() => banUser(u.userId)} className="px-3 py-1.5 bg-destructive/20 text-destructive text-xs font-semibold rounded-lg hover:bg-destructive/30 border border-destructive/30">❌ Ban</button>
+                            <button onClick={() => navigate(`/admin/users/${u.userId}`)} className="px-3 py-1.5 bg-secondary text-foreground text-xs font-semibold rounded-lg hover:bg-secondary/80 border border-border">📋 View</button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+            </div>
+          )}
+        </div>
+
         {/* Overview cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
           {[
@@ -91,7 +301,7 @@ export default function AdminWalletPage() {
               {hotBalanceLow ? "⚠️" : pendingCount > 0 ? "🔶" : "🔑"}
             </div>
             <div>
-              <div className="text-xs text-muted-foreground mb-0.5">Hot Wallet Balance (TRC20 USDT)</div>
+              <div className="text-xs text-muted-foreground mb-0.5">Hot Wallet Balance (BEP20 USDT)</div>
               <div className={`text-2xl font-bold font-mono ${hotBalanceLow ? "text-destructive" : pendingCount > 0 ? "text-warning" : ""}`}>
                 {overview?.hotWalletBalance != null ? `${parseFloat(overview.hotWalletBalance).toFixed(2)} USDT` : "—"}
               </div>

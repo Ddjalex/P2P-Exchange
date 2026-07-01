@@ -16,7 +16,7 @@ import { PushNotify, sendPushBroadcast } from "./push.js";
 import { TelegramNotify } from "../telegram/notify.js";
 import { telegramUsersTable } from "@workspace/db";
 import { sendTelegramMessage, restartBotWithToken, getBotStatus } from "../telegram/bot.js";
-import { sendUsdtBsc, getBscUsdtBalance } from "../lib/bsc.js";
+import { sendUsdtBsc, getBscUsdtBalance, getBnbBalance } from "../lib/bsc.js";
 import { sweepAllStuckFunds } from "../lib/deposit-monitor.js";
 
 const router = Router();
@@ -1002,7 +1002,7 @@ router.put("/cards/queue/:id/cancel", adminAuth, async (req: any, res) => {
     const id = parseInt(req.params.id);
     const item = await db.select().from(cardQueueTable).where(eq(cardQueueTable.id, id)).then(r => r[0]);
     if (!item) return res.status(404).json({ error: "Queue item not found" });
-    if (item.status !== "pending") return res.status(400).json({ error: "Only pending queue items can be cancelled" });
+    if (item.status !== "pending" && item.status !== "processing") return res.status(400).json({ error: "Only pending or processing queue items can be cancelled" });
 
     await db.update(cardQueueTable)
       .set({ status: "failed", errorMessage: "Cancelled by admin", updatedAt: new Date() })
@@ -2384,6 +2384,115 @@ router.post("/security/ban/:userId", adminAuth, async (req, res) => {
     await log(req.adminEmail, "ban_user", "user", userId, reason);
     res.json({ success: true });
   } catch (err) {
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ─── Wallet Health: hot wallet balances + audit + suspicious users + stuck deposits ───
+
+router.get("/wallet/health", adminAuth, async (req: any, res) => {
+  try {
+    const privateKey = process.env["BSC_HOT_WALLET_PRIVATE_KEY"];
+    let hotWalletAddress: string | null = null;
+    let usdtBalance: string | null = null;
+    let bnbBalance: number | null = null;
+
+    if (privateKey) {
+      try {
+        const { ethers } = await import("ethers");
+        const hotWallet = new ethers.Wallet(privateKey);
+        hotWalletAddress = hotWallet.address;
+        [usdtBalance, bnbBalance] = await Promise.all([
+          getBscUsdtBalance(hotWalletAddress),
+          getBnbBalance(hotWalletAddress),
+        ]);
+      } catch (e: any) {
+        req.log.warn({ e }, "Could not fetch hot wallet balances");
+      }
+    }
+
+    const wallets = await db.select().from(walletsTable);
+    const totalAvailable = wallets.reduce((s, w) => s + parseFloat(w.availableBalance || "0"), 0);
+    const totalFrozen = wallets.reduce((s, w) => s + parseFloat(w.frozenBalance || "0"), 0);
+
+    const realDeposits = await db.execute(sql`
+      SELECT COALESCE(SUM(amount::numeric), 0) as total FROM transactions
+      WHERE type = 'deposit' AND network IN ('BEP20', 'TRC20') AND status = 'completed'
+    `);
+    const totalRealDeposits = parseFloat((realDeposits.rows[0] as any).total);
+
+    const withdrawnResult = await db.execute(sql`
+      SELECT COALESCE(SUM(amount::numeric), 0) as total FROM transactions
+      WHERE type = 'withdraw' AND status = 'completed'
+    `);
+    const totalWithdrawn = parseFloat((withdrawnResult.rows[0] as any).total);
+
+    const expectedHotWallet = Math.max(0, totalRealDeposits - totalWithdrawn);
+    const actualHotWallet = usdtBalance ? parseFloat(usdtBalance) : null;
+    const discrepancy = actualHotWallet !== null ? actualHotWallet - expectedHotWallet : null;
+
+    const suspiciousResult = await db.execute(sql`
+      SELECT w.user_id, u.email, u.username,
+        w.available_balance::numeric + w.frozen_balance::numeric as platform_balance,
+        COALESCE(real_deps.total, 0) as real_deposits
+      FROM wallets w
+      JOIN users u ON u.id = w.user_id
+      LEFT JOIN (
+        SELECT user_id, SUM(amount::numeric) as total FROM transactions
+        WHERE type = 'deposit' AND network IN ('BEP20', 'TRC20') AND status = 'completed'
+        GROUP BY user_id
+      ) real_deps ON real_deps.user_id = w.user_id
+      WHERE (w.available_balance::numeric + w.frozen_balance::numeric) > COALESCE(real_deps.total, 0) + 1000
+        AND (w.available_balance::numeric + w.frozen_balance::numeric) > 100
+      ORDER BY (w.available_balance::numeric + w.frozen_balance::numeric - COALESCE(real_deps.total, 0)) DESC
+    `);
+
+    // Scan user deposit addresses for stuck USDT
+    const EVM_RE = /^0x[0-9a-fA-F]{40}$/i;
+    const addrRows = await db.select({ userId: walletsTable.userId, depositAddress: walletsTable.depositAddress })
+      .from(walletsTable).where(and(eq(walletsTable.asset, "USDT"), sql`deposit_address IS NOT NULL`));
+    const validRows = addrRows.filter(r => r.depositAddress && EVM_RE.test(r.depositAddress));
+    const stuckChecks = await Promise.allSettled(
+      validRows.map(async r => {
+        const bal = await getBscUsdtBalance(r.depositAddress!);
+        return parseFloat(bal) >= 0.01 ? { userId: r.userId, address: r.depositAddress!, balance: bal } : null;
+      })
+    );
+    const stuckDeposits = stuckChecks
+      .filter(r => r.status === "fulfilled" && r.value)
+      .map(r => (r as any).value);
+
+    res.json({
+      hotWallet: {
+        address: hotWalletAddress,
+        usdtBalance,
+        bnbBalance,
+        usdtLow: usdtBalance !== null && parseFloat(usdtBalance) < 10,
+        bnbLow: bnbBalance !== null && bnbBalance < 0.02,
+      },
+      audit: {
+        totalAvailable: totalAvailable.toFixed(2),
+        totalFrozen: totalFrozen.toFixed(2),
+        totalPlatform: (totalAvailable + totalFrozen).toFixed(2),
+        totalRealDeposits: totalRealDeposits.toFixed(2),
+        totalWithdrawn: totalWithdrawn.toFixed(2),
+        expectedHotWallet: expectedHotWallet.toFixed(2),
+        actualHotWallet: actualHotWallet !== null ? actualHotWallet.toFixed(2) : null,
+        discrepancy: discrepancy !== null ? discrepancy.toFixed(2) : null,
+      },
+      suspiciousUsers: (suspiciousResult.rows as any[]).map(r => ({
+        userId: Number(r.user_id),
+        email: r.email,
+        username: r.username,
+        platformBalance: parseFloat(r.platform_balance).toFixed(2),
+        realDeposits: parseFloat(r.real_deposits).toFixed(2),
+        difference: (parseFloat(r.platform_balance) - parseFloat(r.real_deposits)).toFixed(2),
+      })),
+      stuckDeposits,
+      scannedAt: new Date().toISOString(),
+    });
+  } catch (err) {
+    req.log.error({ err }, "Admin wallet health failed");
     res.status(500).json({ error: "Internal server error" });
   }
 });

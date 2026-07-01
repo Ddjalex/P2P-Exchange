@@ -206,6 +206,33 @@ export async function detectSuspiciousActivity(): Promise<void> {
         `🚨 CARD EXPLOIT DETECTED: User ${row.user_id} withdrew $${parseFloat(row.withdrawn).toFixed(2)} but only funded $${parseFloat(row.funded).toFixed(2)}!`
       ).catch(() => {});
     }
+    // Check if any user's platform balance is impossibly higher than real chain deposits
+    const suspiciousBalances = await db.execute(sql`
+      SELECT 
+        w.user_id,
+        u.email,
+        w.available_balance::numeric + w.frozen_balance::numeric as platform_balance,
+        COALESCE(real_deps.total, 0) as real_deposits
+      FROM wallets w
+      JOIN users u ON u.id = w.user_id
+      LEFT JOIN (
+        SELECT user_id, SUM(amount::numeric) as total
+        FROM transactions
+        WHERE type = 'deposit'
+        AND network IN ('BEP20', 'TRC20')
+        AND status = 'completed'
+        GROUP BY user_id
+      ) real_deps ON real_deps.user_id = w.user_id
+      WHERE (w.available_balance::numeric + w.frozen_balance::numeric) >
+            COALESCE(real_deps.total, 0) + 1000
+      AND (w.available_balance::numeric + w.frozen_balance::numeric) > 100
+    `);
+    for (const user of suspiciousBalances.rows as any[]) {
+      console.error(`[Security] SUSPICIOUS: User ${user.user_id} (${user.email}) has platform balance $${user.platform_balance} but only deposited $${user.real_deposits} on chain!`);
+      PushNotify.adminAlert(
+        `🚨 SUSPICIOUS BALANCE: ${user.email} has $${parseFloat(user.platform_balance).toFixed(2)} platform balance but only $${parseFloat(user.real_deposits).toFixed(2)} real deposits!`
+      ).catch(() => {});
+    }
   } catch (err) {
     console.error("[Security] detectSuspiciousActivity error:", err);
   }
