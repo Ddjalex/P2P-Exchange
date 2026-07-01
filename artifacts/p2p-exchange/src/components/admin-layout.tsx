@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Users, ShieldCheck, Megaphone, ClipboardList,
   Scale, Wallet, MessageSquare, Bell, Settings, DollarSign,
   LogOut, Menu, X, FileText, ChevronRight, ChevronDown,
-  AlertTriangle, UserX, Flag, Activity, Layers, PauseCircle, Send, Mail, CreditCard,
+  AlertTriangle, UserX, Flag, Activity, Layers, PauseCircle, Send, Mail, CreditCard, Shield,
 } from "lucide-react";
 
 type NavItem = {
@@ -37,6 +37,7 @@ const navItems: NavItem[] = [
   },
   { href: "/admin/disputes", icon: Scale, label: "Disputes & Appeals" },
   { href: "/admin/fraud", icon: AlertTriangle, label: "Fraud Detection" },
+  { href: "/admin/security", icon: Shield, label: "Security Center" },
   {
     href: "/admin/wallet", icon: Wallet, label: "Wallet & Transactions",
     children: [

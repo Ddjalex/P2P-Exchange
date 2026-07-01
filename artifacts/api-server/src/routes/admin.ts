@@ -8,6 +8,7 @@ import {
   adminLogsTable, systemSettingsTable, notificationHistoryTable, fraudFlagsTable,
   depositVerificationsTable, cardWaitlistTable, feeSettingsTable, platformWalletTable,
   feeTransactionsTable, addressVerificationsTable, adminEmailSendsTable, cardsTable,
+  auditLogsTable,
 } from "@workspace/db";
 import { eq, desc, and, or, ilike, sql, ne, count, inArray } from "drizzle-orm";
 import { getFeePercents, calculateFees } from "../helpers/fees.js";
@@ -2184,6 +2185,135 @@ router.post("/cards/process-queue", adminAuth, async (req, res) => {
     res.json({ success: true, message: "Queue processing triggered" });
   } catch (err) {
     req.log.error({ err }, "Admin process queue failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ─── Security dashboard endpoints ────────────────────────────────────────────
+
+router.get("/security/alerts", adminAuth, async (req, res) => {
+  try {
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const alerts = await db.select().from(auditLogsTable)
+      .where(sql`created_at >= ${since}`)
+      .orderBy(desc(auditLogsTable.createdAt))
+      .limit(100);
+    res.json({ alerts });
+  } catch (err) {
+    req.log.error({ err }, "security alerts failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.get("/security/flagged-users", adminAuth, async (req, res) => {
+  try {
+    const flagged = await db.select({
+      id: usersTable.id,
+      username: usersTable.username,
+      email: usersTable.email,
+      isFrozen: usersTable.isFrozen,
+      isBanned: usersTable.isBanned,
+      freezeReason: usersTable.freezeReason,
+      frozenAt: usersTable.frozenAt,
+      flagCount: usersTable.flagCount,
+      availableBalance: walletsTable.availableBalance,
+    })
+    .from(usersTable)
+    .leftJoin(walletsTable, eq(walletsTable.userId, usersTable.id))
+    .where(or(
+      eq(usersTable.isFrozen, true),
+      eq(usersTable.isBanned, true),
+      sql`${walletsTable.availableBalance}::numeric > 10000`,
+    ))
+    .orderBy(desc(usersTable.flagCount));
+
+    const enriched = await Promise.all(flagged.map(async (u) => {
+      const cardStats = await db.execute(sql`
+        SELECT
+          SUM(CASE WHEN note = 'Withdrawn from Xendrx card' THEN amount::numeric ELSE 0 END) as card_withdrawn,
+          SUM(CASE WHEN note = 'Funded Xendrx card' THEN amount::numeric ELSE 0 END) as card_funded
+        FROM transactions
+        WHERE user_id = ${u.id}
+        AND created_at > NOW() - INTERVAL '24 hours'
+      `);
+      const stats = cardStats.rows[0] as any;
+      return {
+        ...u,
+        cardWithdrawn: parseFloat(stats?.card_withdrawn ?? "0").toFixed(2),
+        cardFunded: parseFloat(stats?.card_funded ?? "0").toFixed(2),
+      };
+    }));
+
+    res.json({ flaggedUsers: enriched });
+  } catch (err) {
+    req.log.error({ err }, "security flagged-users failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.get("/security/daily-limits", adminAuth, async (req, res) => {
+  try {
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+
+    const usage = await db.execute(sql`
+      SELECT 
+        u.id, u.username, u.email,
+        SUM(CASE WHEN t.type = 'withdraw' THEN t.amount::numeric ELSE 0 END) as withdrawals,
+        SUM(CASE WHEN t.type = 'internal_send' THEN t.amount::numeric ELSE 0 END) as internal_sends
+      FROM users u
+      LEFT JOIN transactions t ON t.user_id = u.id AND t.created_at >= ${startOfDay}
+      GROUP BY u.id, u.username, u.email
+      HAVING SUM(CASE WHEN t.type = 'withdraw' THEN t.amount::numeric ELSE 0 END) > 0
+          OR SUM(CASE WHEN t.type = 'internal_send' THEN t.amount::numeric ELSE 0 END) > 0
+      ORDER BY withdrawals DESC
+      LIMIT 50
+    `);
+
+    res.json({ usage: usage.rows, limits: { withdraw: 1000, internal_send: 5000 } });
+  } catch (err) {
+    req.log.error({ err }, "security daily-limits failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/security/freeze/:userId", adminAuth, async (req, res) => {
+  try {
+    const userId = parseInt(req.params.userId);
+    const { reason } = req.body;
+    await db.update(usersTable)
+      .set({ isFrozen: true, freezeReason: reason ?? "Frozen by admin", frozenAt: new Date() })
+      .where(eq(usersTable.id, userId));
+    await log(req.adminEmail, "freeze_account", "user", userId, reason);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/security/unfreeze/:userId", adminAuth, async (req, res) => {
+  try {
+    const userId = parseInt(req.params.userId);
+    await db.update(usersTable)
+      .set({ isFrozen: false, freezeReason: null, frozenAt: null })
+      .where(eq(usersTable.id, userId));
+    await log(req.adminEmail, "unfreeze_account", "user", userId);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/security/ban/:userId", adminAuth, async (req, res) => {
+  try {
+    const userId = parseInt(req.params.userId);
+    const { reason } = req.body;
+    await db.update(usersTable)
+      .set({ isBanned: true, isFrozen: true, freezeReason: reason ?? "Banned by admin", frozenAt: new Date() })
+      .where(eq(usersTable.id, userId));
+    await log(req.adminEmail, "ban_user", "user", userId, reason);
+    res.json({ success: true });
+  } catch (err) {
     res.status(500).json({ error: "Internal server error" });
   }
 });

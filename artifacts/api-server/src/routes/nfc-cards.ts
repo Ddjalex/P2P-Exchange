@@ -14,6 +14,7 @@ import bcrypt from "bcryptjs";
 import { userAuth } from "../middleware/user-auth";
 import { enqueueCardFund, enqueueCardCreate } from "../lib/card-queue.js";
 import { PushNotify } from "./push.js";
+import { checkVelocity, checkBalance, checkDailyLimit, auditLog } from "../middleware/security.js";
 
 const router = Router();
 
@@ -450,6 +451,16 @@ router.post("/fund", userAuth, async (req: any, res) => {
   if (!amount || amount < minFund) return res.status(400).json({ error: `Minimum fund amount is $${minFund.toFixed(2)}` });
 
   try {
+    // Security checks
+    const [velocity, balCheck, dailyCheck] = await Promise.all([
+      checkVelocity(userId),
+      checkBalance(userId, amount, "card-fund"),
+      checkDailyLimit(userId, "withdraw", amount),
+    ]);
+    if (!velocity.allowed) return res.status(429).json({ error: velocity.reason });
+    if (!balCheck.allowed) return res.status(400).json({ error: balCheck.reason });
+    if (!dailyCheck.allowed) return res.status(400).json({ error: dailyCheck.reason });
+
     const card = await db.query.cardsTable.findFirst({ where: eq(cardsTable.userId, userId) });
     if (!card) return res.status(404).json({ error: "No card found" });
 
@@ -533,6 +544,7 @@ router.post("/fund", userAuth, async (req: any, res) => {
     }
 
     await db.insert(transactionsTable).values({ userId, type: "withdraw", amount: String(amount), status: "completed", note: "Funded Xendrx card" });
+    auditLog(userId, "CARD_FUND", { amount, cardId: card.cardId, result: "success" }, req);
 
     // Re-fetch authoritative card balance
     let newCardBalance = (parseFloat(card.balance) + amount).toFixed(2);

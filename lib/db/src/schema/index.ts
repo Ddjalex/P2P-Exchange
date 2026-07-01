@@ -26,3 +26,4 @@ export * from "./address_verifications";
 export * from "./password_reset_tokens";
 export * from "./cards";
 export * from "./card_queue";
+export * from "./audit_logs";

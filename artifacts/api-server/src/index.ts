@@ -4,6 +4,7 @@ import { startDepositMonitor } from "./lib/deposit-monitor";
 import { startOrderExpiryMonitor, stopOrderExpiryMonitor } from "./lib/order-expiry";
 import { startBot, stopBot } from "./telegram/bot.js";
 import { startCardQueueProcessor } from "./lib/card-queue.js";
+import { detectSuspiciousActivity } from "./middleware/security.js";
 import { db } from "@workspace/db";
 import { pushSubscriptions } from "@workspace/db";
 import { sql } from "drizzle-orm";
@@ -41,6 +42,10 @@ app.listen(port, (err) => {
 
   // Start card queue processor (retries queued fund/create requests every 5 min)
   startCardQueueProcessor();
+
+  // Start suspicious activity detector (every 5 minutes)
+  setTimeout(detectSuspiciousActivity, 10_000);
+  setInterval(detectSuspiciousActivity, 5 * 60 * 1000);
 
   // Check push_subscriptions table exists and log row count
   db.select({ count: sql<number>`count(*)` })

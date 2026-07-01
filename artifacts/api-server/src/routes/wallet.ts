@@ -7,6 +7,7 @@ import { getBscUsdtTx, getBscUsdtBalance, sendUsdtBsc } from "../lib/bsc.js";
 import { emitToUser } from "../lib/sse.js";
 import { getFeePercents } from "../helpers/fees.js";
 import { deriveDepositAddress, isHdConfigured } from "../lib/bsc-hd.js";
+import { checkVelocity, checkBalance, checkDailyLimit, checkWithdrawalAddress, auditLog } from "../middleware/security.js";
 
 const router = Router();
 
@@ -230,6 +231,18 @@ router.post("/withdraw", async (req, res) => {
     ]);
     if (isNaN(amt) || amt < minWithdrawalSetting) return res.status(400).json({ error: `Minimum withdrawal is ${minWithdrawalSetting} USDT` });
 
+    // Security checks
+    const [velocity, balCheck, dailyCheck, addrCheck] = await Promise.all([
+      checkVelocity(userId),
+      checkBalance(userId, amt, "withdraw"),
+      checkDailyLimit(userId, "withdraw", amt),
+      checkWithdrawalAddress(userId, address),
+    ]);
+    if (!velocity.allowed) return res.status(429).json({ error: velocity.reason });
+    if (!balCheck.allowed) return res.status(400).json({ error: balCheck.reason });
+    if (!dailyCheck.allowed) return res.status(400).json({ error: dailyCheck.reason });
+    if (!addrCheck.allowed) return res.status(400).json({ error: addrCheck.reason });
+
     const wallet = await getOrCreateWallet(userId);
     const avail = parseFloat(wallet.availableBalance);
     if (amt > avail) return res.status(400).json({ error: "Insufficient balance" });
@@ -259,6 +272,8 @@ router.post("/withdraw", async (req, res) => {
       address,
       fee: fee.toFixed(6),
     }).returning();
+
+    auditLog(userId, "WITHDRAWAL", { amount: amt, address, fee, txId: tx.id }, req);
 
     // Check hot wallet balance. If sufficient → auto-broadcast now.
     // If insufficient or unreachable → leave as "pending" for admin to approve manually.
@@ -395,6 +410,16 @@ router.post("/internal-transfer", async (req, res) => {
       return res.status(400).json({ message: "Minimum transfer is 1 USDT" });
     }
 
+    // Security checks
+    const [velocity, balCheck, dailyCheck] = await Promise.all([
+      checkVelocity(senderId),
+      checkBalance(senderId, transferAmount, "internal-transfer"),
+      checkDailyLimit(senderId, "internal_send", transferAmount),
+    ]);
+    if (!velocity.allowed) return res.status(429).json({ message: velocity.reason });
+    if (!balCheck.allowed) return res.status(400).json({ message: balCheck.reason });
+    if (!dailyCheck.allowed) return res.status(400).json({ message: dailyCheck.reason });
+
     const sender = await db.select().from(usersTable).where(eq(usersTable.id, senderId)).then(r => r[0]);
     if (!sender) return res.status(401).json({ message: "Unauthorized" });
 
@@ -465,6 +490,8 @@ router.post("/internal-transfer", async (req, res) => {
         message: `${transferAmount.toFixed(4)} USDT received from ${sender.username}`,
       });
     });
+
+    auditLog(senderId, "INTERNAL_TRANSFER", { amount: transferAmount, receiverId: receiver.id, receiverUsername: receiver.username }, req);
 
     emitToUser(senderId, "wallet_update", {});
     emitToUser(receiver.id, "wallet_update", {});

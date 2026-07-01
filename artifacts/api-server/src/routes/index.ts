@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import { userAuth } from "../middleware/user-auth";
+import { checkAccountStatus } from "../middleware/security";
 import healthRouter from "./health";
 import authRouter from "./auth";
 import walletRouter from "./wallet";
@@ -29,20 +30,20 @@ router.use("/fees", feesRouter);
 router.use("/config", configRouter);
 
 // All routes below require a valid user JWT
-router.use("/wallet", userAuth, walletRouter);
-router.use("/transactions", userAuth, transactionsRouter);
-router.use("/ads", userAuth, adsRouter);
-router.use("/orders", userAuth, ordersRouter);
-router.use("/messages", userAuth, messagesRouter);
-router.use("/profile", userAuth, profileRouter);
-router.use("/kyc", userAuth, kycRouter);
-router.use("/notifications", userAuth, notificationsRouter);
-router.use("/stats", userAuth, statsRouter);
+router.use("/wallet", userAuth, checkAccountStatus, walletRouter);
+router.use("/transactions", userAuth, checkAccountStatus, transactionsRouter);
+router.use("/ads", userAuth, checkAccountStatus, adsRouter);
+router.use("/orders", userAuth, checkAccountStatus, ordersRouter);
+router.use("/messages", userAuth, checkAccountStatus, messagesRouter);
+router.use("/profile", userAuth, checkAccountStatus, profileRouter);
+router.use("/kyc", userAuth, checkAccountStatus, kycRouter);
+router.use("/notifications", userAuth, checkAccountStatus, notificationsRouter);
+router.use("/stats", userAuth, checkAccountStatus, statsRouter);
 router.use("/sse", sseRouter);
-router.use("/users", userAuth, usersRouter);
+router.use("/users", userAuth, checkAccountStatus, usersRouter);
 router.use("/card", cardRouter);
 router.use("/cards", nfcCardsRouter);
-router.use("/push", userAuth, pushRouter);
+router.use("/push", userAuth, checkAccountStatus, pushRouter);
 
 router.use("/webhooks", webhookCardsRouter);
 router.use("/admin", adminRouter);

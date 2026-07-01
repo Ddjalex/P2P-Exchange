@@ -63,6 +63,7 @@ import AdminDepositsPage from "@/pages/admin-deposits-page";
 import AdminBroadcastPage from "@/pages/admin-broadcast";
 import AdminEmailPage from "@/pages/admin-email-page";
 import AdminCardsPage from "@/pages/admin-cards-page";
+import AdminSecurityPage from "@/pages/admin-security-page";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -152,6 +153,7 @@ function Router() {
       <Route path="/admin/disputes/:id" component={AdminDisputeDetailPage} />
       <Route path="/admin/disputes" component={AdminDisputesPage} />
       <Route path="/admin/fraud" component={AdminFraudPage} />
+      <Route path="/admin/security" component={AdminSecurityPage} />
       <Route path="/admin/wallet/withdrawals/:id" component={AdminWithdrawalDetailPage} />
       <Route path="/admin/wallet" component={AdminWalletPage} />
       <Route path="/admin/messages" component={AdminMessagesPage} />
