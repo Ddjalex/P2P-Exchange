@@ -19,6 +19,21 @@ function mapIdType(idType: string): string {
   return map[idType] ?? "national_id";
 }
 
+async function stroFetchCardDetail(cardId: string): Promise<any | null> {
+  try {
+    const pub = process.env.STROWALLET_PUBLIC_KEY;
+    if (!pub) return null;
+    const url = new URL("https://strowallet.com/api/bitvcard/fetch-nfccard-detail");
+    url.searchParams.set("public_key", pub);
+    url.searchParams.set("card_id", cardId);
+    const res = await fetch(url.toString());
+    const raw = await res.json();
+    return raw?.response?.card_detail ?? raw?.response?.card ?? raw?.response ?? null;
+  } catch {
+    return null;
+  }
+}
+
 async function getInitialLoad(): Promise<number> {
   try {
     const rows = await db.select().from(systemSettingsTable)
@@ -197,19 +212,31 @@ export async function processCardQueue() {
           // Guard against duplicates — only insert if no card exists for this user yet
           const existing = await db.select().from(cardsTable).where(eq(cardsTable.userId, item.userId)).limit(1);
           if (cardId && existing.length === 0) {
+            // Fetch full card details from StroWallet to get last4, cvv, expiry, name, etc.
+            const detail = await stroFetchCardDetail(cardId);
+            const pick = (...vals: any[]) => vals.find(v => v !== null && v !== undefined && v !== "") ?? null;
+            const fullName = detail?.card_holder_name ?? detail?.name_on_card ?? detail?.card_name ?? nameOnCard;
+            const last4 = detail?.last4 ?? (detail?.card_number ? String(detail.card_number).slice(-4) : null);
+
             await db.insert(cardsTable).values({
               userId: item.userId,
               cardId,
-              cardUserId,
-              customerId,
-              nameOnCard,
-              cardStatus: "active",
-              cardType,
-              cardBrand,
-              reference,
-              cardCreatedDate,
-              balance: String(initialLoad),
+              cardUserId:      pick(detail?.card_user_id,    cardUserId)    ?? "",
+              customerId:      pick(detail?.customer_id,     customerId)    ?? "",
+              nameOnCard:      fullName                                      ?? "",
+              cardStatus:      "active",
+              cardNumber:      detail?.card_number                           ?? null,
+              last4,
+              cvv:             detail?.cvv                                   ?? null,
+              expiry:          detail?.expiry                                ?? null,
+              cardType:        pick(detail?.card_type,       cardType)      ?? "",
+              cardBrand:       pick(detail?.card_brand,      cardBrand)     ?? "",
+              reference:       pick(detail?.reference,       reference)     ?? "",
+              cardCreatedDate: pick(detail?.card_created_date, cardCreatedDate) ?? "",
+              customerEmail:   detail?.customer_email                        ?? null,
+              balance:         detail?.balance                               ?? String(initialLoad),
             }).catch(e => console.error("[Queue] Card insert error:", e));
+            console.log(`[Queue] Card detail enriched — last4:${last4} name:${fullName}`);
           } else if (existing.length > 0) {
             console.log(`[Queue] Card already exists for user ${item.userId} — skipping insert`);
           }
