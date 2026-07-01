@@ -5,6 +5,7 @@ import { startOrderExpiryMonitor, stopOrderExpiryMonitor } from "./lib/order-exp
 import { startBot, stopBot } from "./telegram/bot.js";
 import { startCardQueueProcessor } from "./lib/card-queue.js";
 import { detectSuspiciousActivity } from "./middleware/security.js";
+import { runWalletAlertMonitor } from "./routes/admin.js";
 import { db } from "@workspace/db";
 import { pushSubscriptions } from "@workspace/db";
 import { sql } from "drizzle-orm";
@@ -46,6 +47,10 @@ app.listen(port, (err) => {
   // Start suspicious activity detector (every 5 minutes)
   setTimeout(detectSuspiciousActivity, 10_000);
   setInterval(detectSuspiciousActivity, 5 * 60 * 1000);
+
+  // Start wallet alert monitor — checks hot wallet levels, suspicious balances, stuck deposits
+  setTimeout(runWalletAlertMonitor, 30_000);
+  setInterval(runWalletAlertMonitor, 5 * 60 * 1000);
 
   // Check push_subscriptions table exists and log row count
   db.select({ count: sql<number>`count(*)` })

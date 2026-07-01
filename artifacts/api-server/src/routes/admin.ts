@@ -2511,4 +2511,222 @@ router.post("/sweep-stuck-funds", adminAuth, async (req, res) => {
   }
 });
 
+// ─── Granular wallet endpoints ───────────────────────────────────────────────
+
+router.get("/wallet/hot-wallet-status", adminAuth, async (req: any, res) => {
+  try {
+    const privateKey = process.env["BSC_HOT_WALLET_PRIVATE_KEY"];
+    if (!privateKey) return res.status(503).json({ error: "BSC_HOT_WALLET_PRIVATE_KEY not configured" });
+    const { ethers } = await import("ethers");
+    const hotWallet = new ethers.Wallet(privateKey);
+    const [usdtBalance, bnbBalance] = await Promise.all([
+      getBscUsdtBalance(hotWallet.address),
+      getBnbBalance(hotWallet.address),
+    ]);
+    res.json({
+      hotWalletAddress: hotWallet.address,
+      usdtBalance,
+      bnbBalance,
+      bnbLow: bnbBalance < 0.02,
+      usdtLow: parseFloat(usdtBalance) < 10,
+    });
+  } catch (err) {
+    req.log.error({ err }, "hot-wallet-status failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.get("/wallet/stuck-deposits", adminAuth, async (req: any, res) => {
+  try {
+    const EVM_RE = /^0x[0-9a-fA-F]{40}$/i;
+    const rows = await db.select({
+      userId: walletsTable.userId,
+      depositAddress: walletsTable.depositAddress,
+    }).from(walletsTable).where(and(eq(walletsTable.asset, "USDT"), sql`deposit_address IS NOT NULL`));
+
+    const valid = rows.filter(r => r.depositAddress && EVM_RE.test(r.depositAddress));
+
+    const userIds = valid.map(r => r.userId);
+    const userRows = userIds.length
+      ? await db.select({ id: usersTable.id, email: usersTable.email }).from(usersTable).where(inArray(usersTable.id, userIds))
+      : [];
+    const emailMap = Object.fromEntries(userRows.map(u => [u.id, u.email]));
+
+    const checks = await Promise.allSettled(
+      valid.map(async r => {
+        const bal = await getBscUsdtBalance(r.depositAddress!);
+        const bnb = await getBnbBalance(r.depositAddress!);
+        return parseFloat(bal) >= 0.01
+          ? { userId: r.userId, email: emailMap[r.userId] ?? null, depositAddress: r.depositAddress!, usdtAmount: bal, bnbAmount: bnb.toFixed(6) }
+          : null;
+      })
+    );
+
+    const stuckDeposits = checks
+      .filter(r => r.status === "fulfilled" && r.value)
+      .map(r => (r as any).value);
+
+    const totalStuck = stuckDeposits.reduce((s: number, d: any) => s + parseFloat(d.usdtAmount), 0).toFixed(2);
+
+    res.json({ stuckDeposits, totalStuck });
+  } catch (err) {
+    req.log.error({ err }, "stuck-deposits failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/wallet/sweep-stuck-funds", adminAuth, async (req: any, res) => {
+  try {
+    const result = await sweepAllStuckFunds();
+    await log(req.adminEmail, "sweep_stuck_funds", "system", null,
+      `Manual sweep triggered — swept: ${result.swept}, failed: ${result.failed}`);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    req.log.error({ err }, "wallet/sweep-stuck-funds failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.get("/wallet/balance-audit", adminAuth, async (req: any, res) => {
+  try {
+    const privateKey = process.env["BSC_HOT_WALLET_PRIVATE_KEY"];
+    let hotWalletUsdt: string | null = null;
+
+    if (privateKey) {
+      try {
+        const { ethers } = await import("ethers");
+        const hotWallet = new ethers.Wallet(privateKey);
+        hotWalletUsdt = await getBscUsdtBalance(hotWallet.address);
+      } catch {}
+    }
+
+    const wallets = await db.select().from(walletsTable);
+    const totalPlatformBalance = wallets
+      .reduce((s, w) => s + parseFloat(w.availableBalance || "0") + parseFloat(w.frozenBalance || "0"), 0)
+      .toFixed(2);
+
+    const realDepsResult = await db.execute(sql`
+      SELECT COALESCE(SUM(amount::numeric), 0) as total FROM transactions
+      WHERE type = 'deposit' AND network IN ('BEP20', 'TRC20') AND status = 'completed'
+    `);
+    const totalRealDeposits = parseFloat((realDepsResult.rows[0] as any).total).toFixed(2);
+
+    const withdrawnResult = await db.execute(sql`
+      SELECT COALESCE(SUM(amount::numeric), 0) as total FROM transactions
+      WHERE type = 'withdraw' AND status = 'completed'
+    `);
+    const totalWithdrawn = parseFloat((withdrawnResult.rows[0] as any).total).toFixed(2);
+
+    const expectedHotWallet = Math.max(0, parseFloat(totalRealDeposits) - parseFloat(totalWithdrawn)).toFixed(2);
+    const discrepancy = hotWalletUsdt !== null
+      ? (parseFloat(hotWalletUsdt) - parseFloat(expectedHotWallet)).toFixed(2)
+      : null;
+
+    const suspResult = await db.execute(sql`
+      SELECT w.user_id, u.email,
+        w.available_balance::numeric + w.frozen_balance::numeric as platform_balance,
+        COALESCE(real_deps.total, 0) as real_deposits
+      FROM wallets w
+      JOIN users u ON u.id = w.user_id
+      LEFT JOIN (
+        SELECT user_id, SUM(amount::numeric) as total FROM transactions
+        WHERE type = 'deposit' AND network IN ('BEP20', 'TRC20') AND status = 'completed'
+        GROUP BY user_id
+      ) real_deps ON real_deps.user_id = w.user_id
+      WHERE (w.available_balance::numeric + w.frozen_balance::numeric) > COALESCE(real_deps.total, 0) + 1000
+        AND (w.available_balance::numeric + w.frozen_balance::numeric) > 100
+      ORDER BY (w.available_balance::numeric + w.frozen_balance::numeric - COALESCE(real_deps.total, 0)) DESC
+    `);
+
+    res.json({
+      hotWalletUsdt,
+      totalPlatformBalance,
+      totalRealDeposits,
+      totalWithdrawn,
+      expectedHotWallet,
+      discrepancy,
+      suspiciousUsers: (suspResult.rows as any[]).map(r => ({
+        userId: Number(r.user_id),
+        email: r.email,
+        platformBalance: parseFloat(r.platform_balance).toFixed(2),
+        realDeposits: parseFloat(r.real_deposits).toFixed(2),
+        difference: (parseFloat(r.platform_balance) - parseFloat(r.real_deposits)).toFixed(2),
+      })),
+    });
+  } catch (err) {
+    req.log.error({ err }, "balance-audit failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ─── Wallet alert monitor (exported, called from index.ts every 5 min) ───────
+
+export async function runWalletAlertMonitor(): Promise<void> {
+  try {
+    const privateKey = process.env["BSC_HOT_WALLET_PRIVATE_KEY"];
+    if (privateKey) {
+      try {
+        const { ethers } = await import("ethers");
+        const hotWallet = new ethers.Wallet(privateKey);
+        const [usdtBalance, bnbBalance] = await Promise.all([
+          getBscUsdtBalance(hotWallet.address),
+          getBnbBalance(hotWallet.address),
+        ]);
+
+        if (parseFloat(usdtBalance) < 10) {
+          await PushNotify.adminAlert(`⚠️ HOT WALLET LOW USDT: Only $${parseFloat(usdtBalance).toFixed(2)} remaining. Top up recommended.`);
+        }
+        if (bnbBalance < 0.02) {
+          await PushNotify.adminAlert(`⚠️ HOT WALLET LOW BNB: Only ${bnbBalance.toFixed(4)} BNB remaining. Gas will fail soon.`);
+        }
+      } catch {}
+    }
+
+    // Check for users with balance > $10,000
+    const highBalResult = await db.execute(sql`
+      SELECT w.user_id, u.email,
+        w.available_balance::numeric + w.frozen_balance::numeric as total_balance
+      FROM wallets w JOIN users u ON u.id = w.user_id
+      WHERE w.available_balance::numeric + w.frozen_balance::numeric > 10000
+    `);
+    for (const row of highBalResult.rows as any[]) {
+      await PushNotify.adminAlert(`🚨 HIGH BALANCE ALERT: ${row.email} has $${parseFloat(row.total_balance).toFixed(2)} USDT balance.`);
+    }
+
+    // Check suspicious balances vs real deposits
+    const suspResult = await db.execute(sql`
+      SELECT w.user_id, u.email,
+        w.available_balance::numeric + w.frozen_balance::numeric as platform_balance,
+        COALESCE(real_deps.total, 0) as real_deposits
+      FROM wallets w
+      JOIN users u ON u.id = w.user_id
+      LEFT JOIN (
+        SELECT user_id, SUM(amount::numeric) as total FROM transactions
+        WHERE type = 'deposit' AND network IN ('BEP20', 'TRC20') AND status = 'completed'
+        GROUP BY user_id
+      ) real_deps ON real_deps.user_id = w.user_id
+      WHERE (w.available_balance::numeric + w.frozen_balance::numeric) > COALESCE(real_deps.total, 0) + 1000
+        AND (w.available_balance::numeric + w.frozen_balance::numeric) > 100
+    `);
+    for (const user of suspResult.rows as any[]) {
+      console.error(`[Security] SUSPICIOUS: User ${user.user_id} (${user.email}) has platform balance $${parseFloat(user.platform_balance).toFixed(2)} but only deposited $${parseFloat(user.real_deposits).toFixed(2)} on chain!`);
+      await PushNotify.adminAlert(`🚨 SUSPICIOUS BALANCE: ${user.email} has $${parseFloat(user.platform_balance).toFixed(2)} platform balance but only $${parseFloat(user.real_deposits).toFixed(2)} real deposits!`);
+    }
+
+    // Stuck deposits > 1 hour
+    const EVM_RE = /^0x[0-9a-fA-F]{40}$/i;
+    const addrRows = await db.select({ userId: walletsTable.userId, depositAddress: walletsTable.depositAddress })
+      .from(walletsTable).where(and(eq(walletsTable.asset, "USDT"), sql`deposit_address IS NOT NULL`));
+    const validRows = addrRows.filter(r => r.depositAddress && EVM_RE.test(r.depositAddress));
+    for (const r of validRows) {
+      const bal = await getBscUsdtBalance(r.depositAddress!).catch(() => "0");
+      if (parseFloat(bal) >= 0.01) {
+        await PushNotify.adminAlert(`🔍 STUCK DEPOSIT: User #${r.userId} deposit address ${r.depositAddress!.slice(0, 10)}… holds ${bal} USDT. Manual sweep may be needed.`);
+      }
+    }
+  } catch (err) {
+    console.error("[WalletAlerts] Monitor error:", err);
+  }
+}
+
 export default router;
