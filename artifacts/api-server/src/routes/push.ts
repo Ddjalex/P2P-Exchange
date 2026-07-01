@@ -366,6 +366,16 @@ export const PushNotify = {
       tag: `card-declined-${Date.now()}`,
     });
   },
+
+  async adminAlert(message: string) {
+    await sendPush(1, {
+      title: "🚨 Security Alert",
+      body: message.slice(0, 120),
+      type: "admin_alert",
+      url: "/admin/security",
+      tag: `admin-alert-${Date.now()}`,
+    });
+  },
 };
 
 export async function sendPushBroadcast(
