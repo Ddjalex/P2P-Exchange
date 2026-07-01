@@ -1,7 +1,33 @@
 import { db } from "@workspace/db";
-import { cardQueueTable, cardsTable, walletsTable, transactionsTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { cardQueueTable, cardsTable, walletsTable, transactionsTable, kycSubmissionsTable, usersTable, systemSettingsTable } from "@workspace/db";
+import { eq, or } from "drizzle-orm";
 import { PushNotify } from "../routes/push.js";
+
+function formatDob(dob: string): string {
+  const match = dob.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (match) return `${match[2]}/${match[3]}/${match[1]}`;
+  return dob;
+}
+
+function mapIdType(idType: string): string {
+  const map: Record<string, string> = {
+    national_id: "national_id",
+    passport: "passport",
+    drivers_license: "drivers_license",
+    kebele_id: "national_id",
+  };
+  return map[idType] ?? "national_id";
+}
+
+async function getInitialLoad(): Promise<number> {
+  try {
+    const rows = await db.select().from(systemSettingsTable)
+      .where(eq(systemSettingsTable.key, "cardInitialLoad"));
+    return Math.max(3, parseFloat(rows[0]?.value ?? "3"));
+  } catch {
+    return 3;
+  }
+}
 
 const STRO_BASE = "https://strowallet.com/api/bitvcard";
 
@@ -89,7 +115,126 @@ export async function processCardQueue() {
         updatedAt: new Date(),
       }).where(eq(cardQueueTable.id, item.id));
 
-      if (item.type === "fund" && item.cardId && item.userId) {
+      if (item.type === "create" && item.userId) {
+        // Look up user + KYC data to rebuild the full card creation request
+        const user = await db.select().from(usersTable).where(eq(usersTable.id, item.userId)).then(r => r[0]);
+        const kyc = await db.select().from(kycSubmissionsTable).where(eq(kycSubmissionsTable.userId, item.userId)).then(r => r[0]);
+
+        if (!user || !kyc || kyc.status !== "verified") {
+          await db.update(cardQueueTable).set({
+            status: "failed",
+            errorMessage: "User or verified KYC not found",
+            updatedAt: new Date(),
+          }).where(eq(cardQueueTable.id, item.id));
+          console.log(`[Queue] Create failed for item #${item.id}: missing user or KYC`);
+          continue;
+        }
+
+        const nameParts = (kyc.fullName ?? "").trim().split(/\s+/);
+        const firstName = nameParts[0] ?? "N/A";
+        const lastName = nameParts.slice(1).join(" ") || firstName;
+        const fullName = kyc.fullName ?? `${firstName} ${lastName}`;
+        const dob = formatDob(kyc.dateOfBirth ?? "01/01/1990");
+        const idType = mapIdType(kyc.idType ?? "national_id");
+        const phone = (user.phone ?? "").trim() || "0900000000";
+        const initialLoad = await getInitialLoad();
+        const creationFee = parseFloat(item.amount ?? "2");
+
+        const url = new URL(`${STRO_BASE}/create-nfc-card`);
+        const body = {
+          public_key: cleanKey(process.env.STROWALLET_PUBLIC_KEY ?? ""),
+          secret_key: cleanKey(process.env.STROWALLET_SECRET_KEY ?? ""),
+          name: fullName,
+          first_name: firstName,
+          last_name: lastName,
+          dob,
+          id_type: idType,
+          id_number: `ETH${String(item.userId).padStart(8, "0")}`,
+          email: user.email,
+          phone,
+          line1: "3401 N. Miami, Ave. Ste 230",
+          city: "Miami",
+          state: "Florida",
+          postal_code: "33127",
+          country: "USA",
+          amount_usd: String(initialLoad),
+          mode: "live",
+        };
+
+        console.log(`[Queue] Retrying card creation for user ${item.userId} — initialLoad: $${initialLoad}`);
+        const raw = await fetch(url.toString(), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        }).then(r => r.json()).catch(e => ({ success: false, message: String(e) }));
+
+        console.log(`[Queue] Create retry response for item #${item.id}:`, JSON.stringify(raw));
+
+        const stroOk = raw?.success === true || raw?.status === true || raw?.card_id;
+
+        if (stroOk) {
+          const cardId = raw?.card_id ?? raw?.data?.card_id ?? raw?.response?.card_id;
+          const maskedPan = raw?.masked_pan ?? raw?.data?.masked_pan ?? raw?.response?.masked_pan ?? "";
+
+          await db.update(cardQueueTable).set({ status: "completed", updatedAt: new Date() }).where(eq(cardQueueTable.id, item.id));
+
+          if (cardId) {
+            await db.insert(cardsTable).values({
+              userId: item.userId,
+              cardId,
+              maskedPan,
+              status: "active",
+              balance: String(initialLoad),
+            }).catch(() => {});
+          }
+
+          // Deduct the initial load from user wallet (creation fee was already deducted earlier)
+          const wallet = await db.query.walletsTable.findFirst({ where: eq(walletsTable.userId, item.userId) });
+          if (wallet) {
+            const newBal = (parseFloat(wallet.availableBalance) - initialLoad).toFixed(6);
+            await db.update(walletsTable).set({ availableBalance: newBal, updatedAt: new Date() }).where(eq(walletsTable.userId, item.userId));
+          }
+
+          await db.insert(transactionsTable).values({
+            userId: item.userId, type: "withdraw", amount: String(initialLoad),
+            status: "completed", note: "Card created (queued)",
+          }).catch(() => {});
+
+          PushNotify.cardCreated(item.userId).catch(console.error);
+          console.log(`[Queue] Card created for user ${item.userId}, cardId: ${cardId}`);
+        } else {
+          const msg = typeof raw?.message === "object"
+            ? JSON.stringify(raw.message)
+            : String(raw?.message ?? raw?.error ?? "Unknown error");
+          const lc = msg.toLowerCase();
+
+          const isInsufficient = lc.includes("insufficient") || lc.includes("balance") || raw?.required !== undefined;
+
+          if (isInsufficient) {
+            // Keep as pending — merchant balance still low
+            await db.update(cardQueueTable).set({
+              status: "pending",
+              errorMessage: `StroWallet: ${msg}`,
+              updatedAt: new Date(),
+            }).where(eq(cardQueueTable.id, item.id));
+            console.log(`[Queue] Merchant balance still insufficient for item #${item.id} — back to pending`);
+          } else {
+            // Permanent failure — refund creation fee
+            await db.update(cardQueueTable).set({
+              status: "failed",
+              errorMessage: `StroWallet: ${msg}`,
+              updatedAt: new Date(),
+            }).where(eq(cardQueueTable.id, item.id));
+            const wallet = await db.query.walletsTable.findFirst({ where: eq(walletsTable.userId, item.userId) });
+            if (wallet) {
+              const refunded = (parseFloat(wallet.availableBalance) + creationFee).toFixed(6);
+              await db.update(walletsTable).set({ availableBalance: refunded, updatedAt: new Date() }).where(eq(walletsTable.userId, item.userId));
+            }
+            PushNotify.cardDeclined(item.userId, String(creationFee), `Card creation failed: ${msg}`).catch(console.error);
+            console.log(`[Queue] Card creation permanently failed for user ${item.userId} — fee refunded`);
+          }
+        }
+      } else if (item.type === "fund" && item.cardId && item.userId) {
         const url = stroUrl("fund-withdraw-nfccard");
         url.searchParams.set("card_id", item.cardId);
         url.searchParams.set("amount", item.amount ?? "0");
