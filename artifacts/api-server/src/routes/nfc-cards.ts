@@ -9,7 +9,7 @@ import {
   transactionsTable,
   systemSettingsTable,
 } from "@workspace/db";
-import { eq, or, and, like, gte } from "drizzle-orm";
+import { eq, or, and, like, gte, inArray } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { userAuth } from "../middleware/user-auth";
 import { enqueueCardFund, enqueueCardCreate } from "../lib/card-queue.js";
@@ -156,6 +156,24 @@ router.post("/create", userAuth, async (req: any, res) => {
 
     const existing = await db.query.cardsTable.findFirst({ where: eq(cardsTable.userId, userId) });
     if (existing) return res.status(400).json({ error: "You already have a card" });
+
+    // Block duplicate queue entries — one pending creation per user maximum
+    const existingQueue = await db.select()
+      .from(cardQueueTable)
+      .where(and(
+        eq(cardQueueTable.userId, userId),
+        eq(cardQueueTable.type, "create"),
+        inArray(cardQueueTable.status, ["pending", "processing"])
+      ))
+      .limit(1);
+
+    if (existingQueue.length > 0) {
+      return res.status(400).json({
+        success: true,
+        queued: true,
+        message: "Your card creation is already queued. Please wait — you will be notified when your card is ready. No additional charges will apply.",
+      });
+    }
 
     const wallet = await getOrCreateWallet(userId);
     const avail = parseFloat(wallet.availableBalance);
@@ -357,7 +375,29 @@ router.get("/my-card", userAuth, async (req: any, res) => {
   const userId: number = req.userId;
   try {
     const card = await db.query.cardsTable.findFirst({ where: eq(cardsTable.userId, userId) });
-    if (!card) return res.json({ card: null });
+    if (!card) {
+      // Check for pending queue entry — show queued state instead of blank
+      const pendingQueue = await db.select()
+        .from(cardQueueTable)
+        .where(and(
+          eq(cardQueueTable.userId, userId),
+          eq(cardQueueTable.type, "create"),
+          inArray(cardQueueTable.status, ["pending", "processing"])
+        ))
+        .limit(1);
+
+      if (pendingQueue.length > 0) {
+        return res.json({
+          card: null,
+          queuedCreation: {
+            status: pendingQueue[0].status,
+            message: "Your card creation is queued. You will be notified when ready.",
+            createdAt: pendingQueue[0].createdAt,
+          },
+        });
+      }
+      return res.json({ card: null });
+    }
 
     console.log("[Card] Fetching card for user:", userId);
     console.log("[Card] Card from DB:", { cardId: card.cardId, status: card.cardStatus, last4: card.last4 });

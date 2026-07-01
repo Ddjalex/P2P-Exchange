@@ -239,8 +239,10 @@ export default function CardPage() {
     queryKey: ["my-card"],
     queryFn: () => apiFetch("/api/cards/my-card"),
     refetchInterval: (query) => {
-      const c = (query.state.data as any)?.card;
-      return c?.cardStatus === "processing" ? 30000 : false;
+      const d = query.state.data as any;
+      if (d?.card?.cardStatus === "processing") return 30000;
+      if (d?.queuedCreation) return 30000; // poll until queue clears
+      return false;
     },
   });
   const { data: walletData, isLoading: walletLoading } = useQuery({ queryKey: ["wallet-card"], queryFn: () => apiFetch("/api/wallet") });
@@ -317,6 +319,7 @@ export default function CardPage() {
 
   const kycStatus = meData?.kycStatus;
   const card = (cardData as any)?.card ?? null;
+  const queuedCreation = (cardData as any)?.queuedCreation ?? null;
   const walletBalance = parseFloat((walletData as any)?.availableBalance ?? "0");
   const kycName = (meData as any)?.kycFullName ?? (meData as any)?.username ?? "YOUR NAME";
   const isFrozen = card?.cardStatus === "inactive" || card?.cardStatus === "frozen";
@@ -392,8 +395,28 @@ export default function CardPage() {
           </>
         )}
 
+        {/* STATE 2a — KYC verified, card creation is queued */}
+        {kycStatus === "verified" && !card && !cardLoading && queuedCreation && (
+          <div style={{ width: "100%", maxWidth: "360px", background: "rgba(255,170,0,0.08)", border: "1px solid rgba(255,170,0,0.3)", borderRadius: "16px", padding: "28px 24px", textAlign: "center" }}>
+            <div style={{ fontSize: "36px", marginBottom: "12px" }}>⏳</div>
+            <h3 style={{ color: "#fff", fontSize: "17px", fontWeight: 700, marginBottom: "8px" }}>Card Creation Queued</h3>
+            <p style={{ color: "#8899aa", fontSize: "13px", lineHeight: 1.6, marginBottom: "12px" }}>
+              Your card creation request is in the queue. You will receive a push notification when your card is ready.
+            </p>
+            <p style={{ color: "#6677aa", fontSize: "12px", marginBottom: "16px" }}>No additional charges will apply.</p>
+            {queuedCreation.createdAt && (
+              <p style={{ color: "#556677", fontSize: "11px" }}>
+                Requested: {new Date(queuedCreation.createdAt).toLocaleString()}
+              </p>
+            )}
+            <button onClick={() => refetchCard()} disabled={cardFetching} style={{ marginTop: "16px", background: "rgba(255,170,0,0.15)", border: "1px solid rgba(255,170,0,0.4)", borderRadius: "10px", padding: "10px 20px", color: "#ffaa00", fontWeight: 600, fontSize: "13px", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "6px" }}>
+              <RefreshCw size={14} style={{ animation: cardFetching ? "spin 1s linear infinite" : "none" }} /> Check Status
+            </button>
+          </div>
+        )}
+
         {/* STATE 2 — KYC verified, no card yet */}
-        {kycStatus === "verified" && !card && !cardLoading && (
+        {kycStatus === "verified" && !card && !cardLoading && !queuedCreation && (
           <>
             <div style={{ width: "100%", maxWidth: "380px", marginBottom: "24px" }}>
               <CardVisual holderName={kycName} />
@@ -421,7 +444,12 @@ export default function CardPage() {
               </p>
             )}
             <div style={{ width: "100%", maxWidth: "360px" }}>
-              <Btn onClick={() => setModal("confirm-create")} disabled={walletBalance < totalRequired}>Create My Card</Btn>
+              <Btn
+                onClick={() => setModal("confirm-create")}
+                disabled={walletBalance < totalRequired || createMutation.isPending || (createMutation.isSuccess && (createMutation.data as any)?.queued)}
+              >
+                {createMutation.isPending ? "⏳ Requesting…" : (createMutation.isSuccess && (createMutation.data as any)?.queued) ? "✅ Request Queued" : "Create My Card"}
+              </Btn>
             </div>
           </>
         )}
