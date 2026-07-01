@@ -2359,11 +2359,21 @@ router.get("/cards/merchant-balance", adminAuth, async (req, res) => {
   try {
     function cleanKey(k: string | undefined) { return (k || "").replace(/\s+/g, ""); }
     const pub = cleanKey(process.env.STROWALLET_PUBLIC_KEY);
-    const url = new URL("https://strowallet.com/api/wallet/balance/USD/");
+    const sec = cleanKey(process.env.STROWALLET_SECRET_KEY);
+    if (!pub || !sec) {
+      return res.json({ success: true, balance: null, currency: "USD", error: "StroWallet keys not configured" });
+    }
+    // Use the same bitvcard base and auth pattern as all other StroWallet calls
+    const url = new URL("https://strowallet.com/api/bitvcard/wallet-balance");
     url.searchParams.set("public_key", pub);
-    const resp = await fetch(url.toString());
+    url.searchParams.set("secret_key", sec);
+    url.searchParams.set("mode", "live");
+    const resp = await fetch(url.toString(), { signal: AbortSignal.timeout(10000) });
     const data = await resp.json();
-    const balance = parseFloat(data?.balance ?? data?.data?.balance ?? "0") || 0;
+    req.log.info({ data }, "StroWallet merchant-balance raw response");
+    // Parse balance from various possible response shapes
+    const balance =
+      parseFloat(data?.balance ?? data?.data?.balance ?? data?.available ?? data?.wallet_balance ?? data?.amount ?? "0") || 0;
     res.json({ success: true, balance, currency: "USD", raw: data });
   } catch (err) {
     req.log.error({ err }, "Admin merchant-balance failed");

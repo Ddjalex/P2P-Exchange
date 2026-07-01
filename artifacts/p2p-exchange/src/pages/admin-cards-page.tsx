@@ -93,7 +93,8 @@ export default function AdminCardsPage() {
     setBalanceLoading(true);
     try {
       const data = await adminGet<any>("/cards/merchant-balance");
-      setMerchantBalance(data.balance ?? 0);
+      // balance can be null when keys not configured, or a number from the API
+      setMerchantBalance(data.balance != null ? data.balance : null);
     } catch {
       setMerchantBalance(null);
     }
