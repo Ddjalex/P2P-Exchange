@@ -2361,20 +2361,57 @@ router.get("/cards/merchant-balance", adminAuth, async (req, res) => {
     const pub = cleanKey(process.env.STROWALLET_PUBLIC_KEY);
     const sec = cleanKey(process.env.STROWALLET_SECRET_KEY);
     if (!pub || !sec) {
-      return res.json({ success: true, balance: null, currency: "USD", error: "StroWallet keys not configured" });
+      return res.json({ success: false, balance: null, currency: "USD", error: "StroWallet keys not configured", raw: null });
     }
-    // Use the same bitvcard base and auth pattern as all other StroWallet calls
-    const url = new URL("https://strowallet.com/api/bitvcard/wallet-balance");
-    url.searchParams.set("public_key", pub);
-    url.searchParams.set("secret_key", sec);
-    url.searchParams.set("mode", "live");
-    const resp = await fetch(url.toString(), { signal: AbortSignal.timeout(10000) });
-    const data = await resp.json();
-    req.log.info({ data }, "StroWallet merchant-balance raw response");
-    // Parse balance from various possible response shapes
-    const balance =
-      parseFloat(data?.balance ?? data?.data?.balance ?? data?.available ?? data?.wallet_balance ?? data?.amount ?? "0") || 0;
-    res.json({ success: true, balance, currency: "USD", raw: data });
+
+    // Try each known StroWallet balance endpoint in order
+    const STRO_BITVCARD = "https://strowallet.com/api/bitvcard";
+    const endpoints = [
+      `${STRO_BITVCARD}/wallet-balance`,
+      `${STRO_BITVCARD}/balance`,
+      `${STRO_BITVCARD}/get-wallet-balance`,
+      "https://strowallet.com/api/wallet/balance",
+    ];
+
+    let lastData: any = null;
+    let balance: number | null = null;
+
+    for (const endpoint of endpoints) {
+      try {
+        const url = new URL(endpoint);
+        url.searchParams.set("public_key", pub);
+        url.searchParams.set("secret_key", sec);
+        url.searchParams.set("mode", "live");
+        const resp = await fetch(url.toString(), { signal: AbortSignal.timeout(8000) });
+        const data = await resp.json();
+        lastData = { endpoint, ...data };
+        req.log.info({ endpoint, data }, "StroWallet merchant-balance probe");
+
+        // Try all plausible field names
+        const raw =
+          data?.balance ??
+          data?.data?.balance ??
+          data?.available ??
+          data?.wallet_balance ??
+          data?.amount ??
+          data?.walletBalance ??
+          data?.usd_balance ??
+          data?.usd ??
+          null;
+
+        if (raw !== null && raw !== undefined) {
+          const parsed = parseFloat(String(raw));
+          if (!isNaN(parsed)) {
+            balance = parsed;
+            break; // found a working endpoint with a real value
+          }
+        }
+      } catch (e: any) {
+        req.log.warn({ endpoint, e: e.message }, "StroWallet balance endpoint failed");
+      }
+    }
+
+    res.json({ success: true, balance, currency: "USD", raw: lastData });
   } catch (err) {
     req.log.error({ err }, "Admin merchant-balance failed");
     res.status(502).json({ error: "Could not fetch merchant balance" });

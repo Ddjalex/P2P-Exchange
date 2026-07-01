@@ -55,6 +55,8 @@ export default function AdminCardsPage() {
   const [queueLoading, setQueueLoading] = useState(true);
   const [processingQueue, setProcessingQueue] = useState(false);
   const [merchantBalance, setMerchantBalance] = useState<number | null>(null);
+  const [merchantBalanceError, setMerchantBalanceError] = useState<string | null>(null);
+  const [merchantBalanceRaw, setMerchantBalanceRaw] = useState<any>(null);
   const [balanceLoading, setBalanceLoading] = useState(false);
   const [queueMsg, setQueueMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
@@ -91,12 +93,15 @@ export default function AdminCardsPage() {
 
   const loadMerchantBalance = async () => {
     setBalanceLoading(true);
+    setMerchantBalanceError(null);
     try {
       const data = await adminGet<any>("/cards/merchant-balance");
-      // balance can be null when keys not configured, or a number from the API
+      setMerchantBalanceRaw(data.raw ?? null);
+      if (data.error) setMerchantBalanceError(data.error);
       setMerchantBalance(data.balance != null ? data.balance : null);
     } catch {
       setMerchantBalance(null);
+      setMerchantBalanceError("API call failed");
     }
     setBalanceLoading(false);
   };
@@ -289,8 +294,10 @@ export default function AdminCardsPage() {
                     </div>
                     {balanceLoading ? (
                       <div className="h-6 w-16 bg-secondary animate-pulse rounded" />
+                    ) : merchantBalanceError ? (
+                      <span className="text-xs font-semibold text-amber-400">{merchantBalanceError}</span>
                     ) : merchantBalance === null ? (
-                      <span className="text-sm font-bold text-destructive">Error</span>
+                      <span className="text-sm font-bold text-muted-foreground">—</span>
                     ) : (
                       <div className="flex items-baseline gap-1.5">
                         <span className={`text-lg font-bold ${balLow ? "text-destructive" : "text-success"}`}>${merchantBalance.toFixed(2)}</span>
@@ -304,6 +311,15 @@ export default function AdminCardsPage() {
                     >
                       <RefreshCw className="w-2.5 h-2.5" /> refresh
                     </button>
+                    {/* Debug: show raw response so admin can identify correct field */}
+                    {merchantBalanceRaw && merchantBalance === null && (
+                      <details className="mt-2">
+                        <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">Raw response ▸</summary>
+                        <pre className="mt-1 text-xs bg-secondary rounded p-2 overflow-auto max-h-32 text-amber-300 whitespace-pre-wrap break-all">
+                          {JSON.stringify(merchantBalanceRaw, null, 2)}
+                        </pre>
+                      </details>
+                    )}
                   </div>
 
                   {/* Pending Count */}
