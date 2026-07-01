@@ -96,7 +96,7 @@ export default function AdminCardsPage() {
     setMerchantBalanceError(null);
     try {
       const data = await adminGet<any>("/cards/merchant-balance");
-      setMerchantBalanceRaw(data.raw ?? null);
+      setMerchantBalanceRaw(data.debug ?? data.raw ?? null);
       if (data.error) setMerchantBalanceError(data.error);
       setMerchantBalance(data.balance != null ? data.balance : null);
     } catch {
@@ -311,11 +311,11 @@ export default function AdminCardsPage() {
                     >
                       <RefreshCw className="w-2.5 h-2.5" /> refresh
                     </button>
-                    {/* Debug: show raw response so admin can identify correct field */}
-                    {merchantBalanceRaw && merchantBalance === null && (
+                    {/* Debug: show probe results whenever balance is 0 or unknown */}
+                    {merchantBalanceRaw && (merchantBalance === null || merchantBalance === 0) && (
                       <details className="mt-2">
-                        <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">Raw response ▸</summary>
-                        <pre className="mt-1 text-xs bg-secondary rounded p-2 overflow-auto max-h-32 text-amber-300 whitespace-pre-wrap break-all">
+                        <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">Debug: API probes ▸</summary>
+                        <pre className="mt-1 text-xs bg-secondary rounded p-2 overflow-auto max-h-40 text-amber-300 whitespace-pre-wrap break-all">
                           {JSON.stringify(merchantBalanceRaw, null, 2)}
                         </pre>
                       </details>
