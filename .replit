@@ -43,10 +43,7 @@ timeoutMs = 20000
 [userenv]
 
 [userenv.shared]
-JWT_SECRET = "ethiop2p-dev-secret-change-in-production"
-ADMIN_JWT_SECRET = "03ba394ac70d9f81b505cc6e44c6d21b09a0150a6bfa454e3c2d1981132e12b8"
 ADMIN_EMAIL = "admin@xendrx.com"
-ADMIN_PASSWORD = "Admin@EthioP2P2024"
 PORT = "5000"
 BASE_PATH = "/"
 LOG_LEVEL = "info"
@@ -55,7 +52,6 @@ VAPID_EMAIL = "support@xendrx.com"
 VITE_VAPID_PUBLIC_KEY = "BDuv1syriVHJkK_ffTGAOZmpnOUDbKR1jDdH9vNbj2e6GK32-1yrZKGEQG_YUAt7EwDRkooXvxdn1OxER-n_sVc"
 APP_URL = "https://7622b687-2364-4b14-9516-06d8579a850a-00-1mvd6esqi85ab.janeway.replit.dev"
 VAPID_PUBLIC_KEY = "BDuv1syriVHJkK_ffTGAOZmpnOUDbKR1jDdH9vNbj2e6GK32-1yrZKGEQG_YUAt7EwDRkooXvxdn1OxER-n_sVc"
-VAPID_PRIVATE_KEY = "LQeljwDbd_p9BjFJufByQftP_nUghHm3-X0udBqgxUc"
 VITE_TURNSTILE_SITE_KEY = "0x4AAAAAADfw5Ve1Ks9-MMzT"
 BSC_HOT_WALLET_ADDRESS = "0x24c3AaC7A62a37333885Bc9a8A82ca4fDe7321B3"
 
