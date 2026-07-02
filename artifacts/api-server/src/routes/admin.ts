@@ -1158,6 +1158,24 @@ router.put("/cards/queue/:id/cancel", adminAuth, async (req: any, res) => {
   }
 });
 
+// Delete a completed or failed card queue item (no refund — already resolved)
+router.delete("/cards/queue/:id", adminAuth, async (req: any, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const item = await db.select().from(cardQueueTable).where(eq(cardQueueTable.id, id)).then(r => r[0]);
+    if (!item) return res.status(404).json({ error: "Queue item not found" });
+    if (item.status === "pending" || item.status === "processing") {
+      return res.status(400).json({ error: "Cannot delete pending/processing items — cancel them first" });
+    }
+    await db.delete(cardQueueTable).where(eq(cardQueueTable.id, id));
+    await log(req.adminEmail, "delete_card_queue", "card_queue", id, `Deleted card queue #${id} (${item.status}) for user ${item.userId}`);
+    res.json({ success: true });
+  } catch (err) {
+    req.log.error({ err }, "Admin delete card queue failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // ─── MESSAGES ────────────────────────────────────────────────────────────────
 
 router.get("/messages/conversations", adminAuth, async (req, res) => {

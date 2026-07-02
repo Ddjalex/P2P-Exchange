@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { AdminLayout, AdminGuard } from "@/components/admin-layout";
 import { adminGet, adminPost, adminPut } from "@/lib/admin-api";
-import { CreditCard, RefreshCw, Search, Link, Settings, AlertTriangle, CheckCircle, DollarSign, ExternalLink, Clock, User, ArrowUpCircle, Plus, Wallet } from "lucide-react";
+import { CreditCard, RefreshCw, Search, Link, Settings, AlertTriangle, CheckCircle, DollarSign, ExternalLink, Clock, User, ArrowUpCircle, Plus, Wallet, Trash2 } from "lucide-react";
+import { adminDelete } from "@/lib/admin-api";
 
 const QUEUE_STATUS_STYLE: Record<string, string> = {
   pending:    "bg-amber-500/20 text-amber-400",
@@ -127,6 +128,17 @@ export default function AdminCardsPage() {
       loadQueue();
     } catch (e: any) {
       setQueueMsg({ ok: false, text: e?.message ?? "Cancel failed" });
+    }
+  };
+
+  const deleteQueueItem = async (id: number) => {
+    if (!confirm("Permanently delete this record? This cannot be undone.")) return;
+    try {
+      await adminDelete(`/cards/queue/${id}`);
+      setQueueMsg({ ok: true, text: `Queue item #${id} deleted.` });
+      setQueue(q => q.filter(item => item.id !== id));
+    } catch (e: any) {
+      setQueueMsg({ ok: false, text: e?.message ?? "Delete failed" });
     }
   };
 
@@ -473,16 +485,25 @@ export default function AdminCardsPage() {
                                       </p>
                                     )}
 
-                                    {isPending && (
-                                      <div className="mt-3">
+                                    <div className="mt-3 flex items-center gap-2">
+                                      {isPending && (
                                         <button
                                           onClick={() => cancelQueueItem(item.id)}
                                           className="px-3 py-1.5 bg-destructive/10 border border-destructive/25 text-destructive text-xs font-medium rounded-lg hover:bg-destructive/20 transition-colors"
                                         >
                                           Cancel & Refund
                                         </button>
-                                      </div>
-                                    )}
+                                      )}
+                                      {!isPending && (
+                                        <button
+                                          onClick={() => deleteQueueItem(item.id)}
+                                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-destructive/10 border border-destructive/25 text-destructive text-xs font-medium rounded-lg hover:bg-destructive/20 transition-colors"
+                                        >
+                                          <Trash2 className="w-3 h-3" />
+                                          Delete
+                                        </button>
+                                      )}
+                                    </div>
                                   </div>
 
                                   {/* Queue ID */}
