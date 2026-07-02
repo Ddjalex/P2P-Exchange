@@ -87,6 +87,41 @@ function buildBot(token: string): Bot {
   });
 
   b.on("message", async (ctx) => {
+    const text = (ctx.message as any).text?.trim() ?? "";
+    // Handle plain code messages (user typed code directly instead of using deep link)
+    if (/^[A-Z0-9]{6}$/i.test(text)) {
+      const code = text.toUpperCase();
+      try {
+        const now = new Date();
+        const rows = await db.select().from(telegramLinkCodesTable)
+          .where(and(eq(telegramLinkCodesTable.code, code), gt(telegramLinkCodesTable.expiresAt, now)))
+          .limit(1);
+
+        if (rows[0]) {
+          const { userId } = rows[0];
+          await db.insert(telegramUsersTable).values({
+            userId,
+            telegramId: String(ctx.from!.id),
+            telegramUsername: ctx.from?.username ?? null,
+            telegramFirstName: ctx.from?.first_name ?? null,
+          }).onConflictDoUpdate({
+            target: telegramUsersTable.userId,
+            set: {
+              telegramId: String(ctx.from!.id),
+              telegramUsername: ctx.from?.username ?? null,
+              linkedAt: now,
+            },
+          });
+          await db.delete(telegramLinkCodesTable).where(eq(telegramLinkCodesTable.userId, userId));
+          emitToUser(userId, "telegram_linked", { telegramId: String(ctx.from!.id) });
+          await ctx.reply("✅ Your Telegram account has been successfully linked to Xendrx!\n\nYou'll now receive instant notifications for your trades.");
+          return;
+        }
+      } catch (err) {
+        console.error("[Bot] Plain code link error:", err);
+      }
+    }
+
     const keyboard = new InlineKeyboard().webApp("🚀 Open Xendrx", APP_URL || "https://xendrx.replit.app");
     await ctx.reply("👇 Tap below to open Xendrx:", { reply_markup: keyboard });
   });
