@@ -301,6 +301,76 @@ export default function KycPage() {
   const userEmail = (me as any)?.email ?? "";
   const kycStatus = (me as any)?.kycStatus ?? "";
 
+  const [kycStatusData, setKycStatusData] = useState<{
+    frontImageUrl?: string | null;
+    backImageUrl?: string | null;
+    selfieUrl?: string | null;
+    fullName?: string | null;
+    dateOfBirth?: string | null;
+    nationality?: string | null;
+    idType?: string | null;
+    rejectionReason?: string | null;
+    adminMessage?: string | null;
+  } | null>(null);
+
+  useEffect(() => {
+    if (kycStatus && kycStatus !== "none") {
+      const token = localStorage.getItem("p2p_token");
+      fetch("/api/kyc/status", {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+        .then(r => r.json())
+        .then(setKycStatusData)
+        .catch(() => {});
+    }
+  }, [kycStatus]);
+
+  const SubmittedDocuments = () => {
+    if (!kycStatusData) return null;
+    const hasImages = kycStatusData.frontImageUrl || kycStatusData.backImageUrl || kycStatusData.selfieUrl;
+    if (!hasImages) return null;
+    return (
+      <div className="space-y-3 mt-4 w-full">
+        <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wide">Submitted Documents</p>
+        <div className="grid grid-cols-2 gap-3">
+          {kycStatusData.frontImageUrl && (
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground">Front ID</p>
+              <img
+                src={kycStatusData.frontImageUrl}
+                alt="Front ID"
+                className="w-full h-28 object-cover rounded-xl border border-border"
+                onError={e => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+              />
+            </div>
+          )}
+          {kycStatusData.backImageUrl && (
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground">Back ID</p>
+              <img
+                src={kycStatusData.backImageUrl}
+                alt="Back ID"
+                className="w-full h-28 object-cover rounded-xl border border-border"
+                onError={e => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+              />
+            </div>
+          )}
+        </div>
+        {kycStatusData.selfieUrl && (
+          <div className="space-y-1">
+            <p className="text-xs text-muted-foreground">Selfie</p>
+            <img
+              src={kycStatusData.selfieUrl}
+              alt="Selfie"
+              className="h-32 w-auto mx-auto object-cover rounded-xl border border-border"
+              onError={e => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+            />
+          </div>
+        )}
+      </div>
+    );
+  };
+
   if (kycStatus === "verified") {
     return (
       <AppLayout showNav={false}>
@@ -337,7 +407,7 @@ export default function KycPage() {
           </Link>
           <h1 className="font-bold">Identity Verification</h1>
         </header>
-        <div className="flex flex-col items-center justify-center p-8 space-y-4 text-center min-h-[60vh]">
+        <div className="flex flex-col items-center p-6 space-y-4 text-center">
           <div className="w-20 h-20 rounded-full bg-yellow-500/10 flex items-center justify-center">
             <Check className="w-10 h-10 text-yellow-500" />
           </div>
@@ -345,8 +415,17 @@ export default function KycPage() {
           <p className="text-muted-foreground text-sm max-w-xs">
             Your KYC documents have been submitted and are currently under review. We'll notify you once the review is complete.
           </p>
-          <Link href="/profile" className="w-full block">
-            <button className="w-full bg-primary text-background font-bold rounded-xl py-4 mt-2">
+          {kycStatusData?.fullName && (
+            <div className="w-full bg-secondary/40 rounded-xl p-4 text-left space-y-1">
+              <p className="text-xs text-muted-foreground uppercase tracking-wide font-semibold">Submitted Info</p>
+              <p className="text-sm font-medium">{kycStatusData.fullName}</p>
+              {kycStatusData.dateOfBirth && <p className="text-xs text-muted-foreground">DOB: {kycStatusData.dateOfBirth}</p>}
+              {kycStatusData.idType && <p className="text-xs text-muted-foreground capitalize">ID: {kycStatusData.idType?.replace(/_/g, " ")}</p>}
+            </div>
+          )}
+          <SubmittedDocuments />
+          <Link href="/profile" className="w-full block pt-2">
+            <button className="w-full bg-primary text-background font-bold rounded-xl py-4">
               Back to Profile
             </button>
           </Link>
@@ -392,6 +471,26 @@ export default function KycPage() {
         {step === 1 && (
           <div className="space-y-4 animate-in fade-in">
             <h2 className="text-xl font-bold">Personal Information</h2>
+
+            {/* Rejection / more info notice with previous images */}
+            {(kycStatus === "rejected" || kycStatus === "more_info_required") && kycStatusData && (
+              <div className="rounded-xl border border-destructive/40 bg-destructive/8 p-4 space-y-3">
+                <div className="flex items-start gap-2">
+                  <span className="text-destructive text-lg leading-none">⚠</span>
+                  <div>
+                    <p className="text-sm font-semibold text-destructive">
+                      {kycStatus === "rejected" ? "Verification Rejected" : "More Information Required"}
+                    </p>
+                    {(kycStatusData.rejectionReason || kycStatusData.adminMessage) && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {kycStatusData.rejectionReason || kycStatusData.adminMessage}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <SubmittedDocuments />
+              </div>
+            )}
 
             {(userPhone || userEmail) && (
               <div className="bg-primary/10 border border-primary/20 rounded-xl p-3 text-sm">

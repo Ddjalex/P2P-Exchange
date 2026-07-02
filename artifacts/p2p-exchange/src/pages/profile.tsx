@@ -287,7 +287,7 @@ function TelegramJoinButton() {
 // ─── Telegram Connect Section ─────────────────────────────────────────────────
 function TelegramConnectSection() {
   const { toast } = useToast();
-  const BOT_USERNAME = (import.meta as any).env?.VITE_TELEGRAM_BOT_USERNAME ?? "";
+  const BOT_USERNAME = (import.meta as any).env?.VITE_TELEGRAM_BOT_USERNAME || "xendrx_bot";
   const [status, setStatus] = useState<{ linked: boolean; telegramUsername: string | null } | null>(null);
   const [loadingStatus, setLoadingStatus] = useState(true);
   const [disconnecting, setDisconnecting] = useState(false);
@@ -385,18 +385,8 @@ function TelegramConnectSection() {
         >
           {disconnecting ? "…" : "Disconnect"}
         </button>
-      ) : BOT_USERNAME ? (
-        <div id="tg-login-widget" />
       ) : (
-        <a
-          href="https://t.me/+qTIgV51sqC02YzM0"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-xs text-[#229ed9] border border-[#229ed9]/30 rounded-lg px-3 py-1.5 hover:bg-[#229ed9]/10 transition-colors flex items-center gap-1.5"
-        >
-          <TelegramIcon />
-          Connect
-        </a>
+        <div id="tg-login-widget" />
       )}
     </div>
   );
