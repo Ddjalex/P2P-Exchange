@@ -287,7 +287,7 @@ function TelegramJoinButton() {
 // ─── Telegram Connect Section ─────────────────────────────────────────────────
 function TelegramConnectSection() {
   const { toast } = useToast();
-  const BOT_USERNAME = (import.meta as any).env?.VITE_TELEGRAM_BOT_USERNAME || "xendrx_bot";
+  const [botConfig, setBotConfig] = useState<{ botUsername: string | null; enabled: boolean } | null>(null);
   const [status, setStatus] = useState<{ linked: boolean; telegramUsername: string | null } | null>(null);
   const [loadingStatus, setLoadingStatus] = useState(true);
   const [disconnecting, setDisconnecting] = useState(false);
@@ -305,10 +305,20 @@ function TelegramConnectSection() {
     setLoadingStatus(false);
   };
 
-  useEffect(() => { fetchStatus(); }, []);
+  // Fetch real bot config from the server — never fall back to a hardcoded username
+  // because a mismatched username causes Telegram's widget to show "Bot domain invalid".
+  useEffect(() => {
+    fetch("/api/config/telegram")
+      .then(r => r.json())
+      .then(data => setBotConfig({ botUsername: data.botUsername ?? null, enabled: !!data.enabled }))
+      .catch(() => setBotConfig({ botUsername: null, enabled: false }));
+    fetchStatus();
+  }, []);
+
+  const BOT_USERNAME = botConfig?.botUsername ?? null;
 
   useEffect(() => {
-    if (!BOT_USERNAME || status?.linked || loadingStatus) return;
+    if (!BOT_USERNAME || !botConfig?.enabled || status?.linked || loadingStatus) return;
     (window as any).onTelegramAuth = async (user: any) => {
       try {
         const res = await fetch("/api/profile/link-telegram", {
@@ -335,7 +345,7 @@ function TelegramConnectSection() {
       s.async = true;
       container.appendChild(s);
     }
-  }, [status, loadingStatus, BOT_USERNAME]);
+  }, [status, loadingStatus, BOT_USERNAME, botConfig?.enabled]);
 
   const disconnect = async () => {
     setDisconnecting(true);
@@ -385,9 +395,9 @@ function TelegramConnectSection() {
         >
           {disconnecting ? "…" : "Disconnect"}
         </button>
-      ) : (
+      ) : BOT_USERNAME && botConfig?.enabled ? (
         <div id="tg-login-widget" />
-      )}
+      ) : null}
     </div>
   );
 }
