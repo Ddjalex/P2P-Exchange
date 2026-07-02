@@ -62,6 +62,9 @@ export async function adminPatch<T>(path: string, body?: unknown): Promise<T> {
 
 export async function adminDelete<T>(path: string): Promise<T> {
   const res = await adminFetch(path, { method: 'DELETE' });
-  if (!res.ok) throw new Error(`API error ${res.status}`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: `API error ${res.status}` }));
+    throw new Error(err.error || `API error ${res.status}`);
+  }
   return res.json();
 }
