@@ -284,6 +284,124 @@ function TelegramJoinButton() {
   );
 }
 
+// ─── Telegram Connect Section ─────────────────────────────────────────────────
+function TelegramConnectSection() {
+  const { toast } = useToast();
+  const BOT_USERNAME = (import.meta as any).env?.VITE_TELEGRAM_BOT_USERNAME ?? "";
+  const [status, setStatus] = useState<{ linked: boolean; telegramUsername: string | null } | null>(null);
+  const [loadingStatus, setLoadingStatus] = useState(true);
+  const [disconnecting, setDisconnecting] = useState(false);
+
+  const fetchStatus = async () => {
+    try {
+      const res = await fetch("/api/profile/telegram-status", {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      const data = await res.json();
+      setStatus({ linked: !!data.telegramId, telegramUsername: data.telegramUsername ?? null });
+    } catch {
+      setStatus({ linked: false, telegramUsername: null });
+    }
+    setLoadingStatus(false);
+  };
+
+  useEffect(() => { fetchStatus(); }, []);
+
+  useEffect(() => {
+    if (!BOT_USERNAME || status?.linked || loadingStatus) return;
+    (window as any).onTelegramAuth = async (user: any) => {
+      try {
+        const res = await fetch("/api/profile/link-telegram", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
+          body: JSON.stringify({ telegramId: user.id, telegramUsername: user.username, telegramFirstName: user.first_name }),
+        });
+        if (!res.ok) throw new Error("Failed");
+        toast({ title: "Telegram connected! You'll now get trade alerts." });
+        fetchStatus();
+      } catch {
+        toast({ title: "Failed to connect Telegram", variant: "destructive" });
+      }
+    };
+    const container = document.getElementById("tg-login-widget");
+    if (container && !container.querySelector("script")) {
+      const s = document.createElement("script");
+      s.src = "https://telegram.org/js/telegram-widget.js?22";
+      s.setAttribute("data-telegram-login", BOT_USERNAME);
+      s.setAttribute("data-size", "medium");
+      s.setAttribute("data-radius", "8");
+      s.setAttribute("data-onauth", "onTelegramAuth(user)");
+      s.setAttribute("data-request-access", "write");
+      s.async = true;
+      container.appendChild(s);
+    }
+  }, [status, loadingStatus, BOT_USERNAME]);
+
+  const disconnect = async () => {
+    setDisconnecting(true);
+    try {
+      await fetch("/api/profile/unlink-telegram", {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      toast({ title: "Telegram disconnected" });
+      setStatus({ linked: false, telegramUsername: null });
+    } catch {
+      toast({ title: "Failed to disconnect", variant: "destructive" });
+    }
+    setDisconnecting(false);
+  };
+
+  if (loadingStatus) {
+    return <div className="flex items-center justify-between pb-4 border-b border-border animate-pulse">
+      <div className="h-4 w-36 bg-secondary rounded" />
+      <div className="h-8 w-20 bg-secondary rounded-lg" />
+    </div>;
+  }
+
+  return (
+    <div className="flex items-center justify-between pb-4 border-b border-border">
+      <div className="flex items-center space-x-3">
+        <span className="text-[#229ed9]">
+          <TelegramIcon />
+        </span>
+        <div>
+          <div className="text-sm font-medium">Telegram Alerts</div>
+          {status?.linked ? (
+            <div className="text-xs text-success mt-0.5">
+              {status.telegramUsername ? `@${status.telegramUsername}` : "Connected"} ✓
+            </div>
+          ) : (
+            <div className="text-xs text-muted-foreground mt-0.5">Get instant trade notifications</div>
+          )}
+        </div>
+      </div>
+
+      {status?.linked ? (
+        <button
+          onClick={disconnect}
+          disabled={disconnecting}
+          className="text-xs text-destructive border border-destructive/30 rounded-lg px-3 py-1.5 hover:bg-destructive/10 transition-colors disabled:opacity-50"
+        >
+          {disconnecting ? "…" : "Disconnect"}
+        </button>
+      ) : BOT_USERNAME ? (
+        <div id="tg-login-widget" />
+      ) : (
+        <a
+          href="https://t.me/+qTIgV51sqC02YzM0"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-xs text-[#229ed9] border border-[#229ed9]/30 rounded-lg px-3 py-1.5 hover:bg-[#229ed9]/10 transition-colors flex items-center gap-1.5"
+        >
+          <TelegramIcon />
+          Connect
+        </a>
+      )}
+    </div>
+  );
+}
+
 // ─── Profile Page ────────────────────────────────────────────────────────────
 export default function ProfilePage() {
   const { data: profile, isLoading } = useGetProfile();
@@ -554,6 +672,7 @@ export default function ProfilePage() {
 
         {tab === "notifications" && (
           <div className="bg-card rounded-xl border border-card-border p-4 space-y-4">
+            <TelegramConnectSection />
             {NOTIFICATION_KEYS.map(({ key, label }) => {
               const isOn = !!notifSettings[key];
               const isSaving = savingNotif === key;

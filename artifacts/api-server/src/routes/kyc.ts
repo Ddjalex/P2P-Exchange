@@ -59,6 +59,12 @@ router.get("/status", async (req, res) => {
     res.json({
       status: submission.status,
       fullName: submission.fullName ?? null,
+      dateOfBirth: submission.dateOfBirth ?? null,
+      nationality: submission.nationality ?? null,
+      idType: submission.idType ?? null,
+      frontImageUrl: submission.frontImageUrl ?? null,
+      backImageUrl: submission.backImageUrl ?? null,
+      selfieUrl: submission.selfieUrl ?? null,
       rejectionReason: submission.rejectionReason ?? null,
       adminMessage: submission.adminMessage ?? null,
       submittedAt: submission.submittedAt,
