@@ -333,12 +333,12 @@ function TelegramConnectSection() {
         toast({ title: "Failed to connect Telegram", variant: "destructive" });
       }
     };
-    const container = document.getElementById("tg-login-widget");
+    const container = document.getElementById("telegram-login-container");
     if (container && !container.querySelector("script")) {
       const s = document.createElement("script");
       s.src = "https://telegram.org/js/telegram-widget.js?22";
       s.setAttribute("data-telegram-login", BOT_USERNAME);
-      s.setAttribute("data-size", "medium");
+      s.setAttribute("data-size", "large");
       s.setAttribute("data-radius", "8");
       s.setAttribute("data-onauth", "onTelegramAuth(user)");
       s.setAttribute("data-request-access", "write");
@@ -396,7 +396,18 @@ function TelegramConnectSection() {
           {disconnecting ? "…" : "Disconnect"}
         </button>
       ) : BOT_USERNAME && botConfig?.enabled ? (
-        <div id="tg-login-widget" />
+        <div
+          id="telegram-login-container"
+          style={{
+            minHeight: "50px",
+            minWidth: "150px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            cursor: "pointer",
+            overflow: "visible",
+          }}
+        />
       ) : null}
     </div>
   );
