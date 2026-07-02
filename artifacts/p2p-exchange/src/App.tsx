@@ -140,7 +140,7 @@ function Router() {
       <Route path="/settings/phone-verify"><ProtectedRoute component={PhoneVerifyPage} /></Route>
 
       {/* Admin auth — login now lives inside /auth */}
-      <Route path="/admin/login"><Redirect to="/auth" /></Route>
+      <Route path="/admin/login" component={AdminLoginPage} />
       <Route path="/admin"><Redirect to="/admin/dashboard" /></Route>
 
       {/* Admin pages */}

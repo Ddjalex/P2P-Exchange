@@ -44,8 +44,12 @@ function verify(token: string, secret: string): { email: string; iat: number } |
   } catch { return null; }
 }
 
+// Fallback generated once at module load so sign+verify use the same value
+// across calls within a process lifetime. SESSION_SECRET is preferred so tokens
+// survive server restarts without needing a separate ADMIN_JWT_SECRET.
+const _fallbackSecret = randomBytes(32).toString("hex");
 function getSecret(): string {
-  return process.env.ADMIN_JWT_SECRET ?? randomBytes(32).toString("hex");
+  return process.env.ADMIN_JWT_SECRET ?? process.env.SESSION_SECRET ?? _fallbackSecret;
 }
 
 // ─── Auth middleware ─────────────────────────────────────────────────────────
