@@ -302,6 +302,7 @@ export default function KycPage() {
   const kycStatus = (me as any)?.kycStatus ?? "";
 
   const [kycStatusData, setKycStatusData] = useState<{
+    status?: string | null;
     frontImageUrl?: string | null;
     backImageUrl?: string | null;
     selfieUrl?: string | null;
@@ -312,18 +313,22 @@ export default function KycPage() {
     rejectionReason?: string | null;
     adminMessage?: string | null;
   } | null>(null);
+  const [kycStatusLoading, setKycStatusLoading] = useState(true);
 
+  // Fetch /api/kyc/status unconditionally on mount — this is the authoritative
+  // source of truth and must NOT be gated on me.kycStatus (which loads async).
   useEffect(() => {
-    if (kycStatus && kycStatus !== "none") {
-      const token = localStorage.getItem("p2p_token");
-      fetch("/api/kyc/status", {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+    const token = localStorage.getItem("p2p_token");
+    fetch("/api/kyc/status", {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then(r => r.json())
+      .then(data => {
+        setKycStatusData(data);
+        setKycStatusLoading(false);
       })
-        .then(r => r.json())
-        .then(setKycStatusData)
-        .catch(() => {});
-    }
-  }, [kycStatus]);
+      .catch(() => setKycStatusLoading(false));
+  }, []);
 
   const SubmittedDocuments = () => {
     if (!kycStatusData) return null;
@@ -371,7 +376,20 @@ export default function KycPage() {
     );
   };
 
-  if (kycStatus === "verified") {
+  // Block rendering until the authoritative status is known — prevents the form
+  // from flashing for verified users while the async fetch is in flight.
+  if (kycStatusLoading) {
+    return (
+      <AppLayout showNav={false}>
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        </div>
+      </AppLayout>
+    );
+  }
+
+  // This check must happen FIRST — before any form or wizard rendering.
+  if (kycStatusData?.status === "verified") {
     return (
       <AppLayout showNav={false}>
         <header className="flex items-center space-x-3 p-4 border-b border-border bg-background z-10 sticky top-0">
@@ -398,7 +416,7 @@ export default function KycPage() {
     );
   }
 
-  if (kycStatus === "pending") {
+  if (kycStatusData?.status === "pending" || kycStatus === "pending") {
     return (
       <AppLayout showNav={false}>
         <header className="flex items-center space-x-3 p-4 border-b border-border bg-background z-10 sticky top-0">
