@@ -416,7 +416,7 @@ export default function KycPage() {
     );
   }
 
-  if (kycStatusData?.status === "pending" || kycStatus === "pending") {
+  if (kycStatusData?.status === "pending") {
     return (
       <AppLayout showNav={false}>
         <header className="flex items-center space-x-3 p-4 border-b border-border bg-background z-10 sticky top-0">
@@ -491,7 +491,7 @@ export default function KycPage() {
             <h2 className="text-xl font-bold">Personal Information</h2>
 
             {/* Rejection / more info notice with previous images */}
-            {(kycStatus === "rejected" || kycStatus === "more_info_required") && kycStatusData && (
+            {(kycStatusData?.status === "rejected" || kycStatusData?.status === "more_info_required") && (
               <div className="rounded-xl border border-destructive/40 bg-destructive/8 p-4 space-y-3">
                 <div className="flex items-start gap-2">
                   <span className="text-destructive text-lg leading-none">⚠</span>
