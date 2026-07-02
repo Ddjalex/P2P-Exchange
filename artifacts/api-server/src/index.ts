@@ -7,8 +7,8 @@ import { startCardQueueProcessor } from "./lib/card-queue.js";
 import { detectSuspiciousActivity } from "./middleware/security.js";
 import { runWalletAlertMonitor } from "./routes/admin.js";
 import { db } from "@workspace/db";
-import { pushSubscriptions } from "@workspace/db";
-import { sql } from "drizzle-orm";
+import { pushSubscriptions, systemSettingsTable } from "@workspace/db";
+import { sql, eq } from "drizzle-orm";
 
 const rawPort = process.env["API_PORT"] ?? process.env["PORT"];
 
@@ -38,8 +38,27 @@ app.listen(port, (err) => {
   // Start 15-minute order expiry monitor
   startOrderExpiryMonitor();
 
-  // Start Telegram bot (no-op if TELEGRAM_BOT_TOKEN not set)
-  startBot();
+  // Start Telegram bot — prefer env var, fall back to token stored in system_settings
+  (async () => {
+    const envToken = process.env.TELEGRAM_BOT_TOKEN;
+    if (envToken) {
+      startBot(envToken);
+      return;
+    }
+    try {
+      const rows = await db.select().from(systemSettingsTable)
+        .where(eq(systemSettingsTable.key, "telegramBotToken"));
+      const dbToken = rows[0]?.value?.trim();
+      const dbUsername = undefined; // resolved by getMe inside startBot
+      if (dbToken) {
+        startBot(dbToken, dbUsername);
+      } else {
+        console.log("TELEGRAM_BOT_TOKEN not set — bot disabled");
+      }
+    } catch (err) {
+      console.error("Failed to load Telegram bot token from DB:", err);
+    }
+  })();
 
   // Start card queue processor (retries queued fund/create requests every 5 min)
   startCardQueueProcessor();

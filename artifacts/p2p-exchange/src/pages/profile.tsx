@@ -425,10 +425,17 @@ function TelegramConnectSection() {
             </button>
           </div>
         ) : (
-        <div className="bg-secondary rounded-xl p-4 text-center space-y-1">
-          <p className="text-xs text-muted-foreground">Open @{botUsername ?? "xendrx_bot"} and tap START, or send:</p>
-          <p className="text-2xl font-bold tracking-widest text-primary font-mono">{code}</p>
-          <p className="text-xs text-muted-foreground">Expires in 10 minutes · Waiting for confirmation…</p>
+        <div className="bg-secondary rounded-xl p-4 text-center space-y-2">
+          <p className="text-xs text-muted-foreground">Send this command to @{botUsername ?? "xendrx_bot"} on Telegram:</p>
+          <div
+            className="bg-background rounded-lg px-3 py-2 cursor-pointer select-all border border-primary/30 hover:border-primary/60 transition-colors"
+            onClick={() => navigator.clipboard?.writeText(`/start ${code}`).catch(() => {})}
+            title="Tap to copy"
+          >
+            <span className="text-sm text-muted-foreground font-mono">/start </span>
+            <span className="text-2xl font-bold tracking-widest text-primary font-mono">{code}</span>
+          </div>
+          <p className="text-xs text-muted-foreground">Tap the box to copy · Expires in 10 min · Waiting…</p>
         </div>
         )}
         {!codeExpired && (
