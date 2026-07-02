@@ -218,7 +218,7 @@ router.post("/:orderId/image", chatUpload.single("image"), async (req, res) => {
     const order = await db.select().from(ordersTable).where(eq(ordersTable.id, orderId)).then(r => r[0]);
     if (!order) return res.status(404).json({ error: "Order not found" });
 
-    const imageUrl = `/api/files/chat/${req.file.filename}`;
+    const imageUrl = `/uploads/chat/${req.file.filename}`;
     const receiverId = order.buyerId === (req as any).userId ? order.sellerId : order.buyerId;
 
     const [msg] = await db.insert(messagesTable).values({

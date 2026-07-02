@@ -5,7 +5,7 @@ import rateLimit from "express-rate-limit";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import path from "node:path";
-import fs, { mkdirSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 
 // UPLOADS_DIR env var lets the VPS override the path (e.g. /root/app/xendrx/uploads).
 // Falls back to <cwd>/uploads for local/dev use.
@@ -18,30 +18,7 @@ const app: Express = express();
 // Required for express-rate-limit to correctly read X-Forwarded-For headers
 app.set("trust proxy", 1);
 
-// Serve uploaded files via express.static — avoids Express 5 route-param issues.
-// /api/files/kyc/filename.jpg  →  <uploadsDir>/kyc/filename.jpg
-app.use(
-  "/api/files",
-  (req: any, res: any, next: any) => {
-    console.log("[Files] Request:", req.path, "→", path.join(uploadsDir, req.path));
-    const safePath = path.normalize(req.path);
-    if (safePath.includes("..")) {
-      return res.status(403).json({ error: "Forbidden" });
-    }
-    next();
-  },
-  express.static(uploadsDir, { fallthrough: false }),
-);
-
-// 404 handler for missing files under /api/files
-app.use("/api/files", (err: any, _req: any, res: any, next: any) => {
-  if (err.status === 404) {
-    return res.status(404).json({ error: "File not found" });
-  }
-  next(err);
-});
-
-// Keep /uploads for backward compatibility with existing DB records
+// Serve uploaded files — Nginx handles /uploads/ in production via alias directive
 app.use("/uploads", express.static(uploadsDir));
 
 app.use(
