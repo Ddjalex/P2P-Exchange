@@ -20,6 +20,7 @@ export * from "./fee_settings";
 export * from "./platform_wallet";
 export * from "./fee_transactions";
 export * from "./telegram_users";
+export * from "./telegram_link_codes";
 export * from "./push_subscriptions";
 export * from "./internal_transfers";
 export * from "./address_verifications";

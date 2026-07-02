@@ -1,7 +1,9 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { usersTable, paymentMethodsTable, ordersTable, feedbackTable, followsTable, blockedUsersTable, verificationCodesTable, telegramUsersTable } from "@workspace/db";
-import { eq, and, or, gte, desc, gt } from "drizzle-orm";
+import { usersTable, paymentMethodsTable, ordersTable, feedbackTable, followsTable, blockedUsersTable, verificationCodesTable, telegramUsersTable, telegramLinkCodesTable } from "@workspace/db";
+import { eq, and, or, gte, desc, gt, sql } from "drizzle-orm";
+import { emitToUser } from "../lib/sse.js";
+import { randomInt } from "node:crypto";
 
 const router = Router();
 
@@ -417,33 +419,29 @@ router.delete("/payment-methods/:id", async (req, res) => {
 
 // ── Telegram Link ─────────────────────────────────────────────────────────────
 
-router.post("/link-telegram", async (req, res) => {
+router.post("/telegram-link-code", async (req, res) => {
   try {
     const userId = (req as any).userId;
-    const { telegramId, telegramUsername, telegramFirstName } = req.body ?? {};
-    if (!telegramId) return res.status(400).json({ message: "telegramId required" });
+    // Cryptographically secure 6-character alphanumeric code (uppercase, no ambiguous chars)
+    const CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    const code = Array.from({ length: 6 }, () => CHARS[randomInt(CHARS.length)]).join("");
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
-    await db.insert(telegramUsersTable).values({
-      userId,
-      telegramId: String(telegramId),
-      telegramUsername: telegramUsername ?? null,
-      telegramFirstName: telegramFirstName ?? null,
-    }).onConflictDoUpdate({
-      target: telegramUsersTable.userId,
-      set: {
-        telegramId: String(telegramId),
-        telegramUsername: telegramUsername ?? null,
-        telegramFirstName: telegramFirstName ?? null,
-        linkedAt: new Date(),
-      },
-    });
+    await db.insert(telegramLinkCodesTable).values({ userId, code, expiresAt })
+      .onConflictDoUpdate({
+        target: telegramLinkCodesTable.userId,
+        set: { code, expiresAt },
+      });
 
-    return res.json({ success: true, message: "Telegram linked successfully!" });
+    return res.json({ code });
   } catch (error) {
-    console.error("Link telegram error:", error);
-    return res.status(500).json({ message: "Failed to link Telegram" });
+    console.error("Telegram link code error:", error);
+    return res.status(500).json({ message: "Failed to generate code" });
   }
 });
+
+// /api/profile/link-telegram removed — linking now requires bot verification via /start CODE.
+// Clients must use POST /telegram-link-code → bot /start CODE flow.
 
 router.delete("/unlink-telegram", async (req, res) => {
   try {

@@ -287,10 +287,14 @@ function TelegramJoinButton() {
 // ─── Telegram Connect Section ─────────────────────────────────────────────────
 function TelegramConnectSection() {
   const { toast } = useToast();
-  const [botConfig, setBotConfig] = useState<{ botUsername: string | null; enabled: boolean } | null>(null);
   const [status, setStatus] = useState<{ linked: boolean; telegramUsername: string | null } | null>(null);
   const [loadingStatus, setLoadingStatus] = useState(true);
   const [disconnecting, setDisconnecting] = useState(false);
+  const [code, setCode] = useState<string | null>(null);
+  const [codeExpiredAt, setCodeExpiredAt] = useState<number | null>(null);
+  const [codeExpired, setCodeExpired] = useState(false);
+  const [generatingCode, setGeneratingCode] = useState(false);
+  const [botUsername, setBotUsername] = useState<string | null>(null);
 
   const fetchStatus = async () => {
     try {
@@ -298,54 +302,64 @@ function TelegramConnectSection() {
         headers: { Authorization: `Bearer ${getToken()}` },
       });
       const data = await res.json();
-      setStatus({ linked: !!data.telegramId, telegramUsername: data.telegramUsername ?? null });
+      setStatus({ linked: !!data.linked, telegramUsername: data.telegramUsername ?? null });
     } catch {
       setStatus({ linked: false, telegramUsername: null });
     }
     setLoadingStatus(false);
   };
 
-  // Fetch real bot config from the server — never fall back to a hardcoded username
-  // because a mismatched username causes Telegram's widget to show "Bot domain invalid".
   useEffect(() => {
+    fetchStatus();
     fetch("/api/config/telegram")
       .then(r => r.json())
-      .then(data => setBotConfig({ botUsername: data.botUsername ?? null, enabled: !!data.enabled }))
-      .catch(() => setBotConfig({ botUsername: null, enabled: false }));
-    fetchStatus();
+      .then(data => setBotUsername(data.botUsername ?? null))
+      .catch(() => {});
   }, []);
 
-  const BOT_USERNAME = botConfig?.botUsername ?? null;
-
+  // Poll for link confirmation while a code is displayed; stop at expiry
   useEffect(() => {
-    if (!BOT_USERNAME || !botConfig?.enabled || status?.linked || loadingStatus) return;
-    (window as any).onTelegramAuth = async (user: any) => {
-      try {
-        const res = await fetch("/api/profile/link-telegram", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
-          body: JSON.stringify({ telegramId: user.id, telegramUsername: user.username, telegramFirstName: user.first_name }),
-        });
-        if (!res.ok) throw new Error("Failed");
-        toast({ title: "Telegram connected! You'll now get trade alerts." });
-        fetchStatus();
-      } catch {
-        toast({ title: "Failed to connect Telegram", variant: "destructive" });
+    if (!code || status?.linked) return;
+    const interval = setInterval(async () => {
+      if (codeExpiredAt && Date.now() >= codeExpiredAt) {
+        setCodeExpired(true);
+        clearInterval(interval);
+        return;
       }
-    };
-    const container = document.getElementById("telegram-login-container");
-    if (container && !container.querySelector("script")) {
-      const s = document.createElement("script");
-      s.src = "https://telegram.org/js/telegram-widget.js?22";
-      s.setAttribute("data-telegram-login", BOT_USERNAME);
-      s.setAttribute("data-size", "large");
-      s.setAttribute("data-radius", "8");
-      s.setAttribute("data-onauth", "onTelegramAuth(user)");
-      s.setAttribute("data-request-access", "write");
-      s.async = true;
-      container.appendChild(s);
+      try {
+        const res = await fetch("/api/profile/telegram-status", {
+          headers: { Authorization: `Bearer ${getToken()}` },
+        });
+        const data = await res.json();
+        if (data.linked) {
+          setStatus({ linked: true, telegramUsername: data.telegramUsername ?? null });
+          setCode(null);
+          setCodeExpiredAt(null);
+          toast({ title: "✅ Telegram connected! You'll now get trade alerts." });
+          clearInterval(interval);
+        }
+      } catch {}
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [code, status?.linked, codeExpiredAt]);
+
+  const generateCode = async () => {
+    setGeneratingCode(true);
+    try {
+      const res = await fetch("/api/profile/telegram-link-code", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message ?? "Failed");
+      setCode(data.code);
+      setCodeExpiredAt(Date.now() + 10 * 60 * 1000);
+      setCodeExpired(false);
+    } catch {
+      toast({ title: "Failed to generate code", variant: "destructive" });
     }
-  }, [status, loadingStatus, BOT_USERNAME, botConfig?.enabled]);
+    setGeneratingCode(false);
+  };
 
   const disconnect = async () => {
     setDisconnecting(true);
@@ -356,6 +370,7 @@ function TelegramConnectSection() {
       });
       toast({ title: "Telegram disconnected" });
       setStatus({ linked: false, telegramUsername: null });
+      setCode(null);
     } catch {
       toast({ title: "Failed to disconnect", variant: "destructive" });
     }
@@ -363,31 +378,26 @@ function TelegramConnectSection() {
   };
 
   if (loadingStatus) {
-    return <div className="flex items-center justify-between pb-4 border-b border-border animate-pulse">
-      <div className="h-4 w-36 bg-secondary rounded" />
-      <div className="h-8 w-20 bg-secondary rounded-lg" />
-    </div>;
+    return (
+      <div className="pb-4 border-b border-border animate-pulse space-y-2">
+        <div className="h-4 w-36 bg-secondary rounded" />
+        <div className="h-8 w-full bg-secondary rounded-lg" />
+      </div>
+    );
   }
 
-  return (
-    <div className="flex items-center justify-between pb-4 border-b border-border">
-      <div className="flex items-center space-x-3">
-        <span className="text-[#229ed9]">
-          <TelegramIcon />
-        </span>
-        <div>
-          <div className="text-sm font-medium">Telegram Alerts</div>
-          {status?.linked ? (
-            <div className="text-xs text-success mt-0.5">
+  if (status?.linked) {
+    return (
+      <div className="flex items-center justify-between pb-4 border-b border-border">
+        <div className="flex items-center space-x-3">
+          <span className="text-[#229ed9]"><TelegramIcon /></span>
+          <div>
+            <div className="text-sm font-medium">Telegram Alerts</div>
+            <div className="text-xs text-green-500 mt-0.5">
               {status.telegramUsername ? `@${status.telegramUsername}` : "Connected"} ✓
             </div>
-          ) : (
-            <div className="text-xs text-muted-foreground mt-0.5">Get instant trade notifications</div>
-          )}
+          </div>
         </div>
-      </div>
-
-      {status?.linked ? (
         <button
           onClick={disconnect}
           disabled={disconnecting}
@@ -395,20 +405,69 @@ function TelegramConnectSection() {
         >
           {disconnecting ? "…" : "Disconnect"}
         </button>
-      ) : BOT_USERNAME && botConfig?.enabled ? (
-        <div
-          id="telegram-login-container"
-          style={{
-            minHeight: "50px",
-            minWidth: "150px",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            cursor: "pointer",
-            overflow: "visible",
-          }}
-        />
-      ) : null}
+      </div>
+    );
+  }
+
+  if (code) {
+    const deepLink = `https://t.me/${botUsername ?? "xendrx_bot"}?start=${code}`;
+    return (
+      <div className="pb-4 border-b border-border space-y-3">
+        <div className="flex items-center space-x-3">
+          <span className="text-[#229ed9]"><TelegramIcon /></span>
+          <div className="text-sm font-medium">Connect Telegram</div>
+        </div>
+        {codeExpired ? (
+          <div className="bg-secondary rounded-xl p-4 text-center space-y-1">
+            <p className="text-sm text-muted-foreground">Code expired</p>
+            <button onClick={generateCode} disabled={generatingCode} className="text-xs text-primary underline">
+              {generatingCode ? "Generating…" : "Generate a new code"}
+            </button>
+          </div>
+        ) : (
+        <div className="bg-secondary rounded-xl p-4 text-center space-y-1">
+          <p className="text-xs text-muted-foreground">Open @{botUsername ?? "xendrx_bot"} and tap START, or send:</p>
+          <p className="text-2xl font-bold tracking-widest text-primary font-mono">{code}</p>
+          <p className="text-xs text-muted-foreground">Expires in 10 minutes · Waiting for confirmation…</p>
+        </div>
+        )}
+        {!codeExpired && (
+          <a
+            href={deepLink}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl bg-[#229ed9] text-white text-sm font-medium hover:bg-[#1a8bc4] transition-colors"
+          >
+            <TelegramIcon />
+            Open @{botUsername ?? "xendrx_bot"} →
+          </a>
+        )}
+        <button
+          onClick={() => { setCode(null); setCodeExpired(false); setCodeExpiredAt(null); }}
+          className="w-full text-xs text-muted-foreground hover:text-foreground transition-colors"
+        >
+          Cancel
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center justify-between pb-4 border-b border-border">
+      <div className="flex items-center space-x-3">
+        <span className="text-[#229ed9]"><TelegramIcon /></span>
+        <div>
+          <div className="text-sm font-medium">Telegram Alerts</div>
+          <div className="text-xs text-muted-foreground mt-0.5">Get instant trade notifications</div>
+        </div>
+      </div>
+      <button
+        onClick={generateCode}
+        disabled={generatingCode}
+        className="text-xs bg-[#229ed9] text-white rounded-lg px-3 py-1.5 hover:bg-[#1a8bc4] transition-colors disabled:opacity-50"
+      >
+        {generatingCode ? "…" : "Connect"}
+      </button>
     </div>
   );
 }

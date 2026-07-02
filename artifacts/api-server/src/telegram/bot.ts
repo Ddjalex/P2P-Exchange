@@ -1,4 +1,7 @@
 import { Bot, InlineKeyboard } from "grammy";
+import { db, telegramLinkCodesTable, telegramUsersTable } from "@workspace/db";
+import { eq, and, gt } from "drizzle-orm";
+import { emitToUser } from "../lib/sse.js";
 
 const APP_URL = process.env.APP_URL ?? "";
 
@@ -11,6 +14,51 @@ function buildBot(token: string): Bot {
 
   b.command("start", async (ctx) => {
     const firstName = ctx.from?.first_name ?? "Trader";
+    const code = ctx.message.text.split(" ")[1]?.toUpperCase();
+
+    // ── Account linking flow ───────────────────────────────────────────────────
+    if (code) {
+      try {
+        const now = new Date();
+        const rows = await db.select().from(telegramLinkCodesTable)
+          .where(and(eq(telegramLinkCodesTable.code, code), gt(telegramLinkCodesTable.expiresAt, now)))
+          .limit(1);
+
+        if (!rows[0]) {
+          await ctx.reply("❌ Invalid or expired code. Please get a new code from the Xendrx website.");
+          return;
+        }
+
+        const { userId } = rows[0];
+
+        await db.insert(telegramUsersTable).values({
+          userId,
+          telegramId: String(ctx.from!.id),
+          telegramUsername: ctx.from?.username ?? null,
+          telegramFirstName: ctx.from?.first_name ?? null,
+        }).onConflictDoUpdate({
+          target: telegramUsersTable.userId,
+          set: {
+            telegramId: String(ctx.from!.id),
+            telegramUsername: ctx.from?.username ?? null,
+            linkedAt: now,
+          },
+        });
+
+        await db.delete(telegramLinkCodesTable).where(eq(telegramLinkCodesTable.userId, userId));
+
+        emitToUser(userId, "telegram_linked", { telegramId: String(ctx.from!.id) });
+
+        await ctx.reply("✅ Your Telegram account has been successfully linked to Xendrx!\n\nYou'll now receive instant notifications for your trades.");
+        return;
+      } catch (err) {
+        console.error("[Bot] Link code error:", err);
+        await ctx.reply("❌ Something went wrong. Please try again.");
+        return;
+      }
+    }
+
+    // ── Default welcome ────────────────────────────────────────────────────────
     const keyboard = new InlineKeyboard().webApp("🚀 Open Xendrx", APP_URL || "https://xendrx.replit.app");
     try {
       await ctx.replyWithPhoto(
