@@ -18,23 +18,7 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "P2P Exchange Ethiopia"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
 args = "artifacts/p2p-exchange: web"
-
-[[workflows.workflow]]
-name = "P2P Exchange Ethiopia"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "bash scripts/dev.sh"
-waitForPort = 8080
-
-[workflows.workflow.metadata]
-outputType = "console"
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
