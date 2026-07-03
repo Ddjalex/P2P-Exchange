@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { useAdminAuth } from "@/hooks/use-admin-auth";
@@ -135,6 +136,8 @@ export default function AuthPage() {
   const [regPrefixOpen, setRegPrefixOpen] = useState(false);
   const [loginPrefixSearch, setLoginPrefixSearch] = useState("");
   const [regPrefixSearch, setRegPrefixSearch] = useState("");
+  const [loginDropRect, setLoginDropRect] = useState<DOMRect | null>(null);
+  const [regDropRect, setRegDropRect] = useState<DOMRect | null>(null);
   const loginPrefixRef = useRef<HTMLDivElement>(null);
   const regPrefixRef = useRef<HTMLDivElement>(null);
   const loginPrefixSearchRef = useRef<HTMLInputElement>(null);
@@ -196,23 +199,19 @@ export default function AuthPage() {
 
   function pickCountry(code: string) {
     const c = COUNTRIES.find(x => x.code === code)!;
-    const isET = c.code === "ET";
-    if (modalCtx === "login") { setLoginC(c); setLoginType(!isET ? "email" : "phone"); }
-    else { setRegC(c); setRegType(!isET ? "email" : "phone"); }
+    if (modalCtx === "login") { setLoginC(c); }
+    else { setRegC(c); }
     closeModal();
   }
 
   function pickPrefixCountry(code: string, ctx: "login" | "reg") {
     const c = COUNTRIES.find(x => x.code === code)!;
-    const isET = c.code === "ET";
     if (ctx === "login") {
       setLoginC(c);
-      setLoginType(!isET ? "email" : "phone");
       setLoginPrefixOpen(false);
       setLoginPrefixSearch("");
     } else {
       setRegC(c);
-      setRegType(!isET ? "email" : "phone");
       setRegPrefixOpen(false);
       setRegPrefixSearch("");
     }
@@ -220,10 +219,14 @@ export default function AuthPage() {
 
   function openPrefixDropdown(ctx: "login" | "reg") {
     if (ctx === "login") {
+      const rect = loginPrefixRef.current?.getBoundingClientRect() ?? null;
+      setLoginDropRect(rect);
       setLoginPrefixOpen(v => !v);
       setLoginPrefixSearch("");
       if (!loginPrefixOpen) setTimeout(() => loginPrefixSearchRef.current?.focus(), 80);
     } else {
+      const rect = regPrefixRef.current?.getBoundingClientRect() ?? null;
+      setRegDropRect(rect);
       setRegPrefixOpen(v => !v);
       setRegPrefixSearch("");
       if (!regPrefixOpen) setTimeout(() => regPrefixSearchRef.current?.focus(), 80);
@@ -233,32 +236,24 @@ export default function AuthPage() {
   // Auto-detect country from phone number
   function handleLoginPhoneChange(raw: string) {
     let digits = raw.replace(/\D/g, "");
-    if (digits.startsWith("0") && digits.length > 1) {
+    if (loginC.code === "ET" && digits.startsWith("0") && digits.length > 1) {
       const second = digits[1];
-      if (second === "9" || second === "7") {
-        setLoginC(ET);
-        setLoginType("phone");
-        digits = digits.slice(1);
-      } else {
-        digits = digits.slice(1);
-      }
+      if (second === "9" || second === "7") digits = digits.slice(1);
+      else digits = digits.slice(1);
     }
-    setLoginPhone(digits.slice(0, 9));
+    const maxLen = loginC.code === "ET" ? 9 : 15;
+    setLoginPhone(digits.slice(0, maxLen));
   }
 
   function handleRegPhoneChange(raw: string) {
     let digits = raw.replace(/\D/g, "");
-    if (digits.startsWith("0") && digits.length > 1) {
+    if (regC.code === "ET" && digits.startsWith("0") && digits.length > 1) {
       const second = digits[1];
-      if (second === "9" || second === "7") {
-        setRegC(ET);
-        setRegType("phone");
-        digits = digits.slice(1);
-      } else {
-        digits = digits.slice(1);
-      }
+      if (second === "9" || second === "7") digits = digits.slice(1);
+      else digits = digits.slice(1);
     }
-    setRegPhone(digits.slice(0, 9));
+    const maxLen = regC.code === "ET" ? 9 : 15;
+    setRegPhone(digits.slice(0, maxLen));
   }
 
   const filteredCountries = COUNTRIES.filter(c => {
@@ -456,16 +451,14 @@ export default function AuthPage() {
         <div className="credentials-panel signin">
           <h2 className="slide-element">Login</h2>
 
-          {loginC.code === "ET" && (
-            <div className="input-tabs slide-element">
-              <button className={loginType === "phone" ? "active" : ""} onClick={() => setLoginType("phone")}>
-                <span className="tab-icon">📱</span><span className="tab-label">Phone</span>
-              </button>
-              <button className={loginType === "email" ? "active" : ""} onClick={() => setLoginType("email")}>
-                <span className="tab-icon">✉️</span><span className="tab-label">Email</span>
-              </button>
-            </div>
-          )}
+          <div className="input-tabs slide-element">
+            <button className={loginType === "phone" ? "active" : ""} onClick={() => setLoginType("phone")}>
+              <span className="tab-icon">📱</span><span className="tab-label">Phone</span>
+            </button>
+            <button className={loginType === "email" ? "active" : ""} onClick={() => setLoginType("email")}>
+              <span className="tab-icon">✉️</span><span className="tab-label">Email</span>
+            </button>
+          </div>
 
           {loginType === "phone" && (
             <div className="phone-row-wrap slide-element">
@@ -481,8 +474,8 @@ export default function AuthPage() {
                     <span className="pf-code">{loginC.dial}</span>
                     <i className="fa-solid fa-chevron-down pf-caret"></i>
                   </div>
-                  {loginPrefixOpen && (
-                    <div className="prefix-dropdown">
+                  {loginPrefixOpen && loginDropRect && createPortal(
+                    <div className="prefix-dropdown" style={{ position: "fixed", top: loginDropRect.bottom + 6, left: loginDropRect.left, zIndex: 99999 }}>
                       <div className="prefix-search">
                         <i className="fa-solid fa-magnifying-glass"></i>
                         <input
@@ -506,12 +499,13 @@ export default function AuthPage() {
                           </div>
                         ))}
                       </div>
-                    </div>
+                    </div>,
+                    document.body
                   )}
                 </div>
                 <input
                   type="tel"
-                  placeholder="9XX XXX XXXX"
+                  placeholder={loginC.code === "ET" ? "9XX XXX XXXX" : "Phone number"}
                   value={loginPhone}
                   onChange={e => handleLoginPhoneChange(e.target.value)}
                   onFocus={() => setLoginPhoneFocused(true)}
@@ -519,7 +513,7 @@ export default function AuthPage() {
                 />
                 <i className="fa-solid fa-phone"></i>
               </div>
-              <div className={`auth-err${loginPhoneErr ? " show" : ""}`}>Invalid phone number (must start with 9 or 7)</div>
+              <div className={`auth-err${loginPhoneErr ? " show" : ""}`}>{loginC.code === "ET" ? "Ethiopian number must start with 9 or 7" : "Invalid phone number"}</div>
             </div>
           )}
 
@@ -583,16 +577,14 @@ export default function AuthPage() {
             <>
               <h2 className="slide-element">Register</h2>
 
-              {regC.code === "ET" && (
-                <div className="input-tabs slide-element">
-                  <button className={regType === "phone" ? "active" : ""} onClick={() => setRegType("phone")}>
-                    <span className="tab-icon">📱</span><span className="tab-label">Phone</span>
-                  </button>
-                  <button className={regType === "email" ? "active" : ""} onClick={() => setRegType("email")}>
-                    <span className="tab-icon">✉️</span><span className="tab-label">Email</span>
-                  </button>
-                </div>
-              )}
+              <div className="input-tabs slide-element">
+                <button className={regType === "phone" ? "active" : ""} onClick={() => setRegType("phone")}>
+                  <span className="tab-icon">📱</span><span className="tab-label">Phone</span>
+                </button>
+                <button className={regType === "email" ? "active" : ""} onClick={() => setRegType("email")}>
+                  <span className="tab-icon">✉️</span><span className="tab-label">Email</span>
+                </button>
+              </div>
 
               {regType === "phone" && (
                 <div className="phone-row-wrap slide-element">
@@ -608,8 +600,8 @@ export default function AuthPage() {
                         <span className="pf-code">{regC.dial}</span>
                         <i className="fa-solid fa-chevron-down pf-caret"></i>
                       </div>
-                      {regPrefixOpen && (
-                        <div className="prefix-dropdown">
+                      {regPrefixOpen && regDropRect && createPortal(
+                        <div className="prefix-dropdown" style={{ position: "fixed", top: regDropRect.bottom + 6, left: regDropRect.left, zIndex: 99999 }}>
                           <div className="prefix-search">
                             <i className="fa-solid fa-magnifying-glass"></i>
                             <input
@@ -633,12 +625,13 @@ export default function AuthPage() {
                               </div>
                             ))}
                           </div>
-                        </div>
+                        </div>,
+                        document.body
                       )}
                     </div>
                     <input
                       type="tel"
-                      placeholder="9XX XXX XXXX"
+                      placeholder={regC.code === "ET" ? "9XX XXX XXXX" : "Phone number"}
                       value={regPhone}
                       onChange={e => handleRegPhoneChange(e.target.value)}
                       onFocus={() => setRegPhoneFocused(true)}
@@ -646,7 +639,7 @@ export default function AuthPage() {
                     />
                     <i className="fa-solid fa-phone"></i>
                   </div>
-                  <div className={`auth-err${regPhoneErr ? " show" : ""}`}>Ethiopian number must start with 9 or 7</div>
+                  <div className={`auth-err${regPhoneErr ? " show" : ""}`}>{regC.code === "ET" ? "Ethiopian number must start with 9 or 7" : "Invalid phone number"}</div>
                 </div>
               )}
 
