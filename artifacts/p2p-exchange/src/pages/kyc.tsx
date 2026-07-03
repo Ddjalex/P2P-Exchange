@@ -38,7 +38,10 @@ function useFileUpload() {
     setState({ status: "uploading" });
     uploadFile(file)
       .then(url => setState({ status: "done", url, preview }))
-      .catch(e => setState({ status: "error", message: e.message }));
+      .catch(e => {
+        URL.revokeObjectURL(preview);
+        setState({ status: "error", message: e.message });
+      });
   }, []);
 
   const clear = useCallback(() => setState({ status: "idle" }), []);
@@ -77,7 +80,17 @@ function UploadBox({
 
       {state.status === "done" ? (
         <div className="relative h-40 rounded-xl overflow-hidden border border-primary/40">
-          <img src={state.preview} alt={label} className="w-full h-full object-cover" />
+          <img
+            src={state.preview}
+            alt={label}
+            className="w-full h-full object-cover"
+            onError={(e) => {
+              const img = e.currentTarget;
+              if (state.status === "done" && img.src !== state.url) {
+                img.src = state.url;
+              }
+            }}
+          />
           <button
             onClick={clear}
             className="absolute top-2 right-2 w-7 h-7 bg-background/80 rounded-full flex items-center justify-center text-foreground hover:bg-background"
