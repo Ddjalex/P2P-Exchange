@@ -499,6 +499,16 @@ export default function ProfilePage() {
   const initialTab: "trade" | "notifications" | "others" =
     tabFromUrl === "notifications" || tabFromUrl === "others" ? tabFromUrl : "trade";
   const [tab, setTab] = useState<"trade" | "notifications" | "others">(initialTab);
+
+  // Scroll to Telegram section when navigated here from the popup
+  useEffect(() => {
+    if (tabFromUrl === "notifications") {
+      const el = document.getElementById("telegram-connect");
+      if (el) {
+        setTimeout(() => el.scrollIntoView({ behavior: "smooth", block: "start" }), 150);
+      }
+    }
+  }, [tabFromUrl]);
   const [notifSettings, setNotifSettings] = useState<Record<string, boolean>>({});
   const [savingNotif, setSavingNotif] = useState<string | null>(null);
   const [showAddEmail, setShowAddEmail] = useState(false);
@@ -749,7 +759,7 @@ export default function ProfilePage() {
 
         {tab === "notifications" && (
           <div className="bg-card rounded-xl border border-card-border p-4 space-y-4">
-            <TelegramConnectSection />
+            <div id="telegram-connect"><TelegramConnectSection /></div>
             {NOTIFICATION_KEYS.map(({ key, label }) => {
               const isOn = !!notifSettings[key];
               const isSaving = savingNotif === key;

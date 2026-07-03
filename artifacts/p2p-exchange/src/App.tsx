@@ -9,6 +9,7 @@ import { useSse } from "@/hooks/use-sse";
 import { KycGate } from "@/components/kyc-gate";
 import { NotificationPermissionModal } from "@/components/notification-permission";
 import { InstallAppModal } from "@/components/install-app-modal";
+import { TelegramConnectPopup } from "@/components/telegram-connect-popup";
 
 // Regular pages
 import AuthPage from "@/pages/auth";
@@ -171,6 +172,7 @@ function Router() {
     </Switch>
     {user && <NotificationPermissionModal userId={user.id} />}
     {user && <InstallAppModal />}
+    {user && <TelegramConnectPopup userId={user.id} />}
     </>
   );
 }
