@@ -5,8 +5,8 @@ const DISMISSED_KEY = "telegram_popup_dismissed";
 const CHECKED_KEY   = "telegram_popup_checked"; // once per session
 const POPUP_DELAY_MS = 4000;
 
-// Auth paths where the popup must never appear
-const AUTH_PATHS = ["/auth", "/forgot-password", "/admin"];
+// Paths where the popup must never appear (auth pages and bare home before redirect)
+const AUTH_PATHS = ["/", "/auth", "/forgot-password", "/admin"];
 
 function isExcludedPath(path: string) {
   return AUTH_PATHS.some(p => path.startsWith(p));
