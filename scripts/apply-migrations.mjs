@@ -1,6 +1,14 @@
 #!/usr/bin/env node
-// Applies drizzle migration SQL files directly, skipping TTY prompts.
-// Uses CREATE TABLE IF NOT EXISTS / ALTER TABLE ... ADD CONSTRAINT IF NOT EXISTS patterns.
+/**
+ * Applies Drizzle migration SQL files directly to the database.
+ *
+ * Idempotency strategy:
+ *   - Duplicate object errors (42710, 42P07) are silently skipped — those mean
+ *     the type/table/constraint already exists, which is safe.
+ *   - ALL other errors cause immediate non-zero exit.
+ *
+ * Run after adding NEON_DATABASE_URL to Replit Secrets.
+ */
 import pg from 'pg';
 import fs from 'fs';
 import path from 'path';
@@ -11,9 +19,12 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const connectionString = process.env.NEON_DATABASE_URL || process.env.DATABASE_URL;
 if (!connectionString) {
-  console.error('NEON_DATABASE_URL or DATABASE_URL is not set');
+  console.error('ERROR: NEON_DATABASE_URL or DATABASE_URL is not set');
   process.exit(1);
 }
+
+// Duplicate object / duplicate table / duplicate constraint error codes
+const IDEMPOTENT_CODES = new Set(['42710', '42P07', '42P16']);
 
 const client = new Client({ connectionString, ssl: { rejectUnauthorized: false } });
 await client.connect();
@@ -23,32 +34,60 @@ const sqlFiles = fs.readdirSync(migrationsDir)
   .filter(f => f.endsWith('.sql'))
   .sort();
 
+let failed = false;
+
 for (const file of sqlFiles) {
   const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf8');
-  // Split on drizzle's statement-breakpoint marker
+  // Drizzle delimits statements with this marker
   const statements = sql.split('--> statement-breakpoint').map(s => s.trim()).filter(Boolean);
 
-  console.log(`\n📄 Applying ${file} (${statements.length} statements)...`);
+  console.log(`\n📄 ${file} — ${statements.length} statement(s)`);
   for (const stmt of statements) {
-    // Make CREATE TABLE idempotent
-    const safe = stmt
-      .replace(/^CREATE TABLE "/, 'CREATE TABLE IF NOT EXISTS "')
-      .replace(/^CREATE TYPE "/, 'CREATE TYPE IF NOT EXISTS "')
-      .replace(/^ALTER TABLE "([^"]+)" ADD CONSTRAINT "([^"]+)"/, 
-               'ALTER TABLE "$1" ADD CONSTRAINT IF NOT EXISTS "$2"');
     try {
-      await client.query(safe);
+      await client.query(stmt);
+      console.log(`  ✓ ${stmt.slice(0, 80).replace(/\n/g, ' ')}`);
     } catch (err) {
-      // Skip duplicate object errors (42710 = duplicate_object, 42P07 = duplicate_table, 42701 = duplicate_column)
-      if (['42710', '42P07', '42701', '23505'].includes(err.code)) {
-        console.log(`  ⚠️  Already exists, skipping: ${safe.slice(0, 60).replace(/\n/g, ' ')}...`);
+      if (IDEMPOTENT_CODES.has(err.code)) {
+        console.log(`  ⚠  already exists, skipping: ${stmt.slice(0, 70).replace(/\n/g, ' ')}`);
       } else {
-        console.error(`  ✗ Error: ${err.message}`);
-        console.error(`    Statement: ${safe.slice(0, 120)}`);
+        console.error(`\n  ✗ FAILED (${err.code}): ${err.message}`);
+        console.error(`    Statement: ${stmt.slice(0, 200)}`);
+        failed = true;
       }
     }
   }
 }
 
-console.log('\n✅ Migrations applied.');
 await client.end();
+
+if (failed) {
+  console.error('\n❌ One or more migration statements failed. Schema may be incomplete.');
+  process.exit(1);
+}
+
+// Post-migration verification: confirm the required core tables exist
+console.log('\n🔍 Verifying core tables...');
+const verifyClient = new Client({ connectionString, ssl: { rejectUnauthorized: false } });
+await verifyClient.connect();
+
+const REQUIRED_TABLES = [
+  'users', 'wallets', 'transactions', 'orders', 'ads', 'messages',
+  'system_settings', 'kyc_submissions', 'push_subscriptions', 'notifications',
+];
+
+const { rows } = await verifyClient.query(
+  `SELECT table_name FROM information_schema.tables
+   WHERE table_schema = 'public' AND table_name = ANY($1)`,
+  [REQUIRED_TABLES]
+);
+await verifyClient.end();
+
+const found = new Set(rows.map(r => r.table_name));
+const missing = REQUIRED_TABLES.filter(t => !found.has(t));
+
+if (missing.length > 0) {
+  console.error(`❌ Missing tables after migration: ${missing.join(', ')}`);
+  process.exit(1);
+}
+
+console.log(`✅ All ${REQUIRED_TABLES.length} core tables verified. Migrations complete.`);
