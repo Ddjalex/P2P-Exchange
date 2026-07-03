@@ -14,10 +14,16 @@ function isExcludedPath(path: string) {
   return EXCLUDED_PREFIXES.some(p => path === p || path.startsWith(p + "/"));
 }
 
+function getToken() {
+  return localStorage.getItem("p2p_token");
+}
+
 export function TelegramConnectPopup({ userId }: { userId: number }) {
   const [visible, setVisible] = useState(false);
-  const [location, setLocation] = useLocation();
-  const triggeredRef = useRef(false); // guard: only fire once per mount
+  const [botUsername, setBotUsername] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [location] = useLocation();
+  const triggeredRef = useRef(false);
 
   // Force-hide when navigating to excluded paths
   useEffect(() => {
@@ -39,14 +45,23 @@ export function TelegramConnectPopup({ userId }: { userId: number }) {
 
     const timer = setTimeout(async () => {
       try {
-        const token = localStorage.getItem("p2p_token");
-        const res = await fetch("/api/profile/telegram-status", {
-          headers: { Authorization: `Bearer ${token}` },
-          signal: controller.signal,
-        });
-        if (!res.ok || cancelled) return;
-        const data = await res.json();
-        if (!data.linked && !cancelled) setVisible(true);
+        const token = getToken();
+        const [statusRes, configRes] = await Promise.all([
+          fetch("/api/profile/telegram-status", {
+            headers: { Authorization: `Bearer ${token}` },
+            signal: controller.signal,
+          }),
+          fetch("/api/config/telegram", { signal: controller.signal }),
+        ]);
+        if (cancelled) return;
+        if (statusRes.ok) {
+          const data = await statusRes.json();
+          if (!data.linked && !cancelled) setVisible(true);
+        }
+        if (configRes.ok) {
+          const cfg = await configRes.json();
+          setBotUsername(cfg.botUsername ?? null);
+        }
       } catch {
         // network error or aborted — skip silently
       }
@@ -58,12 +73,29 @@ export function TelegramConnectPopup({ userId }: { userId: number }) {
       controller.abort();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId]); // only re-run if userId changes (i.e. different user logs in)
+  }, [userId]);
 
-  const handleConnect = () => {
-    setVisible(false);
-    sessionStorage.setItem(DISMISSED_KEY, "1");
-    setLocation("/profile?tab=notifications");
+  const handleConnect = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/profile/telegram-link-code", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      const data = await res.json();
+      if (res.ok && data.code) {
+        const bot = botUsername ?? "xendrx_bot";
+        const deepLink = `https://t.me/${bot}?start=${data.code}`;
+        window.open(deepLink, "_blank", "noopener,noreferrer");
+      }
+    } catch {
+      // fallback: just open the bot
+      window.open(`https://t.me/${botUsername ?? "xendrx_bot"}`, "_blank", "noopener,noreferrer");
+    } finally {
+      setLoading(false);
+      setVisible(false);
+      sessionStorage.setItem(DISMISSED_KEY, "1");
+    }
   };
 
   const handleDismiss = () => {
@@ -129,20 +161,21 @@ export function TelegramConnectPopup({ userId }: { userId: number }) {
         <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
           <button
             onClick={handleConnect}
+            disabled={loading}
             style={{
-              background: "linear-gradient(135deg,#00d4ff,#0099cc)",
+              background: loading ? "rgba(0,212,255,0.5)" : "linear-gradient(135deg,#00d4ff,#0099cc)",
               border: "none",
               borderRadius: "12px",
               padding: "14px",
               color: "#080d18",
               fontSize: "15px",
               fontWeight: 700,
-              cursor: "pointer",
+              cursor: loading ? "not-allowed" : "pointer",
               width: "100%",
               letterSpacing: "0.3px",
             }}
           >
-            Connect Telegram →
+            {loading ? "Opening Telegram…" : "Connect Telegram →"}
           </button>
           <button
             onClick={handleDismiss}
