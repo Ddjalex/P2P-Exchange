@@ -21,9 +21,9 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
   const forceLogout = () => {
     setAdminToken(null);
     setAdmin(null);
-    // Trigger wouter navigation to /admin/login without stacking history
-    if (!window.location.pathname.startsWith('/admin/login')) {
-      window.history.replaceState(null, '', '/admin/login');
+    // Trigger wouter navigation to /auth without stacking history
+    if (!window.location.pathname.startsWith('/auth')) {
+      window.history.replaceState(null, '', '/auth');
       window.dispatchEvent(new PopStateEvent('popstate'));
     }
   };

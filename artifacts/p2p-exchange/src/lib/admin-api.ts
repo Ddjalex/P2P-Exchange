@@ -35,8 +35,8 @@ export async function adminFetch(path: string, options: RequestInit = {}): Promi
     } else {
       // Fallback if provider hasn't mounted yet
       setAdminToken(null);
-      if (!window.location.pathname.startsWith('/admin/login')) {
-        window.history.replaceState(null, '', '/admin/login');
+      if (!window.location.pathname.startsWith('/auth')) {
+        window.history.replaceState(null, '', '/auth');
         window.dispatchEvent(new PopStateEvent('popstate'));
       }
     }
