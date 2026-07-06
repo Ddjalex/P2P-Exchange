@@ -230,7 +230,7 @@ export default function TradePage() {
       }
       if (curr === 'completed') {
         toast({ title: '🎉 Order completed! USDT released to wallet.' });
-        sendBrowserNotification('Order Completed 🎉', isBuyer ? 'USDT has been released to your wallet!' : `Order completed. ${Number(order.amountEtb).toLocaleString()} ETB received.`);
+        sendBrowserNotification('Order Completed 🎉', isBuyer ? 'USDT has been released to your wallet!' : `Order completed. ${Number(order.amountEtb).toLocaleString()} ${(order as any).fiat ?? "ETB"} received.`);
       }
       if (curr === 'cancelled') {
         toast({ title: '❌ Order has been cancelled.', variant: 'destructive' });
@@ -334,6 +334,8 @@ export default function TradePage() {
     );
   }
 
+  const orderFiat: string = (order as any).fiat ?? "ETB";
+
   // ── COMPLETE SCREEN ────────────────────────────────────────────────────────
   if (order.status === "completed") {
     return <CompletedScreen order={order} isBuyer={isBuyer} orderId={orderId} />;
@@ -370,7 +372,7 @@ export default function TradePage() {
           <p className="text-muted-foreground text-sm">Admin is reviewing your appeal. USDT is frozen until resolved.</p>
           <div className="mt-6 bg-card border border-border rounded-xl p-4 text-left space-y-2 text-sm">
             <OrderDetailRow label="Order No." value={`#${order.id}`} onCopy={() => handleCopy(String(order.id), "Order No.")} />
-            <OrderDetailRow label="Amount" value={`${Number(order.amountEtb).toLocaleString()} ETB`} />
+            <OrderDetailRow label="Amount" value={`${Number(order.amountEtb).toLocaleString()} ${orderFiat}`} />
             <OrderDetailRow label="Quantity" value={`${parseFloat(order.amountUsdt).toFixed(4)} USDT`} />
           </div>
         </div>
@@ -431,8 +433,8 @@ export default function TradePage() {
 
           <div className="bg-card border border-border rounded-xl p-4 space-y-3">
             <OrderDetailRow label="KYC Name" value={order.sellerAccountName || "—"} onCopy={() => handleCopy(order.sellerAccountName ?? "")} />
-            <OrderDetailRow label="Amount" value={`${Number(order.amountEtb).toLocaleString()} ETB`} onCopy={() => handleCopy(String(order.amountEtb))} />
-            <OrderDetailRow label="Price" value={`${Number(order.price).toLocaleString()} ETB/USDT`} />
+            <OrderDetailRow label="Amount" value={`${Number(order.amountEtb).toLocaleString()} ${orderFiat}`} onCopy={() => handleCopy(String(order.amountEtb))} />
+            <OrderDetailRow label="Price" value={`${Number(order.price).toLocaleString()} ${orderFiat}/USDT`} />
             <OrderDetailRow label="Quantity" value={`${parseFloat(order.amountUsdt).toFixed(4)} USDT`} />
             <div className="flex justify-between items-center">
               <span className="text-xs text-muted-foreground">Payment Method</span>
@@ -592,7 +594,7 @@ export default function TradePage() {
                 <span className="text-sm font-semibold">{order.buyerKycName ?? order.buyerUsername ?? "—"}</span>
               </div>
             </div>
-            <OrderDetailRow label="Amount" value={`${Number(order.amountEtb).toLocaleString()} ETB`} />
+            <OrderDetailRow label="Amount" value={`${Number(order.amountEtb).toLocaleString()} ${orderFiat}`} />
             <OrderDetailRow label="Quantity" value={`${parseFloat(order.amountUsdt).toFixed(4)} USDT`} />
             <div className="flex justify-between items-center">
               <span className="text-xs text-muted-foreground">Payment Method</span>
@@ -652,7 +654,7 @@ export default function TradePage() {
                 </div>
                 <div className="text-center">
                   <span className="text-3xl font-bold font-mono text-primary">{Number(order.amountEtb).toLocaleString()}</span>
-                  <span className="text-sm text-muted-foreground ml-1">ETB</span>
+                  <span className="text-sm text-muted-foreground ml-1">{orderFiat}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">KYC Name</span>
@@ -715,7 +717,7 @@ export default function TradePage() {
               <div className="flex justify-between items-center">
                 <span className="text-xs text-muted-foreground">Amount</span>
                 <div className="flex items-center space-x-1">
-                  <span className="text-base font-bold font-mono">{Number(order.amountEtb).toLocaleString()} ETB</span>
+                  <span className="text-base font-bold font-mono">{Number(order.amountEtb).toLocaleString()} {orderFiat}</span>
                   <button onClick={() => handleCopy(order.amountEtb, "Amount")}><Copy className="w-3 h-3 text-muted-foreground" /></button>
                 </div>
               </div>
@@ -787,8 +789,8 @@ export default function TradePage() {
           <div className="inline-flex items-center px-3 py-1 rounded-full bg-success/15 text-success text-xs font-bold">Buy USDT</div>
 
           <div className="bg-card border border-border rounded-xl p-4 space-y-3">
-            <OrderDetailRow label="Amount" value={`${Number(order.amountEtb).toLocaleString()} ETB`} onCopy={() => handleCopy(order.amountEtb, "Amount")} />
-            <OrderDetailRow label="Price" value={`${Number(order.price).toLocaleString()} ETB/USDT`} />
+            <OrderDetailRow label="Amount" value={`${Number(order.amountEtb).toLocaleString()} ${orderFiat}`} onCopy={() => handleCopy(order.amountEtb, "Amount")} />
+            <OrderDetailRow label="Price" value={`${Number(order.price).toLocaleString()} ${orderFiat}/USDT`} />
             <OrderDetailRow label="Quantity" value={`${parseFloat(order.amountUsdt).toFixed(4)} USDT`} />
             <div className="flex justify-between items-center">
               <span className="text-xs text-muted-foreground">Payment Method</span>
@@ -827,7 +829,7 @@ export default function TradePage() {
           <p className="text-sm text-muted-foreground">Waiting for buyer to complete payment</p>
         </div>
         <div className="bg-card border border-border rounded-xl p-4 space-y-3">
-          <OrderDetailRow label="Amount" value={`${Number(order.amountEtb).toLocaleString()} ETB`} />
+          <OrderDetailRow label="Amount" value={`${Number(order.amountEtb).toLocaleString()} ${orderFiat}`} />
           <OrderDetailRow label="Quantity" value={`${parseFloat(order.amountUsdt).toFixed(4)} USDT`} />
           <div className="flex justify-between items-center">
             <span className="text-xs text-muted-foreground">Payment Method</span>

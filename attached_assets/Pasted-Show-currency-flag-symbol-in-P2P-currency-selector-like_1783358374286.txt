@@ -1,0 +1,157 @@
+Show currency flag + symbol in P2P currency selector like Binance P2P
+In Binance P2P, the currency dropdown shows: flag + currency code + currency name
+Example:
+🇪🇹 ETB  Ethiopian Birr
+🇺🇸 USD  US Dollar
+🇬🇧 GBP  British Pound
+🇳🇬 NGN  Nigerian Naira
+Implementation — add flag emoji to each currency:
+typescriptexport const FIAT_CURRENCIES = [
+  { code: "ETB", name: "Ethiopian Birr", symbol: "Br", flag: "🇪🇹" },
+  { code: "USD", name: "US Dollar", symbol: "$", flag: "🇺🇸" },
+  { code: "EUR", name: "Euro", symbol: "€", flag: "🇪🇺" },
+  { code: "GBP", name: "British Pound", symbol: "£", flag: "🇬🇧" },
+  { code: "NGN", name: "Nigerian Naira", symbol: "₦", flag: "🇳🇬" },
+  { code: "KES", name: "Kenyan Shilling", symbol: "KSh", flag: "🇰🇪" },
+  { code: "GHS", name: "Ghanaian Cedi", symbol: "₵", flag: "🇬🇭" },
+  { code: "ZAR", name: "South African Rand", symbol: "R", flag: "🇿🇦" },
+  { code: "EGP", name: "Egyptian Pound", symbol: "£", flag: "🇪🇬" },
+  { code: "AED", name: "UAE Dirham", symbol: "د.إ", flag: "🇦🇪" },
+  { code: "SAR", name: "Saudi Riyal", symbol: "ر.س", flag: "🇸🇦" },
+  { code: "INR", name: "Indian Rupee", symbol: "₹", flag: "🇮🇳" },
+  { code: "PKR", name: "Pakistani Rupee", symbol: "Rs", flag: "🇵🇰" },
+  { code: "BDT", name: "Bangladeshi Taka", symbol: "৳", flag: "🇧🇩" },
+  { code: "CNY", name: "Chinese Yuan", symbol: "¥", flag: "🇨🇳" },
+  { code: "JPY", name: "Japanese Yen", symbol: "¥", flag: "🇯🇵" },
+  { code: "KRW", name: "South Korean Won", symbol: "₩", flag: "🇰🇷" },
+  { code: "TRY", name: "Turkish Lira", symbol: "₺", flag: "🇹🇷" },
+  { code: "RUB", name: "Russian Ruble", symbol: "₽", flag: "🇷🇺" },
+  { code: "UAH", name: "Ukrainian Hryvnia", symbol: "₴", flag: "🇺🇦" },
+  { code: "BRL", name: "Brazilian Real", symbol: "R$", flag: "🇧🇷" },
+  { code: "MXN", name: "Mexican Peso", symbol: "$", flag: "🇲🇽" },
+  { code: "ARS", name: "Argentine Peso", symbol: "$", flag: "🇦🇷" },
+  { code: "COP", name: "Colombian Peso", symbol: "$", flag: "🇨🇴" },
+  { code: "VES", name: "Venezuelan Bolívar", symbol: "Bs.S", flag: "🇻🇪" },
+  { code: "MAD", name: "Moroccan Dirham", symbol: "د.م.", flag: "🇲🇦" },
+  { code: "TZS", name: "Tanzanian Shilling", symbol: "TSh", flag: "🇹🇿" },
+  { code: "UGX", name: "Ugandan Shilling", symbol: "USh", flag: "🇺🇬" },
+  { code: "XOF", name: "West African CFA Franc", symbol: "Fr", flag: "🌍" },
+  { code: "XAF", name: "Central African CFA Franc", symbol: "Fr", flag: "🌍" },
+  { code: "GEL", name: "Georgian Lari", symbol: "₾", flag: "🇬🇪" },
+  { code: "KZT", name: "Kazakhstani Tenge", symbol: "₸", flag: "🇰🇿" },
+  { code: "UZS", name: "Uzbekistani Som", symbol: "so'm", flag: "🇺🇿" },
+  { code: "THB", name: "Thai Baht", symbol: "฿", flag: "🇹🇭" },
+  { code: "MYR", name: "Malaysian Ringgit", symbol: "RM", flag: "🇲🇾" },
+  { code: "SGD", name: "Singapore Dollar", symbol: "S$", flag: "🇸🇬" },
+  { code: "IDR", name: "Indonesian Rupiah", symbol: "Rp", flag: "🇮🇩" },
+  { code: "PHP", name: "Philippine Peso", symbol: "₱", flag: "🇵🇭" },
+  { code: "VND", name: "Vietnamese Dong", symbol: "₫", flag: "🇻🇳" },
+  { code: "HKD", name: "Hong Kong Dollar", symbol: "HK$", flag: "🇭🇰" },
+  { code: "TWD", name: "Taiwan Dollar", symbol: "NT$", flag: "🇹🇼" },
+  { code: "NZD", name: "New Zealand Dollar", symbol: "NZ$", flag: "🇳🇿" },
+  { code: "AUD", name: "Australian Dollar", symbol: "A$", flag: "🇦🇺" },
+  { code: "CAD", name: "Canadian Dollar", symbol: "C$", flag: "🇨🇦" },
+  { code: "CHF", name: "Swiss Franc", symbol: "Fr", flag: "🇨🇭" },
+  { code: "SEK", name: "Swedish Krona", symbol: "kr", flag: "🇸🇪" },
+  { code: "NOK", name: "Norwegian Krone", symbol: "kr", flag: "🇳🇴" },
+  { code: "DKK", name: "Danish Krone", symbol: "kr", flag: "🇩🇰" },
+  { code: "PLN", name: "Polish Zloty", symbol: "zł", flag: "🇵🇱" },
+  { code: "CZK", name: "Czech Koruna", symbol: "Kč", flag: "🇨🇿" },
+  { code: "HUF", name: "Hungarian Forint", symbol: "Ft", flag: "🇭🇺" },
+  { code: "RON", name: "Romanian Leu", symbol: "lei", flag: "🇷🇴" },
+  { code: "BGN", name: "Bulgarian Lev", symbol: "лв", flag: "🇧🇬" },
+  { code: "IQD", name: "Iraqi Dinar", symbol: "ع.د", flag: "🇮🇶" },
+  { code: "QAR", name: "Qatari Rial", symbol: "ر.ق", flag: "🇶🇦" },
+  { code: "KWD", name: "Kuwaiti Dinar", symbol: "د.ك", flag: "🇰🇼" },
+  { code: "BHD", name: "Bahraini Dinar", symbol: ".د.ب", flag: "🇧🇭" },
+  { code: "OMR", name: "Omani Rial", symbol: "ر.ع.", flag: "🇴🇲" },
+  { code: "JOD", name: "Jordanian Dinar", symbol: "د.ا", flag: "🇯🇴" },
+  { code: "LBP", name: "Lebanese Pound", symbol: "ل.ل", flag: "🇱🇧" },
+  { code: "SDG", name: "Sudanese Pound", symbol: "ج.س.", flag: "🇸🇩" },
+  { code: "DZD", name: "Algerian Dinar", symbol: "د.ج", flag: "🇩🇿" },
+  { code: "TND", name: "Tunisian Dinar", symbol: "د.ت", flag: "🇹🇳" },
+  { code: "LKR", name: "Sri Lankan Rupee", symbol: "Rs", flag: "🇱🇰" },
+  { code: "NPR", name: "Nepalese Rupee", symbol: "Rs", flag: "🇳🇵" },
+  { code: "MMK", name: "Myanmar Kyat", symbol: "K", flag: "🇲🇲" },
+  { code: "KHR", name: "Cambodian Riel", symbol: "៛", flag: "🇰🇭" },
+  { code: "LAK", name: "Laotian Kip", symbol: "₭", flag: "🇱🇦" },
+  { code: "MNT", name: "Mongolian Tugrik", symbol: "₮", flag: "🇲🇳" },
+  { code: "KGS", name: "Kyrgystani Som", symbol: "с", flag: "🇰🇬" },
+  { code: "TJS", name: "Tajikistani Som", symbol: "SM", flag: "🇹🇯" },
+  { code: "TMT", name: "Turkmenistani Manat", symbol: "T", flag: "🇹🇲" },
+  { code: "AZN", name: "Azerbaijani Manat", symbol: "₼", flag: "🇦🇿" },
+  { code: "GEL", name: "Georgian Lari", symbol: "₾", flag: "🇬🇪" },
+  { code: "MDL", name: "Moldovan Leu", symbol: "L", flag: "🇲🇩" },
+  { code: "BAM", name: "Bosnia Mark", symbol: "KM", flag: "🇧🇦" },
+  { code: "RSD", name: "Serbian Dinar", symbol: "дин", flag: "🇷🇸" },
+  { code: "MKD", name: "Macedonian Denar", symbol: "ден", flag: "🇲🇰" },
+  { code: "DOP", name: "Dominican Peso", symbol: "RD$", flag: "🇩🇴" },
+  { code: "GTQ", name: "Guatemalan Quetzal", symbol: "Q", flag: "🇬🇹" },
+  { code: "HNL", name: "Honduran Lempira", symbol: "L", flag: "🇭🇳" },
+  { code: "PEN", name: "Peruvian Sol", symbol: "S/.", flag: "🇵🇪" },
+  { code: "PYG", name: "Paraguayan Guarani", symbol: "₲", flag: "🇵🇾" },
+  { code: "UYU", name: "Uruguayan Peso", symbol: "$U", flag: "🇺🇾" },
+  { code: "BOB", name: "Bolivian Boliviano", symbol: "Bs.", flag: "🇧🇴" },
+  { code: "CLP", name: "Chilean Peso", symbol: "$", flag: "🇨🇱" },
+  { code: "ZMW", name: "Zambian Kwacha", symbol: "ZK", flag: "🇿🇲" },
+  { code: "MOP", name: "Macanese Pataca", symbol: "P", flag: "🇲🇴" },
+  { code: "BND", name: "Brunei Dollar", symbol: "B$", flag: "🇧🇳" },
+  { code: "ISK", name: "Icelandic Króna", symbol: "kr", flag: "🇮🇸" },
+  { code: "CRC", name: "Costa Rican Colón", symbol: "₡", flag: "🇨🇷" },
+  { code: "BYN", name: "Belarusian Ruble", symbol: "Br", flag: "🇧🇾" },
+];
+Currency selector UI — exactly like Binance P2P:
+tsx// Selected currency button shows flag + code:
+<button onClick={() => setShowCurrencyPicker(true)}
+  className="flex items-center gap-2 px-3 py-2 bg-secondary rounded-xl border border-border">
+  <span className="text-lg">{selectedCurrency.flag}</span>
+  <span className="font-bold text-sm">{selectedCurrency.code}</span>
+  <ChevronDown className="w-4 h-4 text-muted-foreground" />
+</button>
+
+// Currency picker modal/bottom sheet:
+{showCurrencyPicker && (
+  <div className="fixed inset-0 z-50 flex items-end">
+    <div className="w-full bg-background rounded-t-2xl p-4 max-h-[80vh] flex flex-col">
+      <h3 className="font-bold text-lg mb-3">Select Currency</h3>
+      
+      {/* Search */}
+      <input
+        placeholder="Search currency..."
+        value={search}
+        onChange={e => setSearch(e.target.value)}
+        className="w-full bg-secondary rounded-xl px-4 py-2.5 mb-3 text-sm outline-none"
+      />
+      
+      {/* Currency list */}
+      <div className="overflow-y-auto flex-1 space-y-1">
+        {FIAT_CURRENCIES
+          .filter(c => 
+            c.code.toLowerCase().includes(search.toLowerCase()) ||
+            c.name.toLowerCase().includes(search.toLowerCase())
+          )
+          .map(currency => (
+            <button
+              key={currency.code}
+              onClick={() => { setSelectedCurrency(currency); setShowCurrencyPicker(false); }}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors
+                ${selectedCurrency.code === currency.code 
+                  ? 'bg-primary/10 border border-primary/30' 
+                  : 'hover:bg-secondary'}`}
+            >
+              <span className="text-2xl">{currency.flag}</span>
+              <div className="flex-1 text-left">
+                <p className="font-bold text-sm">{currency.code}</p>
+                <p className="text-xs text-muted-foreground">{currency.name}</p>
+              </div>
+              <span className="text-sm text-muted-foreground font-mono">{currency.symbol}</span>
+              {selectedCurrency.code === currency.code && (
+                <Check className="w-4 h-4 text-primary" />
+              )}
+            </button>
+          ))
+        }
+      </div>
+    </div>
+  </div>
+)}

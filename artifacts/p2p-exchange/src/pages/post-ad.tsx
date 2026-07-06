@@ -1,13 +1,15 @@
 import { AppLayout } from "@/components/layout";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useLocation, useParams } from "wouter";
 import { useCreateAd, useUpdateAd, useGetAd, useListAds, getListAdsQueryKey } from "@workspace/api-client-react";
 import type { AdInput } from "@workspace/api-client-react/src/generated/api.schemas";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { Check } from "lucide-react";
+import { Check, ChevronDown, X } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Link } from "wouter";
+import { useAuth } from "@/hooks/use-auth";
+import { FIAT_CURRENCIES, NATIONALITY_TO_CURRENCY } from "@/constants/currencies";
 
 const EMPTY_AD: Partial<AdInput> = {
   type: "buy",
@@ -36,6 +38,7 @@ export default function PostAdPage() {
   const params = useParams<{ id?: string }>();
   const editId = params.id ? Number(params.id) : undefined;
   const isEdit = !!editId;
+  const { user } = useAuth();
 
   const [step, setStep] = useState(1);
   const [ad, setAd] = useState<Partial<AdInput>>(EMPTY_AD);
@@ -45,11 +48,30 @@ export default function PostAdPage() {
   const [step2Error, setStep2Error] = useState("");
   const [rawWalletAvailable, setRawWalletAvailable] = useState<number | null>(null);
 
+  const [showFiatDropdown, setShowFiatDropdown] = useState(false);
+  const [fiatSearch, setFiatSearch] = useState("");
+  const fiatDropdownRef = useRef<HTMLDivElement>(null);
+
+  const filteredCurrencies = FIAT_CURRENCIES.filter(c =>
+    c.code.toLowerCase().includes(fiatSearch.toLowerCase()) ||
+    c.name.toLowerCase().includes(fiatSearch.toLowerCase())
+  );
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (fiatDropdownRef.current && !fiatDropdownRef.current.contains(e.target as Node)) {
+        setShowFiatDropdown(false);
+        setFiatSearch("");
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
   const { data: existingAd, isLoading: loadingAd } = useGetAd(editId!, {
     query: { enabled: isEdit },
   });
 
-  // Fetch user's existing ads to enforce 1-per-type limit in the UI
   const { data: myAdsRaw, isLoading: loadingMyAds } = useListAds(
     { mine: true } as any,
     { query: { enabled: !isEdit } }
@@ -58,12 +80,19 @@ export default function PostAdPage() {
   const hasBuyAd = myAds.some((a: any) => a.type === "buy");
   const hasSellAd = myAds.some((a: any) => a.type === "sell");
 
-  // Auto-select the available type on first load (new ad only)
   useEffect(() => {
     if (isEdit || loadingMyAds) return;
     if (hasBuyAd && !hasSellAd) setAd(prev => ({ ...prev, type: "sell" }));
     else if (!hasBuyAd) setAd(prev => ({ ...prev, type: "buy" }));
   }, [loadingMyAds]);
+
+  useEffect(() => {
+    if (isEdit) return;
+    if (user?.country) {
+      const defaultFiat = NATIONALITY_TO_CURRENCY[user.country] ?? "ETB";
+      setAd(prev => ({ ...prev, fiat: defaultFiat }));
+    }
+  }, [user?.country, isEdit]);
 
   useEffect(() => {
     if (existingAd && !loaded) {
@@ -111,18 +140,11 @@ export default function PostAdPage() {
       .catch(() => {});
   }, []);
 
-  // When editing a sell ad, the USDT backing this ad is frozen in the wallet.
-  // The "effective ceiling" for the Total Amount field is:
-  //   wallet.availableBalance  (free, uncommitted)
-  // + ad.availableAmount       (frozen for this ad, not locked by active orders — can be reallocated)
-  // = maximum the seller can set this ad to without needing more USDT.
   const adAvailableAmount = isEdit && existingAd?.type === "sell"
     ? parseFloat(String((existingAd as any).availableAmount ?? 0))
     : 0;
   const availableBalance = rawWalletAvailable === null ? null : rawWalletAvailable + adAvailableAmount;
 
-  // Minimum the seller can set: only USDT locked in currently ACTIVE orders (unpaid/paid/appeal).
-  // Completed/cancelled orders are NOT locked — use the value the API computed from live orders.
   const adLockedInOrders = isEdit && existingAd
     ? ((existingAd as any).activeOrdersLocked ?? 0)
     : 0;
@@ -138,7 +160,6 @@ export default function PostAdPage() {
   const handleNext = () => {
     if (step === 1) {
       setStep1Error("");
-      // Sell ads require at least one saved payment method
       if (!loadingPaymentMethods && ad.type === "sell" && userPaymentMethods.length === 0) {
         setStep1Error("You must add a payment method to your profile before posting a sell ad.");
         return;
@@ -191,7 +212,6 @@ export default function PostAdPage() {
       createAd.mutate({ data: ad as AdInput }, {
         onSuccess: () => {
           toast({ title: "Ad posted successfully" });
-          // Invalidate both "my ads" list and marketplace (buy/sell) lists
           queryClient.invalidateQueries({ queryKey: getListAdsQueryKey({ mine: "true" } as any) });
           queryClient.invalidateQueries({ queryKey: getListAdsQueryKey({ type: "buy" } as any) });
           queryClient.invalidateQueries({ queryKey: getListAdsQueryKey({ type: "sell" } as any) });
@@ -224,7 +244,6 @@ export default function PostAdPage() {
     );
   }
 
-  // Block the form if user already has both a buy and sell ad
   if (!isEdit && !loadingMyAds && hasBuyAd && hasSellAd) {
     return (
       <AppLayout showNav={false}>
@@ -245,6 +264,8 @@ export default function PostAdPage() {
       </AppLayout>
     );
   }
+
+  const selectedFiatInfo = FIAT_CURRENCIES.find(c => c.code === ad.fiat) ?? { code: ad.fiat ?? "ETB", name: "", symbol: "" };
 
   return (
     <AppLayout showNav={false}>
@@ -294,14 +315,68 @@ export default function PostAdPage() {
                 <label className="text-xs text-muted-foreground">Asset</label>
                 <div className="p-3 bg-secondary rounded border border-border text-sm font-medium">USDT</div>
               </div>
-              <div className="flex-1 space-y-1">
-                <label className="text-xs text-muted-foreground">Fiat</label>
-                <div className="p-3 bg-secondary rounded border border-border text-sm font-medium">ETB</div>
+              <div className="flex-1 space-y-1 relative" ref={fiatDropdownRef}>
+                <label className="text-xs text-muted-foreground">Fiat Currency</label>
+                <button
+                  type="button"
+                  onClick={() => { setShowFiatDropdown(v => !v); setFiatSearch(""); }}
+                  className="w-full p-3 bg-card border border-border rounded text-sm font-medium text-left flex items-center justify-between hover:border-primary/50 transition-colors"
+                >
+                  <span className="flex items-center gap-2">
+                    <span className="font-bold">{selectedFiatInfo.code}</span>
+                    {selectedFiatInfo.symbol && (
+                      <span className="text-muted-foreground text-xs">{selectedFiatInfo.symbol}</span>
+                    )}
+                  </span>
+                  <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground transition-transform ${showFiatDropdown ? "rotate-180" : ""}`} />
+                </button>
+
+                {showFiatDropdown && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-card border border-border rounded-xl shadow-xl z-50 overflow-hidden">
+                    <div className="p-2 border-b border-border">
+                      <div className="flex items-center bg-secondary rounded-lg px-3 py-1.5 gap-2">
+                        <input
+                          autoFocus
+                          value={fiatSearch}
+                          onChange={e => setFiatSearch(e.target.value)}
+                          placeholder="Search currency…"
+                          className="flex-1 bg-transparent text-sm outline-none"
+                        />
+                        {fiatSearch && (
+                          <button onClick={() => setFiatSearch("")}>
+                            <X className="w-3.5 h-3.5 text-muted-foreground" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <div className="max-h-52 overflow-y-auto">
+                      {filteredCurrencies.length === 0 ? (
+                        <p className="px-4 py-3 text-sm text-muted-foreground">No currencies found</p>
+                      ) : (
+                        filteredCurrencies.map(c => (
+                          <button
+                            key={c.code}
+                            type="button"
+                            onClick={() => {
+                              setAd(a => ({ ...a, fiat: c.code }));
+                              setShowFiatDropdown(false);
+                              setFiatSearch("");
+                            }}
+                            className={`w-full px-4 py-2.5 text-left text-sm flex items-center justify-between transition-colors ${ad.fiat === c.code ? "bg-primary/10 text-primary" : "hover:bg-secondary text-foreground"}`}
+                          >
+                            <span><span className="font-semibold">{c.code}</span> <span className="text-muted-foreground text-xs">— {c.name}</span></span>
+                            <span className="text-muted-foreground text-xs font-mono">{c.symbol}</span>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">Price</label>
+              <label className="text-sm font-medium">Price <span className="text-xs text-muted-foreground font-normal">({selectedFiatInfo.code}/USDT)</span></label>
               <div className="flex items-center justify-between border border-border rounded-lg p-2 bg-card">
                 <button className="w-10 h-10 bg-secondary rounded flex items-center justify-center font-bold" onClick={() => setAd(a => ({ ...a, price: String(Math.max(0, Number(a.price) - 0.1).toFixed(2)) }))}>-</button>
                 <input type="number" value={ad.price} onChange={e => setAd({ ...ad, price: e.target.value })} className="bg-transparent text-center font-mono text-xl font-bold w-full outline-none" />

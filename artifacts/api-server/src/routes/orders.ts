@@ -80,9 +80,14 @@ async function formatOrder(order: any, viewerId?: number) {
 
   const { accountName, accountNumber } = await getSellerPaymentDetails(order.sellerId, order.paymentMethod);
 
+  const adForFiat = order.adId
+    ? await db.select({ fiat: adsTable.fiat }).from(adsTable).where(eq(adsTable.id, order.adId)).then(r => r[0])
+    : null;
+
   return {
     id: order.id,
     adId: order.adId,
+    fiat: adForFiat?.fiat ?? "ETB",
     buyerId: order.buyerId,
     sellerId: order.sellerId,
     buyerUsername: buyer?.username ?? "Unknown",

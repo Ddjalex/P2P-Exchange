@@ -7,6 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
+import { getFiatCurrency } from "@/constants/currencies";
 
 const PM_COLORS: Record<string, string> = {
   "Tele Birr": "bg-red-500",
@@ -52,6 +53,8 @@ export default function BuyConfirmPage() {
   const safeNum = (val: any) => { const n = Number(val); return isNaN(n) ? 0 : n; };
 
   const price = ad ? safeNum(ad.price) : 0;
+  const fiatCode = (ad as any)?.fiat ?? "ETB";
+  const fiatSymbol = getFiatCurrency(fiatCode).symbol;
   const minLimit = safeNum(ad?.minLimit);
   const maxLimit = safeNum(ad?.maxLimit);
   const available = safeNum(ad?.availableAmount);
@@ -253,7 +256,7 @@ export default function BuyConfirmPage() {
                 title="Tap to switch input currency"
                 className="px-2.5 py-1 rounded-md bg-primary/20 text-primary text-xs font-bold flex-shrink-0 border border-primary/30 hover:bg-primary/30 transition-colors"
               >
-                {resolvedInputMode}
+                {resolvedInputMode === "ETB" ? fiatCode : "USDT"}
               </button>
             )}
           </div>
@@ -266,7 +269,7 @@ export default function BuyConfirmPage() {
         <div className="bg-card border border-border rounded-xl p-4">
           <label className="text-xs text-muted-foreground block mb-2">
             {isSelling
-              ? "I will receive (ETB)"
+              ? `I will receive (${fiatCode})`
               : (resolvedInputMode === "ETB" ? "I will receive" : "I will pay")}
           </label>
 
@@ -278,29 +281,29 @@ export default function BuyConfirmPage() {
                   {netEtb > 0 ? netEtb.toFixed(2) : "0.00"}
                 </span>
                 <span className="px-2.5 py-1 rounded-md bg-secondary text-xs font-bold text-muted-foreground flex-shrink-0">
-                  ETB
+                  {fiatCode}
                 </span>
               </div>
               <p className="text-[11px] text-muted-foreground mb-3">
-                Price: {Number(ad.price).toLocaleString()} ETB/USDT
+                Price: {Number(ad.price).toLocaleString()} {fiatCode}/USDT
               </p>
               {etbNum > 0 && (
                 <div className="border-t border-border pt-3 space-y-1.5">
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground text-[11px]">Gross ETB</span>
-                    <span className="text-foreground text-[11px]">{etbNum.toFixed(2)} ETB</span>
+                    <span className="text-muted-foreground text-[11px]">Gross {fiatCode}</span>
+                    <span className="text-foreground text-[11px]">{etbNum.toFixed(2)} {fiatCode}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground text-[11px]">Maker fee ({makerFeePercent}%)</span>
-                    <span className="text-orange-400 text-[11px]">-{(etbNum * makerFeePercent / 100).toFixed(2)} ETB</span>
+                    <span className="text-orange-400 text-[11px]">-{(etbNum * makerFeePercent / 100).toFixed(2)} {fiatCode}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground text-[11px]">Taker fee ({takerFeePercent}%)</span>
-                    <span className="text-orange-400 text-[11px]">-{(etbNum * takerFeePercent / 100).toFixed(2)} ETB</span>
+                    <span className="text-orange-400 text-[11px]">-{(etbNum * takerFeePercent / 100).toFixed(2)} {fiatCode}</span>
                   </div>
                   <div className="flex justify-between border-t border-border pt-1.5 mt-1">
                     <span className="text-primary text-[12px] font-semibold">You receive</span>
-                    <span className="text-primary text-[12px] font-bold">{netEtb.toFixed(2)} ETB</span>
+                    <span className="text-primary text-[12px] font-bold">{netEtb.toFixed(2)} {fiatCode}</span>
                   </div>
                 </div>
               )}
@@ -317,7 +320,7 @@ export default function BuyConfirmPage() {
                 </span>
               </div>
               <p className="text-[11px] text-muted-foreground mb-3">
-                Price: {Number(ad.price).toLocaleString()} ETB/USDT
+                Price: {Number(ad.price).toLocaleString()} {fiatCode}/USDT
               </p>
               {usdtNum > 0 && (
                 <div className="border-t border-border pt-3 space-y-1.5">
@@ -341,16 +344,16 @@ export default function BuyConfirmPage() {
               )}
             </>
           ) : (
-            /* BUY side, USDT input → pay ETB */
+            /* BUY side, USDT input → pay fiat */
             <>
               <div className="flex items-center space-x-2">
                 <span className="flex-1 text-xl font-bold font-mono">{etbDisplay}</span>
                 <span className="px-2.5 py-1 rounded-md bg-secondary text-xs font-bold text-muted-foreground flex-shrink-0">
-                  ETB
+                  {fiatCode}
                 </span>
               </div>
               <p className="text-[11px] text-muted-foreground mt-1">
-                Price: {Number(ad.price).toLocaleString()} ETB/USDT
+                Price: {Number(ad.price).toLocaleString()} {fiatCode}/USDT
               </p>
             </>
           )}

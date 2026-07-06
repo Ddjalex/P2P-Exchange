@@ -65,7 +65,7 @@ async function formatAd(ad: any) {
 
 router.get("/", async (req, res) => {
   try {
-    const { type, payment_method, min_amount, max_amount, mine, status } = req.query as Record<string, string>;
+    const { type, payment_method, min_amount, max_amount, mine, status, fiat } = req.query as Record<string, string>;
     const userId = (req as any).userId;
 
     const conditions: any[] = [];
@@ -84,6 +84,10 @@ router.get("/", async (req, res) => {
 
     if (type && ["buy", "sell"].includes(type)) {
       conditions.push(eq(adsTable.type, type as any));
+    }
+
+    if (fiat && !mine) {
+      conditions.push(eq(adsTable.fiat, fiat));
     }
 
     // Buy tab sends type=sell (sellers offering USDT) → buyers want cheapest → asc
@@ -137,7 +141,7 @@ router.get("/", async (req, res) => {
 router.post("/", async (req, res) => {
   try {
     const {
-      type, priceType, price, floatingMargin, totalAmount, minLimit, maxLimit,
+      type, priceType, price, fiat, floatingMargin, totalAmount, minLimit, maxLimit,
       paymentMethods, paymentTimeLimit, autoReply, conditions, region, status
     } = req.body;
     const userId = (req as any).userId;
@@ -199,6 +203,8 @@ router.post("/", async (req, res) => {
       userId,
       type,
       priceType: priceType || "fixed",
+      asset: "USDT",
+      fiat: fiat || "ETB",
       price,
       floatingMargin: floatingMargin ?? null,
       totalAmount,
