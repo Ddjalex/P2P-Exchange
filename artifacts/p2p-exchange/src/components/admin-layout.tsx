@@ -196,7 +196,7 @@ export function AdminGuard({ children }: { children: React.ReactNode }) {
 
   React.useEffect(() => {
     if (!loading && !admin) navigate('/admin/login');
-  }, [admin, loading]);
+  }, [admin, loading, navigate]);
 
   if (loading) {
     return (

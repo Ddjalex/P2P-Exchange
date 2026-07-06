@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
-import { getAdminToken, setAdminToken, adminGet } from "@/lib/admin-api";
+import { getAdminToken, setAdminToken, adminGet, registerAdminLogoutHandler } from "@/lib/admin-api";
 
 interface AdminUser {
   email: string;
@@ -17,6 +17,23 @@ const Ctx = createContext<AdminAuthContext>({ admin: null, loading: true, login:
 export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
   const [admin, setAdmin] = useState<AdminUser | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const forceLogout = () => {
+    setAdminToken(null);
+    setAdmin(null);
+    // Trigger wouter navigation to /admin/login without stacking history
+    if (!window.location.pathname.startsWith('/admin/login')) {
+      window.history.replaceState(null, '', '/admin/login');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    }
+  };
+
+  // Register forceLogout so adminFetch can call it on 401 (clears both
+  // localStorage token AND in-memory admin state to prevent bounce loops).
+  useEffect(() => {
+    registerAdminLogoutHandler(forceLogout);
+    return () => registerAdminLogoutHandler(null);
+  }, []);
 
   useEffect(() => {
     const token = getAdminToken();
@@ -43,9 +60,7 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = () => {
-    setAdminToken(null);
-    setAdmin(null);
-    window.location.href = '/auth';
+    forceLogout();
   };
 
   return <Ctx.Provider value={{ admin, loading, login, logout }}>{children}</Ctx.Provider>;

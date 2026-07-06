@@ -1,5 +1,13 @@
 const BASE = '/api/admin';
 
+// Module-level logout handler registered by AdminAuthProvider so that
+// adminFetch can clear both localStorage token AND React context state on 401,
+// preventing the bounce loop: /admin/login -> /admin/dashboard -> 401 -> loop.
+let _adminLogoutHandler: (() => void) | null = null;
+export function registerAdminLogoutHandler(fn: (() => void) | null) {
+  _adminLogoutHandler = fn;
+}
+
 export function getAdminToken(): string | null {
   return localStorage.getItem('admin_token');
 }
@@ -20,8 +28,18 @@ export async function adminFetch(path: string, options: RequestInit = {}): Promi
     },
   });
   if (res.status === 401) {
-    setAdminToken(null);
-    window.location.href = '/auth';
+    // Call the full logout handler (clears token + React state) so
+    // /admin/login doesn't immediately redirect back to /admin/dashboard.
+    if (_adminLogoutHandler) {
+      _adminLogoutHandler();
+    } else {
+      // Fallback if provider hasn't mounted yet
+      setAdminToken(null);
+      if (!window.location.pathname.startsWith('/admin/login')) {
+        window.history.replaceState(null, '', '/admin/login');
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      }
+    }
     throw new Error('Unauthorized');
   }
   return res;

@@ -10,7 +10,11 @@ export default function AdminLoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  if (admin) { navigate("/admin/dashboard"); return null; }
+  // Move redirect to useEffect so it doesn't fire during render (which can
+  // cause a stale-state bounce loop after a 401-triggered logout).
+  useEffect(() => {
+    if (admin) navigate("/admin/dashboard");
+  }, [admin, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
