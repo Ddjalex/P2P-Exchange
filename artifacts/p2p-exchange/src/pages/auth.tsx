@@ -307,6 +307,13 @@ export default function AuthPage() {
   const loginPrefixSearchRef = useRef<HTMLInputElement>(null);
   const regPrefixSearchRef = useRef<HTMLInputElement>(null);
 
+  // Nationality inline dropdown (email registration)
+  const [regNatOpen, setRegNatOpen] = useState(false);
+  const [regNatSearch, setRegNatSearch] = useState("");
+  const [regNatDropRect, setRegNatDropRect] = useState<DOMRect | null>(null);
+  const regNatRef = useRef<HTMLDivElement>(null);
+  const regNatSearchRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
     if (!isLoading && user) {
       const params = new URLSearchParams(window.location.search);
@@ -332,6 +339,10 @@ export default function AuthPage() {
       if (regPrefixRef.current && !regPrefixRef.current.contains(e.target as Node)) {
         setRegPrefixOpen(false);
         setRegPrefixSearch("");
+      }
+      if (regNatRef.current && !regNatRef.current.contains(e.target as Node)) {
+        setRegNatOpen(false);
+        setRegNatSearch("");
       }
     }
     document.addEventListener("mousedown", handleClick);
@@ -815,32 +826,39 @@ export default function AuthPage() {
                     <label>Email Address</label>
                     <i className="fa-solid fa-envelope"></i>
                   </div>
-                  <div className="slide-element" style={{ width: "100%", marginBottom: 8 }}>
-                    <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                      Nationality <span style={{ color: "#ff4d4d" }}>*</span>
-                    </div>
-                    <select
-                      value={regNationality}
-                      onChange={e => setRegNationality(e.target.value)}
-                      required
-                      style={{
-                        width: "100%",
-                        background: "rgba(255,255,255,0.06)",
-                        border: "1px solid rgba(255,255,255,0.12)",
-                        borderRadius: 10,
-                        padding: "10px 14px",
-                        fontSize: 13,
-                        color: "#fff",
-                        outline: "none",
-                        cursor: "pointer",
-                        appearance: "auto",
+                  <div className="slide-element nat-wrap" ref={regNatRef}>
+                    <div className="nat-label">Nationality <span className="nat-required">*</span></div>
+                    <div
+                      className={`nat-trigger${regNatOpen ? " nat-open" : ""}`}
+                      onClick={() => {
+                        const rect = regNatRef.current?.getBoundingClientRect() ?? null;
+                        setRegNatDropRect(rect);
+                        setRegNatOpen(v => !v);
+                        setRegNatSearch("");
+                        if (!regNatOpen) setTimeout(() => regNatSearchRef.current?.focus(), 80);
                       }}
                     >
-                      <option value="" disabled>Select nationality…</option>
-                      {COUNTRIES.map(c => (
-                        <option key={c.code} value={c.code}>{c.flag} {c.name}</option>
-                      ))}
-                    </select>
+                      {(() => { const c = COUNTRIES.find(x => x.code === regNationality); return c ? <><img className="nat-flag" src={`https://flagcdn.com/20x15/${c.code.toLowerCase()}.png`} alt={c.name} /><span className="nat-name">{c.name}</span></> : <span className="nat-placeholder">Select nationality…</span>; })()}
+                      <i className="fa-solid fa-chevron-down nat-caret"></i>
+                    </div>
+                    {regNatOpen && regNatDropRect && createPortal(
+                      <div className="nat-dropdown" style={{ position: "fixed", top: regNatDropRect.bottom + 4, left: regNatDropRect.left, width: regNatDropRect.width, zIndex: 99999 }}>
+                        <div className="nat-search">
+                          <i className="fa-solid fa-magnifying-glass"></i>
+                          <input ref={regNatSearchRef} type="text" placeholder="Search country…" value={regNatSearch} onChange={e => setRegNatSearch(e.target.value)} />
+                        </div>
+                        <div className="nat-list">
+                          {COUNTRIES.filter(c => { const q = regNatSearch.toLowerCase(); return c.name.toLowerCase().includes(q) || c.code.toLowerCase().includes(q); }).map(c => (
+                            <div key={c.code} className={`nat-item${regNationality === c.code ? " nat-active" : ""}`} onClick={() => { setRegNationality(c.code); setRegNatOpen(false); setRegNatSearch(""); }}>
+                              <img className="nat-flag" src={`https://flagcdn.com/20x15/${c.code.toLowerCase()}.png`} alt={c.name} />
+                              <span className="nat-item-name">{c.name}</span>
+                              <span className="nat-item-code">{c.code}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>,
+                      document.body
+                    )}
                   </div>
                 </>
               )}
