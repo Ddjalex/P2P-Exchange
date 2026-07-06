@@ -144,7 +144,7 @@ export default function KycPage() {
   const [formData, setFormData] = useState({
     fullName: "",
     dateOfBirth: "",
-    nationality: "ET",
+    nationality: (me as any)?.country ?? "ET",
     idType: "national_id" as "national_id" | "passport" | "drivers_license",
   });
 
@@ -154,6 +154,12 @@ export default function KycPage() {
       if (prefill) setFormData(f => ({ ...f, fullName: prefill }));
     }
   }, [me]);
+
+  useEffect(() => {
+    if ((me as any)?.country) {
+      setFormData(f => ({ ...f, nationality: (me as any).country }));
+    }
+  }, [(me as any)?.country]);
 
   const frontUpload = useFileUpload();
   const backUpload = useFileUpload();
