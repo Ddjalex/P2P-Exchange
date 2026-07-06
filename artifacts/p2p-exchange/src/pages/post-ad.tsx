@@ -5,7 +5,7 @@ import { useCreateAd, useUpdateAd, useGetAd, useListAds, getListAdsQueryKey } fr
 import type { AdInput } from "@workspace/api-client-react/src/generated/api.schemas";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { Check, ChevronDown, X } from "lucide-react";
+import { Check, ChevronDown, X, Search } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Link } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
@@ -48,25 +48,13 @@ export default function PostAdPage() {
   const [step2Error, setStep2Error] = useState("");
   const [rawWalletAvailable, setRawWalletAvailable] = useState<number | null>(null);
 
-  const [showFiatDropdown, setShowFiatDropdown] = useState(false);
+  const [showFiatPicker, setShowFiatPicker] = useState(false);
   const [fiatSearch, setFiatSearch] = useState("");
-  const fiatDropdownRef = useRef<HTMLDivElement>(null);
 
   const filteredCurrencies = FIAT_CURRENCIES.filter(c =>
     c.code.toLowerCase().includes(fiatSearch.toLowerCase()) ||
     c.name.toLowerCase().includes(fiatSearch.toLowerCase())
   );
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (fiatDropdownRef.current && !fiatDropdownRef.current.contains(e.target as Node)) {
-        setShowFiatDropdown(false);
-        setFiatSearch("");
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
 
   const { data: existingAd, isLoading: loadingAd } = useGetAd(editId!, {
     query: { enabled: isEdit },
@@ -265,7 +253,7 @@ export default function PostAdPage() {
     );
   }
 
-  const selectedFiatInfo = FIAT_CURRENCIES.find(c => c.code === ad.fiat) ?? { code: ad.fiat ?? "ETB", name: "", symbol: "" };
+  const selectedFiatInfo = FIAT_CURRENCIES.find(c => c.code === ad.fiat) ?? { code: ad.fiat ?? "ETB", name: "", symbol: "", flag: "🌐" };
 
   return (
     <AppLayout showNav={false}>
@@ -315,63 +303,20 @@ export default function PostAdPage() {
                 <label className="text-xs text-muted-foreground">Asset</label>
                 <div className="p-3 bg-secondary rounded border border-border text-sm font-medium">USDT</div>
               </div>
-              <div className="flex-1 space-y-1 relative" ref={fiatDropdownRef}>
+              <div className="flex-1 space-y-1">
                 <label className="text-xs text-muted-foreground">Fiat Currency</label>
                 <button
                   type="button"
-                  onClick={() => { setShowFiatDropdown(v => !v); setFiatSearch(""); }}
+                  onClick={() => { setShowFiatPicker(true); setFiatSearch(""); }}
                   className="w-full p-3 bg-card border border-border rounded text-sm font-medium text-left flex items-center justify-between hover:border-primary/50 transition-colors"
                 >
                   <span className="flex items-center gap-2">
+                    <span className="text-base leading-none">{selectedFiatInfo.flag}</span>
                     <span className="font-bold">{selectedFiatInfo.code}</span>
-                    {selectedFiatInfo.symbol && (
-                      <span className="text-muted-foreground text-xs">{selectedFiatInfo.symbol}</span>
-                    )}
+                    <span className="text-muted-foreground text-xs">{selectedFiatInfo.symbol}</span>
                   </span>
-                  <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground transition-transform ${showFiatDropdown ? "rotate-180" : ""}`} />
+                  <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
                 </button>
-
-                {showFiatDropdown && (
-                  <div className="absolute top-full left-0 right-0 mt-1 bg-card border border-border rounded-xl shadow-xl z-50 overflow-hidden">
-                    <div className="p-2 border-b border-border">
-                      <div className="flex items-center bg-secondary rounded-lg px-3 py-1.5 gap-2">
-                        <input
-                          autoFocus
-                          value={fiatSearch}
-                          onChange={e => setFiatSearch(e.target.value)}
-                          placeholder="Search currency…"
-                          className="flex-1 bg-transparent text-sm outline-none"
-                        />
-                        {fiatSearch && (
-                          <button onClick={() => setFiatSearch("")}>
-                            <X className="w-3.5 h-3.5 text-muted-foreground" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                    <div className="max-h-52 overflow-y-auto">
-                      {filteredCurrencies.length === 0 ? (
-                        <p className="px-4 py-3 text-sm text-muted-foreground">No currencies found</p>
-                      ) : (
-                        filteredCurrencies.map(c => (
-                          <button
-                            key={c.code}
-                            type="button"
-                            onClick={() => {
-                              setAd(a => ({ ...a, fiat: c.code }));
-                              setShowFiatDropdown(false);
-                              setFiatSearch("");
-                            }}
-                            className={`w-full px-4 py-2.5 text-left text-sm flex items-center justify-between transition-colors ${ad.fiat === c.code ? "bg-primary/10 text-primary" : "hover:bg-secondary text-foreground"}`}
-                          >
-                            <span><span className="font-semibold">{c.code}</span> <span className="text-muted-foreground text-xs">— {c.name}</span></span>
-                            <span className="text-muted-foreground text-xs font-mono">{c.symbol}</span>
-                          </button>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                )}
               </div>
             </div>
 
@@ -535,6 +480,60 @@ export default function PostAdPage() {
           )}
         </div>
       </div>
+
+      {/* Currency picker bottom sheet */}
+      {showFiatPicker && (
+        <div className="fixed inset-0 z-[100] flex items-end" onClick={() => { setShowFiatPicker(false); setFiatSearch(""); }}>
+          <div className="w-full bg-background rounded-t-2xl sm:max-w-[480px] sm:mx-auto max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 pt-5 pb-3">
+              <h3 className="font-bold text-lg">Select Currency</h3>
+              <button onClick={() => { setShowFiatPicker(false); setFiatSearch(""); }}>
+                <X className="w-5 h-5 text-muted-foreground" />
+              </button>
+            </div>
+            <div className="px-4 pb-3">
+              <div className="flex items-center bg-secondary rounded-xl px-4 py-2.5 gap-2">
+                <Search className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                <input
+                  autoFocus
+                  value={fiatSearch}
+                  onChange={e => setFiatSearch(e.target.value)}
+                  placeholder="Search currency..."
+                  className="flex-1 bg-transparent text-sm outline-none"
+                />
+                {fiatSearch && (
+                  <button onClick={() => setFiatSearch("")}><X className="w-3.5 h-3.5 text-muted-foreground" /></button>
+                )}
+              </div>
+            </div>
+            <div className="overflow-y-auto flex-1 px-3 pb-6 space-y-0.5">
+              {filteredCurrencies.map(c => (
+                <button
+                  key={c.code}
+                  type="button"
+                  onClick={() => {
+                    setAd(a => ({ ...a, fiat: c.code }));
+                    setShowFiatPicker(false);
+                    setFiatSearch("");
+                  }}
+                  className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-colors ${ad.fiat === c.code ? "bg-primary/10 border border-primary/30" : "hover:bg-secondary"}`}
+                >
+                  <span className="text-2xl leading-none w-8 text-center">{c.flag}</span>
+                  <div className="flex-1 text-left">
+                    <p className="font-bold text-sm">{c.code}</p>
+                    <p className="text-xs text-muted-foreground">{c.name}</p>
+                  </div>
+                  <span className="text-sm text-muted-foreground font-mono">{c.symbol}</span>
+                  {ad.fiat === c.code && <Check className="w-4 h-4 text-primary flex-shrink-0" />}
+                </button>
+              ))}
+              {filteredCurrencies.length === 0 && (
+                <p className="text-center text-sm text-muted-foreground py-8">No currencies found</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </AppLayout>
   );
 }

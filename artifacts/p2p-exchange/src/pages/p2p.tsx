@@ -1,5 +1,5 @@
 import { AppLayout } from "@/components/layout";
-import { Bell, Filter, ShieldCheck, Lock, X, ChevronDown, RefreshCw } from "lucide-react";
+import { Bell, Filter, ShieldCheck, X, ChevronDown, RefreshCw, Check, Search } from "lucide-react";
 import { useListAds } from "@workspace/api-client-react";
 import { useState, useRef, useEffect, useMemo } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -29,7 +29,7 @@ export default function P2PPage() {
 
   const defaultFiat = user?.country ? (NATIONALITY_TO_CURRENCY[user.country] ?? "ETB") : "ETB";
   const [selectedFiat, setSelectedFiat] = useState(defaultFiat);
-  const [showFiatDropdown, setShowFiatDropdown] = useState(false);
+  const [showFiatPicker, setShowFiatPicker] = useState(false);
   const [fiatSearch, setFiatSearch] = useState("");
 
   useEffect(() => {
@@ -48,16 +48,11 @@ export default function P2PPage() {
   const [showAmountModal, setShowAmountModal] = useState(false);
   const [showPaymentDropdown, setShowPaymentDropdown] = useState(false);
   const paymentRef = useRef<HTMLDivElement>(null);
-  const fiatRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (paymentRef.current && !paymentRef.current.contains(e.target as Node)) {
         setShowPaymentDropdown(false);
-      }
-      if (fiatRef.current && !fiatRef.current.contains(e.target as Node)) {
-        setShowFiatDropdown(false);
-        setFiatSearch("");
       }
     };
     document.addEventListener("mousedown", handler);
@@ -107,41 +102,14 @@ export default function P2PPage() {
         </div>
         <div className="flex items-center space-x-3">
           {/* Currency selector */}
-          <div ref={fiatRef} className="relative">
-            <button
-              onClick={() => { setShowFiatDropdown(v => !v); setFiatSearch(""); }}
-              className="flex items-center space-x-1 px-2 py-1 rounded bg-secondary text-xs font-semibold hover:bg-secondary/80 transition-colors"
-            >
-              <Lock className="w-3 h-3 text-muted-foreground" />
-              <span>{selectedFiat}</span>
-              <ChevronDown className={`w-3 h-3 text-muted-foreground transition-transform ${showFiatDropdown ? "rotate-180" : ""}`} />
-            </button>
-            {showFiatDropdown && (
-              <div className="absolute top-full right-0 mt-1 w-64 bg-card border border-border rounded-xl shadow-xl z-50 overflow-hidden">
-                <div className="p-2 border-b border-border">
-                  <input
-                    autoFocus
-                    value={fiatSearch}
-                    onChange={e => setFiatSearch(e.target.value)}
-                    placeholder="Search currency…"
-                    className="w-full bg-secondary rounded-lg px-3 py-1.5 text-sm outline-none"
-                  />
-                </div>
-                <div className="max-h-52 overflow-y-auto">
-                  {filteredFiatCurrencies.map(c => (
-                    <button
-                      key={c.code}
-                      onClick={() => { setSelectedFiat(c.code); setShowFiatDropdown(false); setFiatSearch(""); setAppliedAmount(""); setAmountInput(""); }}
-                      className={`w-full px-4 py-2 text-left text-sm flex items-center justify-between transition-colors ${selectedFiat === c.code ? "bg-primary/10 text-primary" : "hover:bg-secondary text-foreground"}`}
-                    >
-                      <span><span className="font-semibold">{c.code}</span> <span className="text-muted-foreground text-xs">— {c.name}</span></span>
-                      <span className="text-muted-foreground text-xs font-mono">{c.symbol}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
+          <button
+            onClick={() => { setShowFiatPicker(true); setFiatSearch(""); }}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-secondary border border-border hover:bg-secondary/80 transition-colors"
+          >
+            <span className="text-base leading-none">{fiatInfo.flag}</span>
+            <span className="font-bold text-sm">{selectedFiat}</span>
+            <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
+          </button>
           <Bell className="w-5 h-5 text-muted-foreground" />
         </div>
       </header>
@@ -248,6 +216,61 @@ export default function P2PPage() {
               >
                 Apply
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Currency picker bottom sheet */}
+      {showFiatPicker && (
+        <div className="fixed inset-0 z-50 flex items-end" onClick={() => { setShowFiatPicker(false); setFiatSearch(""); }}>
+          <div className="w-full bg-background rounded-t-2xl sm:max-w-[480px] sm:mx-auto max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 pt-5 pb-3">
+              <h3 className="font-bold text-lg">Select Currency</h3>
+              <button onClick={() => { setShowFiatPicker(false); setFiatSearch(""); }}>
+                <X className="w-5 h-5 text-muted-foreground" />
+              </button>
+            </div>
+            <div className="px-4 pb-3">
+              <div className="flex items-center bg-secondary rounded-xl px-4 py-2.5 gap-2">
+                <Search className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                <input
+                  autoFocus
+                  value={fiatSearch}
+                  onChange={e => setFiatSearch(e.target.value)}
+                  placeholder="Search currency..."
+                  className="flex-1 bg-transparent text-sm outline-none"
+                />
+                {fiatSearch && (
+                  <button onClick={() => setFiatSearch("")}><X className="w-3.5 h-3.5 text-muted-foreground" /></button>
+                )}
+              </div>
+            </div>
+            <div className="overflow-y-auto flex-1 px-3 pb-6 space-y-0.5">
+              {filteredFiatCurrencies.map(c => (
+                <button
+                  key={c.code}
+                  onClick={() => {
+                    setSelectedFiat(c.code);
+                    setShowFiatPicker(false);
+                    setFiatSearch("");
+                    setAppliedAmount("");
+                    setAmountInput("");
+                  }}
+                  className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-colors ${selectedFiat === c.code ? "bg-primary/10 border border-primary/30" : "hover:bg-secondary"}`}
+                >
+                  <span className="text-2xl leading-none w-8 text-center">{c.flag}</span>
+                  <div className="flex-1 text-left">
+                    <p className="font-bold text-sm">{c.code}</p>
+                    <p className="text-xs text-muted-foreground">{c.name}</p>
+                  </div>
+                  <span className="text-sm text-muted-foreground font-mono">{c.symbol}</span>
+                  {selectedFiat === c.code && <Check className="w-4 h-4 text-primary flex-shrink-0" />}
+                </button>
+              ))}
+              {filteredFiatCurrencies.length === 0 && (
+                <p className="text-center text-sm text-muted-foreground py-8">No currencies found</p>
+              )}
             </div>
           </div>
         </div>
