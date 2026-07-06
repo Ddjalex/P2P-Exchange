@@ -263,6 +263,7 @@ export default function AuthPage() {
   const [regPwd, setRegPwd] = useState("");
   const [showRegPwd, setShowRegPwd] = useState(false);
   const [regRef, setRegRef] = useState("");
+  const [regNationality, setRegNationality] = useState("ET");
   const [regPhoneErr, setRegPhoneErr] = useState(false);
   const [regErr, setRegErr] = useState("");
   const [regLoading, setRegLoading] = useState(false);
@@ -482,6 +483,7 @@ export default function AuthPage() {
     setRegPhoneErr(false);
     const identifier = regType === "phone" ? regPhone : regEmail;
     if (!identifier || !regPwd || !regUser) { setRegErr("Please fill in all required fields"); return; }
+    if (regType === "email" && !regNationality) { setRegErr("Please select your nationality"); return; }
     if (regPwd.length < 6) { setRegErr("Password must be at least 6 characters"); return; }
     if (regUser.length < 3) { setRegErr("Username must be at least 3 characters"); return; }
 
@@ -543,7 +545,7 @@ export default function AuthPage() {
           identifier: regType === "phone" ? regPhone : regEmail,
           password: regPwd,
           username: regUser,
-          country: regC.code,
+          country: regType === "phone" ? regC.code : regNationality,
           dialCode: regC.dial,
           type: regType,
           referral: regRef || undefined,
@@ -807,11 +809,40 @@ export default function AuthPage() {
               )}
 
               {regType === "email" && (
-                <div className="field-wrapper slide-element">
-                  <input type="email" value={regEmail} onChange={e => setRegEmail(e.target.value)} required />
-                  <label>Email Address</label>
-                  <i className="fa-solid fa-envelope"></i>
-                </div>
+                <>
+                  <div className="field-wrapper slide-element">
+                    <input type="email" value={regEmail} onChange={e => setRegEmail(e.target.value)} required />
+                    <label>Email Address</label>
+                    <i className="fa-solid fa-envelope"></i>
+                  </div>
+                  <div className="slide-element" style={{ width: "100%", marginBottom: 8 }}>
+                    <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                      Nationality <span style={{ color: "#ff4d4d" }}>*</span>
+                    </div>
+                    <select
+                      value={regNationality}
+                      onChange={e => setRegNationality(e.target.value)}
+                      required
+                      style={{
+                        width: "100%",
+                        background: "rgba(255,255,255,0.06)",
+                        border: "1px solid rgba(255,255,255,0.12)",
+                        borderRadius: 10,
+                        padding: "10px 14px",
+                        fontSize: 13,
+                        color: "#fff",
+                        outline: "none",
+                        cursor: "pointer",
+                        appearance: "auto",
+                      }}
+                    >
+                      <option value="" disabled>Select nationality…</option>
+                      {COUNTRIES.map(c => (
+                        <option key={c.code} value={c.code}>{c.flag} {c.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </>
               )}
 
               <div className="field-wrapper slide-element">
@@ -852,7 +883,7 @@ export default function AuthPage() {
                 <button
                   className="submit-btn"
                   onClick={doSendCode}
-                  disabled={otpLoading || (!!TURNSTILE_SITE_KEY && !regTurnstileToken && !regTurnstileError)}
+                  disabled={otpLoading || (regType === "email" && !regNationality) || (!!TURNSTILE_SITE_KEY && !regTurnstileToken && !regTurnstileError)}
                 >
                   {otpLoading ? "Sending code…" : (regType === "phone" ? "📱 Send SMS Code" : "✉️ Send Email Code")}
                 </button>
