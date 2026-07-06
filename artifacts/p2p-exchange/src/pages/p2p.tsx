@@ -5,7 +5,7 @@ import { useState, useRef, useEffect, useMemo } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
-import { FIAT_CURRENCIES, NATIONALITY_TO_CURRENCY, getFiatCurrency, getCurrencyColor, getCurrencySymbolDisplay } from "@/constants/currencies";
+import { FIAT_CURRENCIES, NATIONALITY_TO_CURRENCY, getFiatCurrency, getFlagUrl } from "@/constants/currencies";
 
 const PAYMENT_OPTIONS = [
   "All",
@@ -106,6 +106,9 @@ export default function P2PPage() {
             onClick={() => { setShowFiatPicker(true); setFiatSearch(""); }}
             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-secondary border border-border hover:bg-secondary/80 transition-colors"
           >
+            {getFlagUrl(fiatInfo.flag, "sm") && (
+              <img src={getFlagUrl(fiatInfo.flag, "sm")} alt={selectedFiat} className="w-5 h-3.5 object-cover rounded-sm flex-shrink-0" />
+            )}
             <span className="font-bold text-sm">{selectedFiat}</span>
             <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
           </button>
@@ -258,13 +261,12 @@ export default function P2PPage() {
                   }}
                   className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-colors ${selectedFiat === c.code ? "bg-primary/10 border border-primary/30" : "hover:bg-secondary"}`}
                 >
-                  <div
-                    className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
-                    style={{ backgroundColor: getCurrencyColor(c.code) }}
-                  >
-                    <span className="font-bold text-white leading-none" style={{ fontSize: getCurrencySymbolDisplay(c.symbol).length === 1 ? 18 : getCurrencySymbolDisplay(c.symbol).length <= 2 ? 13 : 10 }}>
-                      {getCurrencySymbolDisplay(c.symbol)}
-                    </span>
+                  <div className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0 bg-secondary flex items-center justify-center">
+                    {getFlagUrl(c.flag) ? (
+                      <img src={getFlagUrl(c.flag)} alt={c.code} className="w-full h-full object-cover" />
+                    ) : (
+                      <span className="text-xs text-muted-foreground">{c.code.slice(0,2)}</span>
+                    )}
                   </div>
                   <div className="flex-1 text-left">
                     <p className="font-bold text-sm">{c.code}</p>

@@ -99,20 +99,17 @@ export function getFiatCurrency(code: string) {
   return FIAT_CURRENCIES.find(c => c.code === code) ?? { code, name: code, symbol: code, flag: "🌐" };
 }
 
-const BADGE_COLORS = [
-  "#3b82f6","#22c55e","#ef4444","#f97316","#8b5cf6",
-  "#14b8a6","#ec4899","#eab308","#06b6d4","#84cc16",
-  "#6366f1","#10b981","#f43f5e","#a855f7","#0ea5e9",
-];
-
-export function getCurrencyColor(code: string): string {
-  let hash = 0;
-  for (let i = 0; i < code.length; i++) hash = code.charCodeAt(i) + ((hash << 5) - hash);
-  return BADGE_COLORS[Math.abs(hash) % BADGE_COLORS.length];
-}
-
-export function getCurrencySymbolDisplay(symbol: string): string {
-  return symbol.length <= 4 ? symbol : symbol.slice(0, 3);
+export function getFlagUrl(flag: string, size: "sm" | "md" = "md"): string {
+  try {
+    const points = [...flag].map(c => c.codePointAt(0)!);
+    if (points.length === 2 && points[0] >= 0x1F1E6 && points[0] <= 0x1F1FF) {
+      const cc = points.map(p => String.fromCharCode(p - 0x1F1E6 + 65)).join("").toLowerCase();
+      return size === "sm"
+        ? `https://flagcdn.com/24x18/${cc}.png`
+        : `https://flagcdn.com/w40/${cc}.png`;
+    }
+  } catch {}
+  return "";
 }
 
 export const NATIONALITY_TO_CURRENCY: Record<string, string> = {
