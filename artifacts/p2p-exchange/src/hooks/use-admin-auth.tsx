@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
+import { useLocation } from "wouter";
 import { getAdminToken, setAdminToken, adminGet, registerAdminLogoutHandler } from "@/lib/admin-api";
 
 interface AdminUser {
@@ -17,15 +18,12 @@ const Ctx = createContext<AdminAuthContext>({ admin: null, loading: true, login:
 export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
   const [admin, setAdmin] = useState<AdminUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const [, setLocation] = useLocation();
 
   const forceLogout = () => {
     setAdminToken(null);
     setAdmin(null);
-    // Trigger wouter navigation to /auth without stacking history
-    if (!window.location.pathname.startsWith('/auth')) {
-      window.history.replaceState(null, '', '/auth');
-      window.dispatchEvent(new PopStateEvent('popstate'));
-    }
+    setLocation("/auth");
   };
 
   // Register forceLogout so adminFetch can call it on 401 (clears both
