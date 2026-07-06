@@ -56,6 +56,7 @@ function formatUser(user: any) {
     addressVerified: user.addressVerified ?? false,
     addressVerifiedAt: user.addressVerifiedAt ?? null,
     createdAt: user.createdAt,
+    withdrawalSuspended: user.withdrawalSuspended ?? false,
   };
 }
 

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { AdminLayout, AdminGuard } from "@/components/admin-layout";
 import { adminGet, adminPost, adminPut, adminDelete } from "@/lib/admin-api";
 import { Link, useLocation } from "wouter";
-import { ArrowLeft, ShieldCheck, CheckCircle, Trash2, Flag, X, PlusCircle, MinusCircle } from "lucide-react";
+import { ArrowLeft, ShieldCheck, CheckCircle, Trash2, Flag, X, PlusCircle, MinusCircle, Lock } from "lucide-react";
 
 const KYC_COLORS: Record<string, string> = {
   verified: "bg-success/20 text-success", pending: "bg-warning/20 text-warning",
@@ -332,6 +332,17 @@ export default function AdminUserDetailPage({ params }: { params: { id: string }
                     Suspend Account
                   </button>
                 )}
+                <button
+                  onClick={() => action("withdrawal-suspend", { suspended: !user.withdrawalSuspended })}
+                  className={`w-full py-2 px-3 rounded-lg text-sm font-medium transition-colors flex items-center justify-center space-x-2 border ${
+                    user.withdrawalSuspended
+                      ? 'bg-success/10 text-success border-success/30 hover:bg-success/20'
+                      : 'bg-destructive/10 text-destructive border-destructive/20 hover:bg-destructive/20'
+                  }`}
+                >
+                  <Lock className="w-4 h-4" />
+                  <span>{user.withdrawalSuspended ? '✓ Unsuspend Withdrawal' : '🔒 Suspend Withdrawal'}</span>
+                </button>
                 <button onClick={deleteUser}
                   className="w-full py-2 px-3 bg-destructive/10 text-destructive border border-destructive/20 rounded-lg text-sm font-medium hover:bg-destructive/20 transition-colors flex items-center justify-center space-x-2">
                   <Trash2 className="w-4 h-4" /><span>Delete Account</span>

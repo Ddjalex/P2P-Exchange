@@ -1,0 +1,84 @@
+Feature: Per-user withdrawal suspend system
+Add a new withdrawal-specific suspend feature that is separate from the existing account freeze/ban system.
+1. Database — add new column:
+sqlALTER TABLE users ADD COLUMN withdrawal_suspended BOOLEAN DEFAULT false;
+ALTER TABLE users ADD COLUMN withdrawal_suspend_reason TEXT DEFAULT NULL;
+2. API — block withdrawal if suspended:
+In the withdrawal endpoint (POST /api/wallet/withdraw), add this check BEFORE processing:
+typescript// Check withdrawal suspension
+const user = await db.select().from(usersTable).where(eq(usersTable.id, req.userId)).then(r => r[0]);
+
+if (user.withdrawalSuspended) {
+  // Do NOT reveal reason — just silently lock
+  return res.status(403).json({ 
+    error: "withdrawal_suspended",
+    message: "Withdrawals are currently unavailable for your account."
+  });
+}
+3. Frontend — show locked screen instead of withdraw modal:
+In wallet.tsx, when user clicks Withdraw button, check if withdrawal is suspended first:
+tsxconst { data: me } = useGetMe();
+const isWithdrawalSuspended = (me as any)?.withdrawalSuspended ?? false;
+
+// In GET /api/auth/me response, include withdrawalSuspended field
+
+// When Withdraw button clicked:
+const handleWithdrawClick = () => {
+  if (isWithdrawalSuspended) {
+    setShowWithdrawSuspended(true); // show locked screen
+    return;
+  }
+  setShowWithdraw(true);
+};
+
+// Locked screen — no reason shown:
+{showWithdrawSuspended && createPortal(
+  <div className="fixed inset-0 z-[100] flex items-end justify-center" onClick={() => setShowWithdrawSuspended(false)}>
+    <div className="absolute inset-0 bg-black/60" />
+    <div className="relative w-full max-w-[480px] bg-card rounded-t-2xl p-8 flex flex-col items-center text-center space-y-4"
+      onClick={e => e.stopPropagation()}>
+      <div className="w-16 h-16 rounded-full bg-destructive/10 flex items-center justify-center">
+        <Lock className="w-8 h-8 text-destructive" />
+      </div>
+      <h3 className="font-bold text-lg">Withdrawals Unavailable</h3>
+      <p className="text-sm text-muted-foreground">
+        Withdrawals are currently unavailable for your account. 
+        Please contact support for assistance.
+      </p>
+      <button 
+        onClick={() => setShowWithdrawSuspended(false)}
+        className="w-full py-4 bg-secondary text-foreground font-bold rounded-xl">
+        Close
+      </button>
+    </div>
+  </div>,
+  document.body
+)}
+4. Admin — add withdrawal suspend toggle in user management:
+In admin user detail page, add a toggle:
+tsx// In admin users page, add button:
+<button
+  onClick={() => toggleWithdrawalSuspend(user.id, !user.withdrawalSuspended)}
+  className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${
+    user.withdrawalSuspended 
+      ? 'bg-success/10 text-success border border-success/30' 
+      : 'bg-destructive/10 text-destructive border border-destructive/30'
+  }`}
+>
+  {user.withdrawalSuspended ? '✓ Unsuspend Withdrawal' : '🔒 Suspend Withdrawal'}
+</button>
+
+// Admin API endpoint:
+// PUT /api/admin/users/:id/withdrawal-suspend
+// body: { suspended: boolean, reason?: string }
+5. Include in /api/auth/me response:
+typescript// Add to me endpoint response:
+withdrawalSuspended: user.withdrawalSuspended ?? false,
+Key rules:
+
+❌ Do NOT show the reason to the user
+❌ Do NOT say the word "suspended" to the user
+✅ Just show a locked screen saying "Withdrawals Unavailable"
+✅ Admin can toggle on/off per user
+✅ Completely separate from account freeze/ban
+✅ User can still trade, deposit, transfer normally

@@ -1,6 +1,6 @@
 import { useAuth } from "@/hooks/use-auth";
 import { AppLayout } from "@/components/layout";
-import { Settings, Eye, EyeOff, ArrowDownToLine, ArrowUpFromLine, X, Copy, Check, Loader2, AlertCircle, Send } from "lucide-react";
+import { Settings, Eye, EyeOff, ArrowDownToLine, ArrowUpFromLine, X, Copy, Check, Loader2, AlertCircle, Send, Lock } from "lucide-react";
 import { NotificationBell } from "@/components/notification-bell";
 import { Link, useLocation } from "wouter";
 import { useGetWallet, getGetWalletQueryKey } from "@workspace/api-client-react";
@@ -411,6 +411,7 @@ export default function WalletPage() {
   const [, setLocation] = useLocation();
   const [showDeposit, setShowDeposit] = useState(false);
   const [showWithdraw, setShowWithdraw] = useState(false);
+  const [showWithdrawSuspended, setShowWithdrawSuspended] = useState(false);
   const queryClient = useQueryClient();
 
   const handleDepositSuccess = () => {
@@ -529,7 +530,13 @@ export default function WalletPage() {
             </Button>
             <Button
               className="flex-1 bg-secondary text-secondary-foreground hover:bg-secondary/80"
-              onClick={() => setShowWithdraw(true)}
+              onClick={() => {
+                if (user?.withdrawalSuspended) {
+                  setShowWithdrawSuspended(true);
+                } else {
+                  setShowWithdraw(true);
+                }
+              }}
             >
               <ArrowUpFromLine className="w-4 h-4 mr-2" />
               Withdraw
@@ -588,6 +595,34 @@ export default function WalletPage() {
           onClose={() => setShowWithdraw(false)}
           onSuccess={handleWithdrawSuccess}
         />
+      )}
+      {showWithdrawSuspended && createPortal(
+        <div
+          className="fixed inset-0 z-[100] flex items-end justify-center"
+          onClick={() => setShowWithdrawSuspended(false)}
+        >
+          <div className="absolute inset-0 bg-black/60" />
+          <div
+            className="relative w-full max-w-[480px] bg-card rounded-t-2xl p-8 flex flex-col items-center text-center space-y-4"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="w-16 h-16 rounded-full bg-destructive/10 flex items-center justify-center">
+              <Lock className="w-8 h-8 text-destructive" />
+            </div>
+            <h3 className="font-bold text-lg">Withdrawals Unavailable</h3>
+            <p className="text-sm text-muted-foreground">
+              Withdrawals are currently unavailable for your account.
+              Please contact support for assistance.
+            </p>
+            <button
+              onClick={() => setShowWithdrawSuspended(false)}
+              className="w-full py-4 bg-secondary text-foreground font-bold rounded-xl"
+            >
+              Close
+            </button>
+          </div>
+        </div>,
+        document.body
       )}
     </AppLayout>
   );

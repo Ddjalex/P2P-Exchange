@@ -12,6 +12,7 @@ interface AuthUser {
   kycStatus: string;
   isMerchant: boolean;
   createdAt: string;
+  withdrawalSuspended?: boolean;
 }
 
 interface AuthContextType {

@@ -219,6 +219,16 @@ router.post("/withdraw", async (req, res) => {
     if (!address || !amount) return res.status(400).json({ error: "Invalid input" });
     if (network && network !== "BEP20") return res.status(400).json({ error: "Only BEP20 (BSC) withdrawals are supported" });
 
+    // Check withdrawal suspension (separate from account freeze/ban)
+    const userRecord = await db.select({ withdrawalSuspended: usersTable.withdrawalSuspended })
+      .from(usersTable).where(eq(usersTable.id, userId)).then(r => r[0]);
+    if (userRecord?.withdrawalSuspended) {
+      return res.status(403).json({
+        error: "Withdrawals are currently unavailable for your account.",
+        code: "withdrawal_suspended",
+      });
+    }
+
     // Validate BSC address format
     if (!/^0x[0-9a-fA-F]{40}$/.test(address)) {
       return res.status(400).json({ error: "Invalid BEP20 address format. Must start with 0x and be 42 characters." });

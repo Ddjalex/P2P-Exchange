@@ -29,6 +29,8 @@ export const usersTable = pgTable("users", {
   flagCount: integer("flag_count").notNull().default(0),
   cancellationCount7d: integer("cancellation_count_7d").notNull().default(0),
   appealLossCount30d: integer("appeal_loss_count_30d").notNull().default(0),
+  withdrawalSuspended: boolean("withdrawal_suspended").notNull().default(false),
+  withdrawalSuspendReason: text("withdrawal_suspend_reason"),
   passwordHash: text("password_hash"),
   failedLoginAttempts: integer("failed_login_attempts").notNull().default(0),
   lockedUntil: timestamp("locked_until"),

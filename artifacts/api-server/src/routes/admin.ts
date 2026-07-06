@@ -248,6 +248,23 @@ router.put("/users/:id/unsuspend", adminAuth, async (req: any, res) => {
   }
 });
 
+router.put("/users/:id/withdrawal-suspend", adminAuth, async (req: any, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id) || id <= 0) return res.status(400).json({ error: "Invalid user ID" });
+    const { suspended, reason } = req.body ?? {};
+    await db.update(usersTable).set({
+      withdrawalSuspended: !!suspended,
+      withdrawalSuspendReason: suspended ? (reason ?? null) : null,
+    }).where(eq(usersTable.id, id));
+    await log(req.adminEmail, suspended ? "withdrawal_suspend" : "withdrawal_unsuspend", "user", id, reason);
+    res.json({ success: true });
+  } catch (err) {
+    req.log.error({ err }, "Admin withdrawal suspend failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 router.put("/users/:id/flag", adminAuth, async (req: any, res) => {
   try {
     const id = parseInt(req.params.id);

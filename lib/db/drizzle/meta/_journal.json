@@ -15,6 +15,13 @@
       "when": 1783060282255,
       "tag": "0001_graceful_marvel_boy",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1783360390306,
+      "tag": "0002_withdrawal_suspend",
+      "breakpoints": true
     }
   ]
 }
