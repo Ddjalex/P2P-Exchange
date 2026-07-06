@@ -5,7 +5,7 @@ import { useState, useRef, useEffect, useMemo } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
-import { FIAT_CURRENCIES, NATIONALITY_TO_CURRENCY, getFiatCurrency, getFlagUrl } from "@/constants/currencies";
+import { FIAT_CURRENCIES, NATIONALITY_TO_CURRENCY, getFiatCurrency } from "@/constants/currencies";
 
 const PAYMENT_OPTIONS = [
   "All",
@@ -106,7 +106,6 @@ export default function P2PPage() {
             onClick={() => { setShowFiatPicker(true); setFiatSearch(""); }}
             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-secondary border border-border hover:bg-secondary/80 transition-colors"
           >
-            <span className="text-base leading-none">{fiatInfo.flag}</span>
             <span className="font-bold text-sm">{selectedFiat}</span>
             <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
           </button>
@@ -259,7 +258,9 @@ export default function P2PPage() {
                   }}
                   className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-colors ${selectedFiat === c.code ? "bg-primary/10 border border-primary/30" : "hover:bg-secondary"}`}
                 >
-                  <span className="text-2xl leading-none w-8 text-center">{c.flag}</span>
+                  <div className="w-9 h-9 rounded-full bg-secondary flex items-center justify-center flex-shrink-0">
+                    <span className="text-xs font-bold text-foreground">{c.symbol.length <= 3 ? c.symbol : c.code.slice(0,2)}</span>
+                  </div>
                   <div className="flex-1 text-left">
                     <p className="font-bold text-sm">{c.code}</p>
                     <p className="text-xs text-muted-foreground">{c.name}</p>

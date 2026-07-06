@@ -9,7 +9,7 @@ import { Check, ChevronDown, X, Search } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Link } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
-import { FIAT_CURRENCIES, NATIONALITY_TO_CURRENCY, getFlagUrl } from "@/constants/currencies";
+import { FIAT_CURRENCIES, NATIONALITY_TO_CURRENCY } from "@/constants/currencies";
 
 const EMPTY_AD: Partial<AdInput> = {
   type: "buy",
@@ -311,7 +311,6 @@ export default function PostAdPage() {
                   className="w-full p-3 bg-card border border-border rounded text-sm font-medium text-left flex items-center justify-between hover:border-primary/50 transition-colors"
                 >
                   <span className="flex items-center gap-2">
-                    <span className="text-base leading-none">{selectedFiatInfo.flag}</span>
                     <span className="font-bold">{selectedFiatInfo.code}</span>
                     <span className="text-muted-foreground text-xs">{selectedFiatInfo.symbol}</span>
                   </span>
@@ -518,7 +517,9 @@ export default function PostAdPage() {
                   }}
                   className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-colors ${ad.fiat === c.code ? "bg-primary/10 border border-primary/30" : "hover:bg-secondary"}`}
                 >
-                  <span className="text-2xl leading-none w-8 text-center">{c.flag}</span>
+                  <div className="w-9 h-9 rounded-full bg-secondary flex items-center justify-center flex-shrink-0">
+                    <span className="text-xs font-bold text-foreground">{c.symbol.length <= 3 ? c.symbol : c.code.slice(0,2)}</span>
+                  </div>
                   <div className="flex-1 text-left">
                     <p className="font-bold text-sm">{c.code}</p>
                     <p className="text-xs text-muted-foreground">{c.name}</p>
