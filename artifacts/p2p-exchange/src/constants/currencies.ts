@@ -99,6 +99,17 @@ export function getFiatCurrency(code: string) {
   return FIAT_CURRENCIES.find(c => c.code === code) ?? { code, name: code, symbol: code, flag: "🌐" };
 }
 
+export function getFlagUrl(flag: string): string {
+  try {
+    const points = [...flag].map(c => c.codePointAt(0)!);
+    if (points.length === 2 && points[0] >= 0x1F1E6 && points[0] <= 0x1F1FF) {
+      const cc = points.map(p => String.fromCharCode(p - 0x1F1E6 + 65)).join("").toLowerCase();
+      return `https://flagcdn.com/24x18/${cc}.png`;
+    }
+  } catch {}
+  return "";
+}
+
 export const NATIONALITY_TO_CURRENCY: Record<string, string> = {
   AE: "AED", AR: "ARS", AU: "AUD", AZ: "AZN",
   BA: "BAM", BD: "BDT", BG: "BGN", BH: "BHD",

@@ -9,7 +9,7 @@ import { Check, ChevronDown, X, Search } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Link } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
-import { FIAT_CURRENCIES, NATIONALITY_TO_CURRENCY } from "@/constants/currencies";
+import { FIAT_CURRENCIES, NATIONALITY_TO_CURRENCY, getFlagUrl } from "@/constants/currencies";
 
 const EMPTY_AD: Partial<AdInput> = {
   type: "buy",

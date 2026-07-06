@@ -5,7 +5,7 @@ import { useState, useRef, useEffect, useMemo } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
-import { FIAT_CURRENCIES, NATIONALITY_TO_CURRENCY, getFiatCurrency } from "@/constants/currencies";
+import { FIAT_CURRENCIES, NATIONALITY_TO_CURRENCY, getFiatCurrency, getFlagUrl } from "@/constants/currencies";
 
 const PAYMENT_OPTIONS = [
   "All",
