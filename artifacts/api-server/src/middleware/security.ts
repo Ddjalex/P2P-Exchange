@@ -111,14 +111,6 @@ export async function checkWithdrawalAddress(userId: number, address: string): P
   ).limit(1);
 
   if (previous.length === 0) {
-    const user = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1).then(r => r[0]);
-    if (!user) return { allowed: false, reason: "User not found" };
-
-    const accountAgeHours = (Date.now() - new Date(user.createdAt).getTime()) / (1000 * 60 * 60);
-    if (accountAgeHours < 24) {
-      return { allowed: false, reason: "New accounts must wait 24 hours before withdrawing to a new address." };
-    }
-
     PushNotify.adminAlert(
       `ℹ️ First withdrawal to new address — User: ${userId}, Address: ${address}`
     ).catch(() => {});
