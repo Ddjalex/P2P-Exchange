@@ -1,7 +1,7 @@
 import { AppLayout } from "@/components/layout";
 import {
   ArrowLeft, Trash2, Plus, CreditCard, Smartphone, Building2,
-  Wallet, ChevronDown, Search, Globe, X,
+  Wallet, Search,
 } from "lucide-react";
 import {
   useListPaymentMethods, useAddPaymentMethod, useDeletePaymentMethod,
@@ -62,10 +62,8 @@ function AddPaymentMethodForm({ userCountry, kycName, onClose, onSaved }: AddFor
   const { toast } = useToast();
   const addMethod = useAddPaymentMethod();
 
-  // Country selection — default to user's own country
-  const [selectedCountry, setSelectedCountry] = useState(userCountry || "ET");
-  const [showCountryPicker, setShowCountryPicker] = useState(false);
-  const [countrySearch, setCountrySearch] = useState("");
+  // Lock country to user's registration country
+  const selectedCountry = userCountry || "ET";
 
   // Method selection within the country
   const [selectedMethodId, setSelectedMethodId] = useState<string | null>(null);
@@ -81,13 +79,6 @@ function AddPaymentMethodForm({ userCountry, kycName, onClose, onSaved }: AddFor
 
   const allMethods = available?.methods ?? [];
 
-  // Reset method when country changes
-  useEffect(() => {
-    setSelectedMethodId(null);
-    setAccountNumber("");
-    setMethodSearch("");
-  }, [selectedCountry]);
-
   // Auto-select first method when list loads
   useEffect(() => {
     if (allMethods.length > 0 && !selectedMethodId) {
@@ -101,13 +92,6 @@ function AddPaymentMethodForm({ userCountry, kycName, onClose, onSaved }: AddFor
   }, [allMethods, methodSearch]);
 
   const selectedMethod = allMethods.find(m => m.id === selectedMethodId);
-
-  const filteredCountries = useMemo(() => {
-    const q = countrySearch.toLowerCase();
-    return q ? SUPPORTED_COUNTRIES.filter(c =>
-      c.name.toLowerCase().includes(q) || c.code.toLowerCase().includes(q)
-    ) : SUPPORTED_COUNTRIES;
-  }, [countrySearch]);
 
   // Group methods by type
   const grouped = useMemo(() => {
@@ -151,8 +135,6 @@ function AddPaymentMethodForm({ userCountry, kycName, onClose, onSaved }: AddFor
     });
   };
 
-  const currentCountryInfo = SUPPORTED_COUNTRIES.find(c => c.code === selectedCountry);
-
   return (
     <AppLayout showNav={false}>
       <header className="flex items-center space-x-3 p-4 border-b border-border sticky top-0 bg-background z-10">
@@ -163,56 +145,6 @@ function AddPaymentMethodForm({ userCountry, kycName, onClose, onSaved }: AddFor
       </header>
 
       <form onSubmit={handleSubmit} className="p-4 space-y-5 pb-24">
-        {/* Country selector */}
-        <div className="space-y-2">
-          <label className="text-sm font-medium flex items-center gap-2">
-            <Globe className="w-4 h-4 text-primary" /> Country
-          </label>
-          <button
-            type="button"
-            onClick={() => setShowCountryPicker(true)}
-            className="w-full flex items-center justify-between p-3 bg-card border border-border rounded-lg text-sm hover:border-primary transition-colors"
-          >
-            <span className="font-medium">{currentCountryInfo?.name ?? selectedCountry}</span>
-            <ChevronDown className="w-4 h-4 text-muted-foreground" />
-          </button>
-        </div>
-
-        {/* Country picker modal */}
-        {showCountryPicker && (
-          <div className="fixed inset-0 bg-background/95 backdrop-blur-sm z-[9999] flex flex-col">
-            <div className="flex items-center gap-3 p-4 border-b">
-              <button type="button" onClick={() => { setShowCountryPicker(false); setCountrySearch(""); }}>
-                <X className="w-5 h-5" />
-              </button>
-              <div className="flex-1 relative">
-                <Search className="absolute left-3 top-2.5 w-4 h-4 text-muted-foreground" />
-                <input
-                  autoFocus
-                  type="text"
-                  placeholder="Search countries..."
-                  value={countrySearch}
-                  onChange={e => setCountrySearch(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 bg-secondary border border-border rounded-lg text-sm outline-none"
-                />
-              </div>
-            </div>
-            <div className="overflow-y-auto flex-1">
-              {filteredCountries.map(c => (
-                <button
-                  key={c.code}
-                  type="button"
-                  onClick={() => { setSelectedCountry(c.code); setShowCountryPicker(false); setCountrySearch(""); }}
-                  className={`w-full flex items-center justify-between px-4 py-3 text-sm hover:bg-secondary transition-colors border-b border-border/50 ${selectedCountry === c.code ? "text-primary font-semibold bg-primary/5" : ""}`}
-                >
-                  <span>{c.name}</span>
-                  <span className="text-xs text-muted-foreground font-mono">{c.code} · {c.currency}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
         {/* Method search + selector */}
         <div className="space-y-2">
           <label className="text-sm font-medium">Bank / Provider</label>
