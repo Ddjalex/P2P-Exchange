@@ -28,12 +28,15 @@ export default function P2PPage() {
   const [selectedPayment, setSelectedPayment] = useState("All");
 
   const defaultFiat = user?.country ? (NATIONALITY_TO_CURRENCY[user.country] ?? "ETB") : "ETB";
-  const [selectedFiat, setSelectedFiat] = useState(defaultFiat);
+  const [selectedFiat, setSelectedFiat] = useState<string>(() => {
+    return localStorage.getItem("p2p_selected_fiat") || defaultFiat;
+  });
   const [showFiatPicker, setShowFiatPicker] = useState(false);
   const [fiatSearch, setFiatSearch] = useState("");
 
+  // Seed localStorage with country default only on first-ever visit (no saved preference)
   useEffect(() => {
-    if (user?.country) {
+    if (user?.country && !localStorage.getItem("p2p_selected_fiat")) {
       setSelectedFiat(NATIONALITY_TO_CURRENCY[user.country] ?? "ETB");
     }
   }, [user?.country]);
@@ -254,6 +257,7 @@ export default function P2PPage() {
                   key={c.code}
                   onClick={() => {
                     setSelectedFiat(c.code);
+                    localStorage.setItem("p2p_selected_fiat", c.code);
                     setShowFiatPicker(false);
                     setFiatSearch("");
                     setAppliedAmount("");
