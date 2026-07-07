@@ -350,7 +350,7 @@ router.post("/register", async (req, res) => {
       uid: finalUid,
       email,
       phone: phone ?? undefined,
-      country: country || "Ethiopia",
+      country: country || "ET",
       passwordHash,
       kycStatus: "none",
       isMerchant: false,

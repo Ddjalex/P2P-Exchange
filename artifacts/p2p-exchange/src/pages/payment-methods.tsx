@@ -1,87 +1,149 @@
 import { AppLayout } from "@/components/layout";
-import { ArrowLeft, Trash2, Plus, CreditCard, Smartphone, Building2, ShieldCheck } from "lucide-react";
-import { useListPaymentMethods, useAddPaymentMethod, useDeletePaymentMethod, getListPaymentMethodsQueryKey, useGetKycStatus } from "@workspace/api-client-react";
-import { useState, useEffect } from "react";
+import {
+  ArrowLeft, Trash2, Plus, CreditCard, Smartphone, Building2,
+  Wallet, ChevronDown, Search, Globe, X,
+} from "lucide-react";
+import {
+  useListPaymentMethods, useAddPaymentMethod, useDeletePaymentMethod,
+  getListPaymentMethodsQueryKey, useGetKycStatus, useGetMe,
+} from "@workspace/api-client-react";
+import { useState, useEffect, useMemo } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Link } from "wouter";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import type { PaymentMethodInput } from "@workspace/api-client-react/src/generated/api.schemas";
+import { SUPPORTED_COUNTRIES } from "@/constants/payment-countries";
 
-type FieldType = "phone" | "account";
+// ── Types ────────────────────────────────────────────────────────────────────
 
-interface Provider {
+interface PaymentMethodDef {
+  id: string;
   name: string;
-  label: string;
-  fieldType: FieldType;
-  accountPlaceholder: string;
+  fieldType: "bank" | "mobile" | "wallet" | "card";
   accountLabel: string;
-  inputType: string;
-  namePlaceholder: string;
+  accountPlaceholder: string;
+  inputType: "text" | "tel" | "number";
 }
 
-const PROVIDERS: Provider[] = [
-  { name: "CBE",       label: "Commercial Bank of Ethiopia (CBE)", fieldType: "account", accountLabel: "Account Number", accountPlaceholder: "13-digit account number",         inputType: "text", namePlaceholder: "Exact name on account" },
-  { name: "Telebirr",  label: "Telebirr (Ethio Telecom)",          fieldType: "phone",   accountLabel: "Phone Number",   accountPlaceholder: "09XX XXX XXXX",                   inputType: "tel",  namePlaceholder: "Registered full name" },
-  { name: "Awash",     label: "Awash Bank",                        fieldType: "account", accountLabel: "Account Number", accountPlaceholder: "Account number",                  inputType: "text", namePlaceholder: "Exact name on account" },
-  { name: "Dashen",    label: "Dashen Bank",                       fieldType: "account", accountLabel: "Account Number", accountPlaceholder: "Account number",                  inputType: "text", namePlaceholder: "Exact name on account" },
-  { name: "Abyssinia", label: "Bank of Abyssinia",                 fieldType: "account", accountLabel: "Account Number", accountPlaceholder: "Account number",                  inputType: "text", namePlaceholder: "Exact name on account" },
-  { name: "HelloCash", label: "HelloCash",                         fieldType: "phone",   accountLabel: "Phone Number",   accountPlaceholder: "09XX XXX XXXX",                   inputType: "tel",  namePlaceholder: "Registered full name" },
-  { name: "MPesa",     label: "M-Pesa (Safaricom)",                fieldType: "phone",   accountLabel: "Phone Number",   accountPlaceholder: "09XX XXX XXXX",                   inputType: "tel",  namePlaceholder: "Registered full name" },
-  { name: "CBEBirr",   label: "CBEBirr",                           fieldType: "phone",   accountLabel: "Phone Number",   accountPlaceholder: "09XX XXX XXXX",                   inputType: "tel",  namePlaceholder: "Registered full name" },
-  { name: "Amhara",    label: "Amhara Bank",                       fieldType: "account", accountLabel: "Account Number", accountPlaceholder: "Account number",                  inputType: "text", namePlaceholder: "Exact name on account" },
-  { name: "Wegagen",   label: "Wegagen Bank",                      fieldType: "account", accountLabel: "Account Number", accountPlaceholder: "Account number",                  inputType: "text", namePlaceholder: "Exact name on account" },
-  { name: "Coopbank",  label: "Cooperative Bank of Oromia",        fieldType: "account", accountLabel: "Account Number", accountPlaceholder: "Account number",                  inputType: "text", namePlaceholder: "Exact name on account" },
-  { name: "Hibret",    label: "Hibret Bank (United Bank)",         fieldType: "account", accountLabel: "Account Number", accountPlaceholder: "Account number",                  inputType: "text", namePlaceholder: "Exact name on account" },
-  { name: "Nib",       label: "Nib International Bank",            fieldType: "account", accountLabel: "Account Number", accountPlaceholder: "Account number",                  inputType: "text", namePlaceholder: "Exact name on account" },
-  { name: "Oromia",    label: "Oromia Bank",                       fieldType: "account", accountLabel: "Account Number", accountPlaceholder: "Account number",                  inputType: "text", namePlaceholder: "Exact name on account" },
-];
+interface AvailableMethodsResponse {
+  country: string;
+  methods: PaymentMethodDef[];
+}
 
-const getProvider = (name: string) =>
-  PROVIDERS.find(p => p.name === name) ?? PROVIDERS[0];
+// ── API helpers ───────────────────────────────────────────────────────────────
 
-export default function PaymentMethodsPage() {
-  const { data: methods, isLoading } = useListPaymentMethods();
-  const { data: kycData } = useGetKycStatus();
-  const [showAdd, setShowAdd] = useState(false);
-  const [newMethod, setNewMethod] = useState<Partial<PaymentMethodInput>>({
-    type: "CBE",
-    accountName: "",
-    accountNumber: "",
-  } as any);
+async function fetchAvailableMethods(country: string): Promise<AvailableMethodsResponse> {
+  const token = localStorage.getItem("p2p_token");
+  const res = await fetch(`/api/profile/payment-methods/available?country=${country}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) throw new Error("Failed to fetch available methods");
+  return res.json();
+}
 
-  const kycName = kycData?.fullName ?? "";
+// ── Icon helper ───────────────────────────────────────────────────────────────
 
-  useEffect(() => {
-    if (kycName) {
-      setNewMethod(prev => ({ ...prev, accountName: kycName }));
-    }
-  }, [kycName]);
+function MethodIcon({ fieldType }: { fieldType: string }) {
+  if (fieldType === "mobile") return <Smartphone className="w-4 h-4 text-primary" />;
+  if (fieldType === "wallet") return <Wallet className="w-4 h-4 text-primary" />;
+  return <Building2 className="w-4 h-4 text-primary" />;
+}
 
-  const addMethod = useAddPaymentMethod();
-  const deleteMethod = useDeletePaymentMethod();
-  const queryClient = useQueryClient();
+// ── Add form ──────────────────────────────────────────────────────────────────
+
+interface AddFormProps {
+  userCountry: string;
+  kycName: string;
+  onClose: () => void;
+  onSaved: () => void;
+}
+
+function AddPaymentMethodForm({ userCountry, kycName, onClose, onSaved }: AddFormProps) {
   const { toast } = useToast();
+  const addMethod = useAddPaymentMethod();
 
-  const selectedProvider = getProvider(newMethod.type as string);
+  // Country selection — default to user's own country
+  const [selectedCountry, setSelectedCountry] = useState(userCountry || "ET");
+  const [showCountryPicker, setShowCountryPicker] = useState(false);
+  const [countrySearch, setCountrySearch] = useState("");
 
-  const handleProviderChange = (name: string) => {
-    setNewMethod(prev => ({ type: name as any, accountName: prev.accountName, accountNumber: "" } as any));
-  };
+  // Method selection within the country
+  const [selectedMethodId, setSelectedMethodId] = useState<string | null>(null);
+  const [accountName, setAccountName] = useState(kycName || "");
+  const [accountNumber, setAccountNumber] = useState("");
+  const [methodSearch, setMethodSearch] = useState("");
 
-  const handleAdd = (e: React.FormEvent) => {
+  const { data: available, isLoading: loadingMethods } = useQuery({
+    queryKey: ["available-payment-methods", selectedCountry],
+    queryFn: () => fetchAvailableMethods(selectedCountry),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const allMethods = available?.methods ?? [];
+
+  // Reset method when country changes
+  useEffect(() => {
+    setSelectedMethodId(null);
+    setAccountNumber("");
+    setMethodSearch("");
+  }, [selectedCountry]);
+
+  // Auto-select first method when list loads
+  useEffect(() => {
+    if (allMethods.length > 0 && !selectedMethodId) {
+      setSelectedMethodId(allMethods[0].id);
+    }
+  }, [allMethods.length]);
+
+  const filteredMethods = useMemo(() => {
+    const q = methodSearch.toLowerCase();
+    return q ? allMethods.filter(m => m.name.toLowerCase().includes(q)) : allMethods;
+  }, [allMethods, methodSearch]);
+
+  const selectedMethod = allMethods.find(m => m.id === selectedMethodId);
+
+  const filteredCountries = useMemo(() => {
+    const q = countrySearch.toLowerCase();
+    return q ? SUPPORTED_COUNTRIES.filter(c =>
+      c.name.toLowerCase().includes(q) || c.code.toLowerCase().includes(q)
+    ) : SUPPORTED_COUNTRIES;
+  }, [countrySearch]);
+
+  // Group methods by type
+  const grouped = useMemo(() => {
+    const banks = filteredMethods.filter(m => m.fieldType === "bank");
+    const mobiles = filteredMethods.filter(m => m.fieldType === "mobile");
+    const wallets = filteredMethods.filter(m => m.fieldType === "wallet" || m.fieldType === "card");
+    return { banks, mobiles, wallets };
+  }, [filteredMethods]);
+
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const finalName = kycName || newMethod.accountName?.trim();
-    if (!finalName || !newMethod.accountNumber?.trim()) {
-      toast({ title: "Please fill all fields", variant: "destructive" });
+    if (!selectedMethod) {
+      toast({ title: "Please select a payment method", variant: "destructive" });
       return;
     }
-    addMethod.mutate({ data: { ...newMethod, accountName: finalName } as PaymentMethodInput }, {
+    const finalName = kycName || accountName.trim();
+    if (!finalName) {
+      toast({ title: "Please enter your account name", variant: "destructive" });
+      return;
+    }
+    if (!accountNumber.trim()) {
+      toast({ title: `Please enter your ${selectedMethod.accountLabel.toLowerCase()}`, variant: "destructive" });
+      return;
+    }
+
+    addMethod.mutate({
+      data: {
+        type: selectedMethod.id,
+        accountName: finalName,
+        accountNumber: accountNumber.trim(),
+        country: selectedCountry,
+      } as any
+    }, {
       onSuccess: () => {
         toast({ title: "Payment method added" });
-        setShowAdd(false);
-        setNewMethod({ type: "CBE", accountName: "", accountNumber: "" } as any);
-        queryClient.invalidateQueries({ queryKey: getListPaymentMethodsQueryKey() });
+        onSaved();
       },
       onError: () => {
         toast({ title: "Failed to add payment method", variant: "destructive" });
@@ -89,11 +151,230 @@ export default function PaymentMethodsPage() {
     });
   };
 
+  const currentCountryInfo = SUPPORTED_COUNTRIES.find(c => c.code === selectedCountry);
+
+  return (
+    <AppLayout showNav={false}>
+      <header className="flex items-center space-x-3 p-4 border-b border-border sticky top-0 bg-background z-10">
+        <button onClick={onClose} className="text-muted-foreground">
+          <ArrowLeft className="w-5 h-5" />
+        </button>
+        <h1 className="font-bold">Add Payment Method</h1>
+      </header>
+
+      <form onSubmit={handleSubmit} className="p-4 space-y-5 pb-24">
+        {/* Country selector */}
+        <div className="space-y-2">
+          <label className="text-sm font-medium flex items-center gap-2">
+            <Globe className="w-4 h-4 text-primary" /> Country
+          </label>
+          <button
+            type="button"
+            onClick={() => setShowCountryPicker(true)}
+            className="w-full flex items-center justify-between p-3 bg-card border border-border rounded-lg text-sm hover:border-primary transition-colors"
+          >
+            <span className="font-medium">{currentCountryInfo?.name ?? selectedCountry}</span>
+            <ChevronDown className="w-4 h-4 text-muted-foreground" />
+          </button>
+        </div>
+
+        {/* Country picker modal */}
+        {showCountryPicker && (
+          <div className="fixed inset-0 bg-background/95 backdrop-blur-sm z-50 flex flex-col">
+            <div className="flex items-center gap-3 p-4 border-b">
+              <button type="button" onClick={() => { setShowCountryPicker(false); setCountrySearch(""); }}>
+                <X className="w-5 h-5" />
+              </button>
+              <div className="flex-1 relative">
+                <Search className="absolute left-3 top-2.5 w-4 h-4 text-muted-foreground" />
+                <input
+                  autoFocus
+                  type="text"
+                  placeholder="Search countries..."
+                  value={countrySearch}
+                  onChange={e => setCountrySearch(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 bg-secondary border border-border rounded-lg text-sm outline-none"
+                />
+              </div>
+            </div>
+            <div className="overflow-y-auto flex-1">
+              {filteredCountries.map(c => (
+                <button
+                  key={c.code}
+                  type="button"
+                  onClick={() => { setSelectedCountry(c.code); setShowCountryPicker(false); setCountrySearch(""); }}
+                  className={`w-full flex items-center justify-between px-4 py-3 text-sm hover:bg-secondary transition-colors border-b border-border/50 ${selectedCountry === c.code ? "text-primary font-semibold bg-primary/5" : ""}`}
+                >
+                  <span>{c.name}</span>
+                  <span className="text-xs text-muted-foreground font-mono">{c.code} · {c.currency}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Method search + selector */}
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Bank / Provider</label>
+
+          <div className="relative mb-2">
+            <Search className="absolute left-3 top-2.5 w-4 h-4 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="Search methods..."
+              value={methodSearch}
+              onChange={e => setMethodSearch(e.target.value)}
+              className="w-full pl-9 pr-3 py-2 bg-secondary border border-border rounded-lg text-sm outline-none focus:border-primary"
+            />
+          </div>
+
+          {loadingMethods ? (
+            <div className="space-y-1">
+              {[1, 2, 3].map(i => <Skeleton key={i} className="h-10 w-full rounded-lg" />)}
+            </div>
+          ) : (
+            <div className="border border-border rounded-lg overflow-hidden max-h-64 overflow-y-auto">
+              {grouped.mobiles.length > 0 && (
+                <>
+                  <div className="px-3 py-1.5 bg-secondary/60 text-xs text-muted-foreground font-semibold uppercase tracking-wide">
+                    Mobile Money / Wallets
+                  </div>
+                  {[...grouped.mobiles, ...grouped.wallets].map(m => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => setSelectedMethodId(m.id)}
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm text-left hover:bg-secondary transition-colors border-b border-border/40 last:border-0 ${selectedMethodId === m.id ? "bg-primary/10 text-primary font-semibold" : ""}`}
+                    >
+                      <MethodIcon fieldType={m.fieldType} />
+                      {m.name}
+                    </button>
+                  ))}
+                </>
+              )}
+              {grouped.banks.length > 0 && (
+                <>
+                  <div className="px-3 py-1.5 bg-secondary/60 text-xs text-muted-foreground font-semibold uppercase tracking-wide">
+                    Banks
+                  </div>
+                  {grouped.banks.map(m => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => setSelectedMethodId(m.id)}
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm text-left hover:bg-secondary transition-colors border-b border-border/40 last:border-0 ${selectedMethodId === m.id ? "bg-primary/10 text-primary font-semibold" : ""}`}
+                    >
+                      <MethodIcon fieldType={m.fieldType} />
+                      {m.name}
+                    </button>
+                  ))}
+                </>
+              )}
+              {filteredMethods.length === 0 && (
+                <div className="py-6 text-center text-sm text-muted-foreground">No methods found</div>
+              )}
+            </div>
+          )}
+
+          {selectedMethod && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary/5 border border-primary/20 text-xs text-primary">
+              <MethodIcon fieldType={selectedMethod.fieldType} />
+              <span className="font-semibold">{selectedMethod.name}</span>
+              <span className="text-muted-foreground ml-auto">selected</span>
+            </div>
+          )}
+        </div>
+
+        {/* Account name */}
+        <div className="space-y-2">
+          <label className="text-sm font-medium">
+            Full Name
+            {kycName && (
+              <span className="ml-2 text-[10px] font-normal text-primary bg-primary/10 px-1.5 py-0.5 rounded-full">
+                KYC Verified
+              </span>
+            )}
+          </label>
+          <input
+            type="text"
+            readOnly={!!kycName}
+            value={kycName || accountName}
+            onChange={e => !kycName && setAccountName(e.target.value)}
+            placeholder="Exact name on account"
+            className={`w-full p-3 rounded-lg outline-none text-sm border ${kycName ? "bg-secondary border-border cursor-not-allowed" : "bg-card border-border focus:border-primary"}`}
+          />
+          <p className="text-xs text-muted-foreground">
+            {kycName
+              ? "Locked to your KYC-verified name."
+              : `Must match the name registered with ${selectedMethod?.name ?? "the provider"}`}
+          </p>
+        </div>
+
+        {/* Account number / identifier */}
+        {selectedMethod && (
+          <div className="space-y-2">
+            <label className="text-sm font-medium">{selectedMethod.accountLabel}</label>
+            <input
+              type={selectedMethod.inputType}
+              placeholder={selectedMethod.accountPlaceholder}
+              value={accountNumber}
+              onChange={e => setAccountNumber(e.target.value)}
+              className="w-full p-3 bg-card border border-border rounded-lg outline-none text-sm focus:border-primary font-mono"
+            />
+          </div>
+        )}
+
+        <button
+          type="submit"
+          disabled={addMethod.isPending || !selectedMethod}
+          className="w-full py-3 mt-2 bg-primary text-primary-foreground rounded-lg font-bold disabled:opacity-50"
+        >
+          {addMethod.isPending ? "Saving..." : "Save Payment Method"}
+        </button>
+      </form>
+    </AppLayout>
+  );
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────────
+
+export default function PaymentMethodsPage() {
+  const { data: methods, isLoading } = useListPaymentMethods();
+  const { data: kycData } = useGetKycStatus();
+  const { data: me } = useGetMe();
+  const [showAdd, setShowAdd] = useState(false);
+  const deleteMethod = useDeletePaymentMethod();
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  const kycName = kycData?.fullName ?? "";
+  const userCountry = me?.country ?? "ET";
+
+  // Pre-load available methods cache for user's country
+  const { data: catalogue } = useQuery({
+    queryKey: ["available-payment-methods", userCountry],
+    queryFn: () => fetchAvailableMethods(userCountry),
+    staleTime: 5 * 60 * 1000,
+    enabled: !!userCountry,
+  });
+
+  const getMethodDef = (type: string, country: string) => {
+    // Try catalogue match for the row's country if different from user country
+    return catalogue?.methods.find(m => m.id === type) ?? {
+      id: type,
+      name: type,
+      fieldType: "bank" as const,
+      accountLabel: "Account",
+      accountPlaceholder: "",
+      inputType: "text" as const,
+    };
+  };
+
   const handleDelete = (id: number) => {
     if (confirm("Delete this payment method?")) {
       deleteMethod.mutate({ id, data: undefined as any }, {
         onSuccess: () => {
-          toast({ title: "Payment method deleted" });
+          toast({ title: "Payment method removed" });
           queryClient.invalidateQueries({ queryKey: getListPaymentMethodsQueryKey() });
         },
       });
@@ -102,91 +383,15 @@ export default function PaymentMethodsPage() {
 
   if (showAdd) {
     return (
-      <AppLayout showNav={false}>
-        <header className="flex items-center space-x-3 p-4 border-b border-border">
-          <button onClick={() => setShowAdd(false)} className="text-muted-foreground">
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-          <h1 className="font-bold">Add Payment Method</h1>
-        </header>
-
-        <form onSubmit={handleAdd} className="p-4 space-y-5">
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Bank / Provider</label>
-            <select
-              value={newMethod.type as string}
-              onChange={e => handleProviderChange(e.target.value)}
-              className="w-full p-3 bg-card border border-border rounded-lg outline-none text-sm focus:border-primary"
-            >
-              <optgroup label="Mobile Money / Wallets">
-                {PROVIDERS.filter(p => p.fieldType === "phone").map(p => (
-                  <option key={p.name} value={p.name}>{p.label}</option>
-                ))}
-              </optgroup>
-              <optgroup label="Banks">
-                {PROVIDERS.filter(p => p.fieldType === "account").map(p => (
-                  <option key={p.name} value={p.name}>{p.label}</option>
-                ))}
-              </optgroup>
-            </select>
-          </div>
-
-          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-secondary text-xs text-muted-foreground">
-            {selectedProvider.fieldType === "phone"
-              ? <><Smartphone className="w-4 h-4 shrink-0 text-primary" /> Uses <span className="font-semibold text-foreground mx-1">phone number</span> — no bank account needed</>
-              : <><Building2 className="w-4 h-4 shrink-0 text-primary" /> Uses <span className="font-semibold text-foreground mx-1">account number</span> from your bank</>
-            }
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-sm font-medium flex items-center gap-2">
-              Full Name
-              {kycName && (
-                <span className="flex items-center gap-1 text-[10px] font-normal text-primary bg-primary/10 px-1.5 py-0.5 rounded-full">
-                  <ShieldCheck className="w-3 h-3" /> KYC Verified
-                </span>
-              )}
-            </label>
-            <div className="relative">
-              <input
-                type="text"
-                readOnly={!!kycName}
-                value={kycName || newMethod.accountName || ""}
-                onChange={e => !kycName && setNewMethod({ ...newMethod, accountName: e.target.value })}
-                placeholder={kycName ? "" : selectedProvider.namePlaceholder}
-                className={`w-full p-3 rounded-lg outline-none text-sm border ${kycName ? "bg-secondary border-border text-foreground cursor-not-allowed select-none" : "bg-card border-border focus:border-primary"}`}
-              />
-              {kycName && (
-                <ShieldCheck className="absolute right-3 top-3.5 w-4 h-4 text-primary opacity-60" />
-              )}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {kycName
-                ? "Name is locked to your KYC-verified identity and cannot be changed."
-                : `Must match the name registered with ${selectedProvider.label}`}
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-sm font-medium">{selectedProvider.accountLabel}</label>
-            <input
-              type={selectedProvider.inputType}
-              placeholder={selectedProvider.accountPlaceholder}
-              value={newMethod.accountNumber}
-              onChange={e => setNewMethod({ ...newMethod, accountNumber: e.target.value })}
-              className="w-full p-3 bg-card border border-border rounded-lg outline-none text-sm focus:border-primary font-mono"
-            />
-          </div>
-
-          <button
-            type="submit"
-            disabled={addMethod.isPending}
-            className="w-full py-3 mt-2 bg-primary text-primary-foreground rounded-lg font-bold disabled:opacity-50"
-          >
-            {addMethod.isPending ? "Saving..." : "Save Payment Method"}
-          </button>
-        </form>
-      </AppLayout>
+      <AddPaymentMethodForm
+        userCountry={userCountry}
+        kycName={kycName}
+        onClose={() => setShowAdd(false)}
+        onSaved={() => {
+          setShowAdd(false);
+          queryClient.invalidateQueries({ queryKey: getListPaymentMethodsQueryKey() });
+        }}
+      />
     );
   }
 
@@ -194,7 +399,10 @@ export default function PaymentMethodsPage() {
     <AppLayout showNav={false}>
       <header className="flex items-center space-x-3 p-4 border-b border-border">
         <Link href="/profile" className="text-muted-foreground"><ArrowLeft className="w-5 h-5" /></Link>
-        <h1 className="font-bold">Payment Methods</h1>
+        <div>
+          <h1 className="font-bold">Payment Methods</h1>
+          <p className="text-xs text-muted-foreground">800+ methods · 119 countries</p>
+        </div>
       </header>
 
       <div className="p-4 space-y-3">
@@ -203,25 +411,27 @@ export default function PaymentMethodsPage() {
         ) : methods?.length === 0 ? (
           <div className="py-12 text-center text-muted-foreground">
             <CreditCard className="w-12 h-12 mx-auto mb-3 opacity-20" />
-            <p>No payment methods added</p>
+            <p className="font-medium">No payment methods added</p>
+            <p className="text-xs mt-1">Add your bank or mobile money account to start trading</p>
           </div>
         ) : (
           methods?.map(pm => {
-            const provider = getProvider(pm.type);
+            const def = getMethodDef((pm as any).type, (pm as any).country ?? "ET");
+            const countryInfo = SUPPORTED_COUNTRIES.find(c => c.code === ((pm as any).country ?? "ET"));
             return (
               <div key={pm.id} className="flex items-center justify-between p-4 bg-card border border-card-border rounded-xl">
                 <div className="flex items-start gap-3">
                   <div className="mt-0.5 p-1.5 rounded-md bg-secondary">
-                    {provider.fieldType === "phone"
-                      ? <Smartphone className="w-4 h-4 text-primary" />
-                      : <Building2 className="w-4 h-4 text-primary" />
-                    }
+                    <MethodIcon fieldType={def.fieldType} />
                   </div>
                   <div>
-                    <div className="font-semibold text-sm">{provider.label}</div>
+                    <div className="font-semibold text-sm">{def.name}</div>
+                    {countryInfo && (
+                      <div className="text-[10px] text-muted-foreground">{countryInfo.name} · {countryInfo.currency}</div>
+                    )}
                     <div className="text-xs text-muted-foreground mt-0.5">{pm.accountName}</div>
                     <div className="font-mono text-primary font-medium text-sm mt-0.5">
-                      {provider.fieldType === "phone" ? "📱 " : ""}{pm.accountNumber}
+                      {def.fieldType === "mobile" ? "📱 " : ""}{pm.accountNumber}
                     </div>
                   </div>
                 </div>

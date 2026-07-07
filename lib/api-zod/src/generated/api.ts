@@ -623,7 +623,8 @@ export const UpdateProfileResponse = zod.object({
 export const ListPaymentMethodsResponseItem = zod.object({
   "id": zod.number(),
   "userId": zod.number(),
-  "type": zod.enum(['CBE', 'Telebirr', 'Awash', 'Dashen', 'Abyssinia', 'HelloCash', 'MPesa']),
+  "country": zod.string(),
+  "type": zod.string(),
   "accountName": zod.string(),
   "accountNumber": zod.string(),
   "createdAt": zod.coerce.date()
@@ -635,7 +636,8 @@ export const ListPaymentMethodsResponse = zod.array(ListPaymentMethodsResponseIt
  * @summary Add a payment method
  */
 export const AddPaymentMethodBody = zod.object({
-  "type": zod.enum(['CBE', 'Telebirr', 'Awash', 'Dashen', 'Abyssinia', 'HelloCash', 'MPesa']),
+  "country": zod.string().optional(),
+  "type": zod.string(),
   "accountName": zod.string(),
   "accountNumber": zod.string()
 })

@@ -1358,9 +1358,12 @@ components:
           type: integer
         userId:
           type: integer
+        country:
+          type: string
+          description: ISO 3166-1 alpha-2 country code (e.g. ET, NG, US)
         type:
           type: string
-          enum: [CBE, Telebirr, Awash, Dashen, Abyssinia, HelloCash, MPesa]
+          description: Payment method identifier (e.g. CBE, MPESA_KE, PAYPAL)
         accountName:
           type: string
         accountNumber:
@@ -1371,6 +1374,7 @@ components:
       required:
         - id
         - userId
+        - country
         - type
         - accountName
         - accountNumber
@@ -1379,9 +1383,12 @@ components:
     PaymentMethodInput:
       type: object
       properties:
+        country:
+          type: string
+          description: ISO 3166-1 alpha-2 country code (e.g. ET, NG, US)
         type:
           type: string
-          enum: [CBE, Telebirr, Awash, Dashen, Abyssinia, HelloCash, MPesa]
+          description: Payment method identifier (e.g. CBE, MPESA_KE, PAYPAL)
         accountName:
           type: string
         accountNumber:

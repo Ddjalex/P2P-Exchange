@@ -422,43 +422,24 @@ export interface ProfileUpdate {
   username?: string;
 }
 
-export type PaymentMethodType = typeof PaymentMethodType[keyof typeof PaymentMethodType];
-
-
-export const PaymentMethodType = {
-  CBE: 'CBE',
-  Telebirr: 'Telebirr',
-  Awash: 'Awash',
-  Dashen: 'Dashen',
-  Abyssinia: 'Abyssinia',
-  HelloCash: 'HelloCash',
-  MPesa: 'MPesa',
-} as const;
-
+/** Payment method type is now a free-form string (800+ global methods, e.g. "CBE", "MPESA_KE", "PAYPAL") */
 export interface PaymentMethod {
   id: number;
   userId: number;
-  type: PaymentMethodType;
+  /** ISO 3166-1 alpha-2 country code */
+  country: string;
+  /** Payment method identifier */
+  type: string;
   accountName: string;
   accountNumber: string;
   createdAt: string;
 }
 
-export type PaymentMethodInputType = typeof PaymentMethodInputType[keyof typeof PaymentMethodInputType];
-
-
-export const PaymentMethodInputType = {
-  CBE: 'CBE',
-  Telebirr: 'Telebirr',
-  Awash: 'Awash',
-  Dashen: 'Dashen',
-  Abyssinia: 'Abyssinia',
-  HelloCash: 'HelloCash',
-  MPesa: 'MPesa',
-} as const;
-
 export interface PaymentMethodInput {
-  type: PaymentMethodInputType;
+  /** ISO 3166-1 alpha-2 country code (optional — defaults to user's profile country) */
+  country?: string;
+  /** Payment method identifier */
+  type: string;
   accountName: string;
   accountNumber: string;
 }

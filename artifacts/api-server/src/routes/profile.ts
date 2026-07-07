@@ -360,6 +360,31 @@ router.delete("/blocked/:userId", async (req, res) => {
   }
 });
 
+// ── Global payment methods catalogue (Binance-style) ─────────────────────────
+import { getMethodsForCountry, SUPPORTED_COUNTRIES } from "../data/global-payment-methods.js";
+
+/** GET /api/profile/payment-methods/available?country=ET
+ *  Returns the catalogue of payment method definitions for a given country.
+ *  If no country is supplied, uses the authenticated user's country. */
+router.get("/payment-methods/available", async (req, res) => {
+  try {
+    const countryCode = (req.query.country as string | undefined)?.toUpperCase()
+      ?? await db.select({ country: usersTable.country }).from(usersTable)
+           .where(eq(usersTable.id, (req as any).userId)).then(r => r[0]?.country ?? "ET");
+
+    const methods = getMethodsForCountry(countryCode);
+    res.json({ country: countryCode, methods });
+  } catch (err) {
+    req.log.error({ err }, "Failed to get available payment methods");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/** GET /api/profile/payment-methods/countries — list all supported countries */
+router.get("/payment-methods/countries", (_req, res) => {
+  res.json(SUPPORTED_COUNTRIES);
+});
+
 router.get("/payment-methods", async (req, res) => {
   try {
     const methods = await db.select().from(paymentMethodsTable)
@@ -369,6 +394,7 @@ router.get("/payment-methods", async (req, res) => {
     res.json(methods.map(m => ({
       id: m.id,
       userId: m.userId,
+      country: m.country,
       type: m.type,
       accountName: m.accountName,
       accountNumber: m.accountNumber,
@@ -382,9 +408,19 @@ router.get("/payment-methods", async (req, res) => {
 
 router.post("/payment-methods", async (req, res) => {
   try {
-    const { type, accountName, accountNumber } = req.body;
+    const { type, accountName, accountNumber, country } = req.body;
+
+    // Determine country: use provided value, or fall back to user's profile country
+    let resolvedCountry = (country as string | undefined)?.toUpperCase() ?? "ET";
+    if (!country) {
+      const [user] = await db.select({ country: usersTable.country }).from(usersTable)
+        .where(eq(usersTable.id, (req as any).userId));
+      resolvedCountry = user?.country ?? "ET";
+    }
+
     const [method] = await db.insert(paymentMethodsTable).values({
       userId: (req as any).userId,
+      country: resolvedCountry,
       type,
       accountName,
       accountNumber,
@@ -393,6 +429,7 @@ router.post("/payment-methods", async (req, res) => {
     res.status(201).json({
       id: method.id,
       userId: method.userId,
+      country: method.country,
       type: method.type,
       accountName: method.accountName,
       accountNumber: method.accountNumber,
