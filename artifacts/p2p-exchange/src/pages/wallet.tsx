@@ -3,8 +3,9 @@ import { AppLayout } from "@/components/layout";
 import { Settings, Eye, EyeOff, ArrowDownToLine, ArrowUpFromLine, X, Copy, Check, Loader2, AlertCircle, Send, Lock } from "lucide-react";
 import { NotificationBell } from "@/components/notification-bell";
 import { Link, useLocation } from "wouter";
-import { useGetWallet, getGetWalletQueryKey } from "@workspace/api-client-react";
+import { useGetWallet, getGetWalletQueryKey, useGetMe } from "@workspace/api-client-react";
 import { useState, useEffect } from "react";
+import { NATIONALITY_TO_CURRENCY, getFiatCurrency } from "@/constants/currencies";
 import { createPortal } from "react-dom";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -406,8 +407,14 @@ function WithdrawModal({
 
 export default function WalletPage() {
   const { user } = useAuth();
+  const { data: me } = useGetMe();
   const { data: wallet, isLoading } = useGetWallet();
   const [showBalance, setShowBalance] = useState(true);
+
+  // Derive user's fiat currency from their country (ISO-2 code)
+  const userFiatCode = NATIONALITY_TO_CURRENCY[me?.country ?? user?.country ?? "ET"] ?? "ETB";
+  const userFiat = getFiatCurrency(userFiatCode);
+  const fiatSymbol = userFiat?.symbol ?? userFiatCode;
   const [, setLocation] = useLocation();
   const [showDeposit, setShowDeposit] = useState(false);
   const [showWithdraw, setShowWithdraw] = useState(false);
@@ -494,7 +501,7 @@ export default function WalletPage() {
             {isLoading ? <Skeleton className="h-5 w-24" /> : (
               <div className="text-sm text-muted-foreground">
                 {showBalance
-                  ? `≈ ${(Number(wallet?.totalBalance || 0) * Number(wallet?.etbRate || 0)).toLocaleString()} ETB`
+                  ? `≈ ${(Number(wallet?.totalBalance || 0) * Number(wallet?.etbRate || 0)).toLocaleString()} ${userFiatCode}`
                   : "*****"}
               </div>
             )}
@@ -572,7 +579,7 @@ export default function WalletPage() {
                           className="text-warning/80 hover:text-warning hover:underline underline-offset-2 transition-colors"
                           onClick={e => { e.stopPropagation(); setLocation("/orders"); }}
                         >🔒 {Number(wallet?.frozenBalance || 0).toLocaleString()} frozen</span>
-                      : `≈ ${(Number(wallet?.totalBalance || 0) * Number(wallet?.etbRate || 0)).toLocaleString()} Br`
+                      : `≈ ${(Number(wallet?.totalBalance || 0) * Number(wallet?.etbRate || 0)).toLocaleString()} ${fiatSymbol}`
                     : "***"}
                 </div>
               )}

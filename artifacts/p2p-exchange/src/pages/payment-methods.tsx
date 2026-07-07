@@ -180,7 +180,7 @@ function AddPaymentMethodForm({ userCountry, kycName, onClose, onSaved }: AddFor
 
         {/* Country picker modal */}
         {showCountryPicker && (
-          <div className="fixed inset-0 bg-background/95 backdrop-blur-sm z-50 flex flex-col">
+          <div className="fixed inset-0 bg-background/95 backdrop-blur-sm z-[9999] flex flex-col">
             <div className="flex items-center gap-3 p-4 border-b">
               <button type="button" onClick={() => { setShowCountryPicker(false); setCountrySearch(""); }}>
                 <X className="w-5 h-5" />
