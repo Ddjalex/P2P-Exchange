@@ -280,7 +280,15 @@ export default function PaymentMethodsPage() {
   const { toast } = useToast();
 
   const kycName = kycData?.fullName ?? "";
-  const userCountry = me?.country ?? "ET";
+  const registrationCountry = me?.country ?? "ET";
+
+  // Use the fiat currency the user selected on the P2P page (persisted in localStorage).
+  // Map fiat code → country code via SUPPORTED_COUNTRIES; fall back to registration country.
+  const selectedFiat = localStorage.getItem("p2p_selected_fiat");
+  const fiatCountry = selectedFiat
+    ? (SUPPORTED_COUNTRIES.find(c => c.currency === selectedFiat)?.code ?? registrationCountry)
+    : registrationCountry;
+  const userCountry = fiatCountry;
 
   // Pre-load available methods cache for user's country
   const { data: catalogue } = useQuery({
