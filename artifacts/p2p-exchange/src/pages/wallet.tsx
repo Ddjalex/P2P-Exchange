@@ -579,7 +579,7 @@ export default function WalletPage() {
                           className="text-warning/80 hover:text-warning hover:underline underline-offset-2 transition-colors"
                           onClick={e => { e.stopPropagation(); setLocation("/orders"); }}
                         >🔒 {Number(wallet?.frozenBalance || 0).toLocaleString()} frozen</span>
-                      : `≈ ${(Number(wallet?.totalBalance || 0) * Number(wallet?.etbRate || 0)).toLocaleString()} ${fiatSymbol}`
+                      : `≈ ${(Number(wallet?.totalBalance || 0) * Number(wallet?.etbRate || 0)).toLocaleString()} ${userFiatCode}`
                     : "***"}
                 </div>
               )}
