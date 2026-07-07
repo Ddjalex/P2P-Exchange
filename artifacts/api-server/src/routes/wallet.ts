@@ -1,4 +1,5 @@
 import { Router } from "express";
+import bcrypt from "bcryptjs";
 import { db } from "@workspace/db";
 import { walletsTable, transactionsTable, systemSettingsTable, usersTable, internalTransfersTable, notificationsTable } from "@workspace/db";
 import { eq, and, desc, or } from "drizzle-orm";
@@ -10,6 +11,44 @@ import { deriveDepositAddress, isHdConfigured } from "../lib/bsc-hd.js";
 import { checkVelocity, checkBalance, checkDailyLimit, checkWithdrawalAddress, auditLog } from "../middleware/security.js";
 
 const router = Router();
+
+// ─── In-memory rate limiter for withdrawal password confirmation ──────────────
+// Max 5 failed attempts per user per 15 minutes. Resets on success.
+const pwFailures = new Map<number, { count: number; resetAt: number }>();
+const PW_MAX_ATTEMPTS = 5;
+const PW_WINDOW_MS = 15 * 60 * 1000; // 15 min
+
+function checkPwRateLimit(userId: number): { allowed: boolean; retryAfterMs?: number } {
+  const now = Date.now();
+  const entry = pwFailures.get(userId);
+  if (!entry || now > entry.resetAt) return { allowed: true };
+  if (entry.count >= PW_MAX_ATTEMPTS) return { allowed: false, retryAfterMs: entry.resetAt - now };
+  return { allowed: true };
+}
+function recordPwFailure(userId: number) {
+  const now = Date.now();
+  const entry = pwFailures.get(userId);
+  if (!entry || now > entry.resetAt) {
+    pwFailures.set(userId, { count: 1, resetAt: now + PW_WINDOW_MS });
+  } else {
+    entry.count++;
+  }
+}
+function clearPwFailures(userId: number) { pwFailures.delete(userId); }
+
+async function verifyWithdrawPassword(userId: number, password: unknown): Promise<{ ok: boolean; error?: string }> {
+  const rl = checkPwRateLimit(userId);
+  if (!rl.allowed) {
+    const mins = Math.ceil((rl.retryAfterMs ?? PW_WINDOW_MS) / 60000);
+    return { ok: false, error: `Too many incorrect attempts. Try again in ${mins} minute${mins !== 1 ? "s" : ""}.` };
+  }
+  const row = await db.select({ passwordHash: usersTable.passwordHash }).from(usersTable).where(eq(usersTable.id, userId)).then(r => r[0]);
+  if (!row?.passwordHash) return { ok: false, error: "Account configuration error. Please contact support." };
+  const match = await bcrypt.compare(String(password ?? ""), row.passwordHash).catch(() => false);
+  if (!match) { recordPwFailure(userId); return { ok: false, error: "Incorrect password. Please try again." }; }
+  clearPwFailures(userId);
+  return { ok: true };
+}
 
 async function getSetting(key: string, fallback = ""): Promise<string> {
   const rows = await db.select().from(systemSettingsTable).where(eq(systemSettingsTable.key, key));
@@ -213,11 +252,16 @@ router.post("/deposit/verify", async (req, res) => {
 // POST /api/wallet/withdraw — BEP20 blockchain withdrawal
 router.post("/withdraw", async (req, res) => {
   try {
-    const { address, network, amount } = req.body;
+    const { address, network, amount, password } = req.body;
     const userId = (req as any).userId;
 
     if (!address || !amount) return res.status(400).json({ error: "Invalid input" });
     if (network && network !== "BEP20") return res.status(400).json({ error: "Only BEP20 (BSC) withdrawals are supported" });
+
+    // Password confirmation required
+    if (!password) return res.status(400).json({ error: "Password is required to confirm withdrawal" });
+    const pwCheck = await verifyWithdrawPassword(userId, password);
+    if (!pwCheck.ok) return res.status(401).json({ error: pwCheck.error });
 
     // Check withdrawal suspension (separate from account freeze/ban)
     const userRecord = await db.select({ withdrawalSuspended: usersTable.withdrawalSuspended })
@@ -409,11 +453,16 @@ router.get("/find-user", async (req, res) => {
 router.post("/internal-transfer", async (req, res) => {
   try {
     const senderId = (req as any).userId;
-    const { identifier, identifierType, amount, note } = req.body;
+    const { identifier, identifierType, amount, note, password } = req.body;
 
     if (!identifier || !identifierType || !amount) {
       return res.status(400).json({ message: "All fields required" });
     }
+
+    // Password confirmation required
+    if (!password) return res.status(400).json({ message: "Password is required to confirm transfer" });
+    const pwCheck = await verifyWithdrawPassword(senderId, password);
+    if (!pwCheck.ok) return res.status(401).json({ message: pwCheck.error });
 
     const transferAmount = parseFloat(amount);
     if (isNaN(transferAmount) || transferAmount < 1) {

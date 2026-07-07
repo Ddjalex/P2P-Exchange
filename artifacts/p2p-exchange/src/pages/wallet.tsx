@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { InternalTransferPanel } from "@/components/internal-transfer";
+import { PasswordConfirmModal } from "@/components/password-confirm-modal";
 
 const TOKEN_KEY = "p2p_token";
 function getToken() { return localStorage.getItem(TOKEN_KEY); }
@@ -233,6 +234,8 @@ function WithdrawModal({
   const [amount, setAmount] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [passwordError, setPasswordError] = useState("");
   const { toast } = useToast();
 
   const avail = parseFloat(availableBalance || "0");
@@ -242,33 +245,56 @@ function WithdrawModal({
 
   const handleSetMax = () => setAmount(avail.toFixed(2));
 
-  const handleWithdraw = async () => {
+  const handleConfirmClick = () => {
     setError("");
     if (!address.trim()) { setError("Enter a destination wallet address"); return; }
     if (!/^0x[0-9a-fA-F]{40}$/.test(address.trim())) { setError("Enter a valid BEP20 (BSC) address starting with 0x"); return; }
     if (amt <= 0) { setError("Enter a valid amount"); return; }
     if (amt > avail) { setError("Insufficient available balance"); return; }
     if (amt < minWithdrawal) { setError(`Minimum withdrawal is ${minWithdrawal} USDT`); return; }
+    setPasswordError("");
+    setShowPasswordModal(true);
+  };
 
+  const handleWithdraw = async (password: string) => {
     setLoading(true);
+    setPasswordError("");
     try {
       const res = await fetch("/api/wallet/withdraw", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
-        body: JSON.stringify({ address: address.trim(), network, amount }),
+        body: JSON.stringify({ address: address.trim(), network, amount, password }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Withdrawal failed");
+      if (!res.ok) {
+        if (res.status === 401) { setPasswordError(data.error || "Incorrect password"); return; }
+        throw new Error(data.error || "Withdrawal failed");
+      }
+      setShowPasswordModal(false);
       toast({ title: "Withdrawal submitted!", description: "Your request is being processed." });
       onSuccess();
     } catch (e: any) {
+      setShowPasswordModal(false);
       setError(e.message);
     } finally {
       setLoading(false);
     }
   };
 
-  return createPortal(
+  return (
+    <>
+    {showPasswordModal && (
+      <PasswordConfirmModal
+        title="Confirm Withdrawal"
+        description="Enter your password to authorize this withdrawal."
+        confirmLabel="Confirm Withdrawal"
+        loading={loading}
+        error={passwordError}
+        onConfirm={handleWithdraw}
+        onCancel={() => { setShowPasswordModal(false); setPasswordError(""); }}
+      />
+    )}
+    {createPortal(
     <div className="fixed inset-0 z-[100] flex items-end justify-center" onClick={onClose}>
       <div className="absolute inset-0 bg-black/60" />
       <div
@@ -381,7 +407,7 @@ function WithdrawModal({
               )}
 
               <button
-                onClick={handleWithdraw}
+                onClick={handleConfirmClick}
                 disabled={loading || !address || amt <= 0 || amt > avail}
                 className="w-full bg-primary text-primary-foreground rounded-xl py-3 text-sm font-semibold disabled:opacity-50 flex items-center justify-center space-x-2"
               >
@@ -400,7 +426,9 @@ function WithdrawModal({
         </div>
       </div>
     </div>
-  , document.body);
+  , document.body)}
+    </>
+  );
 }
 
 // ─── Main Wallet Page ────────────────────────────────────────────────────────

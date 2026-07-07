@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { getGetWalletQueryKey } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
+import { PasswordConfirmModal } from "@/components/password-confirm-modal";
 
 const TOKEN_KEY = "p2p_token";
 function getToken() { return localStorage.getItem(TOKEN_KEY); }
@@ -19,6 +20,8 @@ export function InternalTransferPanel({ availableBalance }: Props) {
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState("");
   const [success, setSuccess] = useState(false);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [passwordError, setPasswordError] = useState("");
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -49,7 +52,7 @@ export function InternalTransferPanel({ availableBalance }: Props) {
   };
 
   const handleTransfer = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (password: string) => {
       const res = await fetch("/api/wallet/internal-transfer", {
         method: "POST",
         headers: {
@@ -61,13 +64,17 @@ export function InternalTransferPanel({ availableBalance }: Props) {
           identifierType: tabType,
           amount: parseFloat(amount),
           note: note.trim() || null,
+          password,
         }),
       });
       const data = await res.json();
+      if (res.status === 401) throw Object.assign(new Error(data.message || "Incorrect password"), { isPasswordError: true });
       if (!res.ok) throw new Error(data.message || data.error);
       return data;
     },
     onSuccess: () => {
+      setShowPasswordModal(false);
+      setPasswordError("");
       setSuccess(true);
       setFoundUser(null);
       setIdentifier("");
@@ -75,8 +82,14 @@ export function InternalTransferPanel({ availableBalance }: Props) {
       setNote("");
       queryClient.invalidateQueries({ queryKey: getGetWalletQueryKey() });
     },
-    onError: (err: Error) => {
-      toast({ title: err.message, variant: "destructive" });
+    onError: (err: Error & { isPasswordError?: boolean }) => {
+      if (err.isPasswordError) {
+        setPasswordError(err.message);
+      } else {
+        setShowPasswordModal(false);
+        setPasswordError("");
+        toast({ title: err.message, variant: "destructive" });
+      }
     },
   });
 
@@ -292,7 +305,10 @@ export function InternalTransferPanel({ availableBalance }: Props) {
       </div>
 
       <button
-        onClick={() => handleTransfer.mutate()}
+        onClick={() => {
+          setPasswordError("");
+          setShowPasswordModal(true);
+        }}
         disabled={
           !foundUser || !amount ||
           parseFloat(amount) < 1 ||
@@ -312,7 +328,7 @@ export function InternalTransferPanel({ availableBalance }: Props) {
         {handleTransfer.isPending ? "Sending..." : "⚡ Send USDT"}
       </button>
 
-      {handleTransfer.isError && (
+      {handleTransfer.isError && !(handleTransfer.error as any)?.isPasswordError && (
         <div style={{ color: "#ff4444", fontSize: "12px", textAlign: "center", marginTop: "10px" }}>
           ❌ {(handleTransfer.error as Error).message}
         </div>
@@ -324,6 +340,18 @@ export function InternalTransferPanel({ availableBalance }: Props) {
           View Transfer History →
         </a>
       </div>
+
+      {showPasswordModal && (
+        <PasswordConfirmModal
+          title="Confirm Transfer"
+          description="Enter your password to authorize this USDT transfer."
+          confirmLabel="Send USDT"
+          loading={handleTransfer.isPending}
+          error={passwordError}
+          onConfirm={(pw) => handleTransfer.mutate(pw)}
+          onCancel={() => { setShowPasswordModal(false); setPasswordError(""); }}
+        />
+      )}
     </div>
   );
 }
