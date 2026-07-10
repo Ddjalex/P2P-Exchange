@@ -313,6 +313,7 @@ export default function AuthPage() {
   const [regNatDropRect, setRegNatDropRect] = useState<DOMRect | null>(null);
   const regNatRef = useRef<HTMLDivElement>(null);
   const regNatSearchRef = useRef<HTMLInputElement>(null);
+  const regNationalityCountry = COUNTRIES.find(c => c.code === regNationality) ?? ET;
 
   useEffect(() => {
     if (!isLoading && user) {
@@ -324,7 +325,7 @@ export default function AuthPage() {
   }, [user, isLoading, setLocation]);
 
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") { closeModal(); setLoginPrefixOpen(false); setRegPrefixOpen(false); } };
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") { closeModal(); setLoginPrefixOpen(false); setRegPrefixOpen(false); setRegNatOpen(false); } };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, []);
@@ -339,6 +340,7 @@ export default function AuthPage() {
       // the portaled dropdown as "outside" and close it before the item's own
       // onClick (selection) had a chance to fire.
       const insidePrefixDropdown = !!target.closest?.(".prefix-dropdown");
+      const insideNatDropdown = !!target.closest?.(".prefix-dropdown.nat-dropdown");
       if (
         loginPrefixRef.current &&
         !loginPrefixRef.current.contains(target) &&
@@ -355,7 +357,11 @@ export default function AuthPage() {
         setRegPrefixOpen(false);
         setRegPrefixSearch("");
       }
-      if (regNatRef.current && !regNatRef.current.contains(target)) {
+      if (
+        regNatRef.current &&
+        !regNatRef.current.contains(target) &&
+        !insideNatDropdown
+      ) {
         setRegNatOpen(false);
         setRegNatSearch("");
       }
@@ -421,6 +427,20 @@ export default function AuthPage() {
       setRegPrefixSearch("");
       if (!regPrefixOpen) setTimeout(() => regPrefixSearchRef.current?.focus(), 80);
     }
+  }
+
+  function openNatDropdown() {
+    const rect = regNatRef.current?.getBoundingClientRect() ?? null;
+    setRegNatDropRect(rect);
+    setRegNatOpen(v => !v);
+    setRegNatSearch("");
+    if (!regNatOpen) setTimeout(() => regNatSearchRef.current?.focus(), 80);
+  }
+
+  function pickNationality(code: string) {
+    setRegNationality(code);
+    setRegNatOpen(false);
+    setRegNatSearch("");
   }
 
   // Auto-detect country from phone number
@@ -843,16 +863,45 @@ export default function AuthPage() {
                   </div>
                   <div className="slide-element nat-wrap" ref={regNatRef}>
                     <div className="nat-label">Nationality <span className="nat-required">*</span></div>
-                    <select
-                      value={regNationality}
-                      onChange={e => setRegNationality(e.target.value)}
-                      className="w-full bg-secondary border border-border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-primary"
-                      style={{width:"100%",padding:"12px",background:"var(--secondary)",border:"1px solid var(--border)",borderRadius:"12px",color:"var(--foreground)",fontSize:"14px",outline:"none"}}
+                    <div
+                      className={`phone-prefix clickable nat-trigger${regNatOpen ? " prefix-active" : ""}`}
+                      onClick={openNatDropdown}
+                      style={{ width: "100%", justifyContent: "space-between" }}
                     >
-                      {COUNTRIES.map(c => (
-                        <option key={c.code} value={c.code}>{c.flag} {c.name} ({c.code})</option>
-                      ))}
-                    </select>
+                      <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <img className="pf-flag" src={`https://flagcdn.com/20x15/${regNationalityCountry.code.toLowerCase()}.png`} alt={regNationalityCountry.name} />
+                        <span className="pf-code">{regNationalityCountry.name} ({regNationalityCountry.code})</span>
+                      </span>
+                      <i className="fa-solid fa-chevron-down pf-caret"></i>
+                    </div>
+                    {regNatOpen && regNatDropRect && createPortal(
+                      <div className="prefix-dropdown nat-dropdown" style={{ position: "fixed", top: regNatDropRect.bottom + 6, left: regNatDropRect.left, width: regNatDropRect.width, zIndex: 99999 }}>
+                        <div className="prefix-search">
+                          <i className="fa-solid fa-magnifying-glass"></i>
+                          <input
+                            ref={regNatSearchRef}
+                            type="text"
+                            placeholder="Search…"
+                            value={regNatSearch}
+                            onChange={e => setRegNatSearch(e.target.value)}
+                          />
+                        </div>
+                        <div className="prefix-list">
+                          {filterCountries(regNatSearch).map(c => (
+                            <div
+                              key={c.code}
+                              className={`prefix-item${regNationality === c.code ? " active" : ""}`}
+                              onClick={() => pickNationality(c.code)}
+                            >
+                              <img className="pi-flag" src={`https://flagcdn.com/20x15/${c.code.toLowerCase()}.png`} alt={c.name} />
+                              <span className="pi-name">{c.name}</span>
+                              <span className="pi-dial">{c.code}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>,
+                      document.body
+                    )}
                   </div>
                 </>
               )}
