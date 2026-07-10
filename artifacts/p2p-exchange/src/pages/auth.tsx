@@ -332,15 +332,30 @@ export default function AuthPage() {
   // Click-outside for prefix dropdowns
   useEffect(() => {
     function handleClick(e: MouseEvent) {
-      if (loginPrefixRef.current && !loginPrefixRef.current.contains(e.target as Node)) {
+      const target = e.target as HTMLElement;
+      // The prefix dropdowns are rendered via a portal into document.body, so
+      // they are not DOM descendants of loginPrefixRef/regPrefixRef. Without
+      // this check, this outside-click handler would treat every click inside
+      // the portaled dropdown as "outside" and close it before the item's own
+      // onClick (selection) had a chance to fire.
+      const insidePrefixDropdown = !!target.closest?.(".prefix-dropdown");
+      if (
+        loginPrefixRef.current &&
+        !loginPrefixRef.current.contains(target) &&
+        !insidePrefixDropdown
+      ) {
         setLoginPrefixOpen(false);
         setLoginPrefixSearch("");
       }
-      if (regPrefixRef.current && !regPrefixRef.current.contains(e.target as Node)) {
+      if (
+        regPrefixRef.current &&
+        !regPrefixRef.current.contains(target) &&
+        !insidePrefixDropdown
+      ) {
         setRegPrefixOpen(false);
         setRegPrefixSearch("");
       }
-      if (regNatRef.current && !regNatRef.current.contains(e.target as Node)) {
+      if (regNatRef.current && !regNatRef.current.contains(target)) {
         setRegNatOpen(false);
         setRegNatSearch("");
       }
