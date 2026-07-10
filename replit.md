@@ -39,6 +39,7 @@ A Binance-style peer-to-peer cryptocurrency exchange — mobile-first dark-theme
 - **ETB exchange rate and deposit addresses** stored in `system_settings` table, configured via Admin → Settings
 - **Payment methods stored as JSON text** in ads table (array of bank/wallet names), not FK relations
 - **Database is Neon** — `NEON_DATABASE_URL` is required and stored in Replit Secrets; falls back to `DATABASE_URL` if unset
+- **Legacy columns/tables preserved** — the Neon DB predates some schema changes and still has extra columns (`users.name/role/balance/age/sex/avatar_url/referral_code/referred_by`, `orders.customer_name/phone/goal/fiat`) and tables (`fcm_tokens`, `app_config`, `languages`, `password_resets`) not used by current app code. They're declared in `lib/db/src/schema/legacy_*.ts` solely so `drizzle-kit push` doesn't try to drop them — don't remove unless the user explicitly asks to delete that data.
 - **API routes mounted under `/api/`** via the global proxy; frontend uses relative URLs
 
 ## Product

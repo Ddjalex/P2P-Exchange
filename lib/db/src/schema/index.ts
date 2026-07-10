@@ -28,3 +28,7 @@ export * from "./password_reset_tokens";
 export * from "./cards";
 export * from "./card_queue";
 export * from "./audit_logs";
+export * from "./legacy_fcm_tokens";
+export * from "./legacy_app_config";
+export * from "./legacy_languages";
+export * from "./legacy_password_resets";

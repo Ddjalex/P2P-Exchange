@@ -30,6 +30,12 @@ export const ordersTable = pgTable("orders", {
   takerFeeAmount: numeric("taker_fee_amount", { precision: 20, scale: 8 }).default("0"),
   makerNetAmount: numeric("maker_net_amount", { precision: 20, scale: 8 }).default("0"),
   takerNetAmount: numeric("taker_net_amount", { precision: 20, scale: 8 }).default("0"),
+  // Legacy columns kept for backwards compatibility with existing data; not
+  // used by current app logic but preserved so schema pushes don't drop them.
+  customerName: text("customer_name").notNull().default(""),
+  phone: text("phone").notNull().default(""),
+  goal: text("goal").notNull().default(""),
+  fiat: text("fiat").notNull().default("ETB"),
 });
 
 export const insertOrderSchema = createInsertSchema(ordersTable).omit({ id: true, createdAt: true });

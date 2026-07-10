@@ -1,4 +1,4 @@
-import { pgTable, serial, text, boolean, timestamp, integer, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, boolean, timestamp, integer, pgEnum, numeric } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -36,6 +36,16 @@ export const usersTable = pgTable("users", {
   lockedUntil: timestamp("locked_until"),
   lastActiveAt: timestamp("last_active_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+  // Legacy columns kept for backwards compatibility with existing data; not
+  // used by current app logic but preserved so schema pushes don't drop them.
+  name: text("name"),
+  role: text("role").notNull().default("user"),
+  balance: numeric("balance").notNull().default("0"),
+  age: text("age"),
+  sex: text("sex"),
+  avatarUrl: text("avatar_url"),
+  referralCode: text("referral_code"),
+  referredBy: text("referred_by"),
 });
 
 export const insertUserSchema = createInsertSchema(usersTable).omit({ id: true, createdAt: true });
