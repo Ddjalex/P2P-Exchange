@@ -4,6 +4,7 @@ A Binance-style peer-to-peer cryptocurrency exchange — mobile-first dark-theme
 
 ## Run & Operate
 
+- App runs via two Replit-managed artifact workflows: `artifacts/p2p-exchange: web` (frontend) and `artifacts/api-server: API Server` (backend). Both start automatically; don't recreate the old manual "Start application"/"API Server" workflows.
 - `pnpm --filter @workspace/api-server run dev` — run the API server (port 8080, proxied at `/api`)
 - `pnpm --filter @workspace/p2p-exchange run dev` — run the frontend (port 21832, proxied at `/`)
 - `pnpm run typecheck` — full typecheck across all packages
