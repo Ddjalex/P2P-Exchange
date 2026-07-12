@@ -130,7 +130,15 @@ export default function PostAdPage() {
       .then(r => r.ok ? r.json() : null)
       .then(data => {
         if (data?.availableBalance !== undefined) {
-          setRawWalletAvailable(parseFloat(data.availableBalance));
+          const bal = parseFloat(data.availableBalance);
+          setRawWalletAvailable(bal);
+          // Auto-fill totalAmount with available balance for sell ads when field is empty
+          if (bal > 0) {
+            setAd(prev => prev.type === "sell" && !prev.totalAmount
+              ? { ...prev, totalAmount: bal.toFixed(4) }
+              : prev
+            );
+          }
         }
       })
       .catch(() => {});
