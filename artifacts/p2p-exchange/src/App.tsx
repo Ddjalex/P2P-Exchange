@@ -100,6 +100,9 @@ function KycProtectedRoute({ component: Component }: { component: React.Componen
  *   - Authenticated: widget hidden; only shown on-demand via Profile → Contact Support
  *   - onChatMinimized while authenticated: hide widget (so it doesn't persist)
  *   - onChatMinimized while unauthenticated: no-op (floating button stays visible)
+ *
+ * Uses polling to handle Tawk.to's async initialisation reliably — the one-shot
+ * onLoad chain is unreliable when Tawk crashes mid-init (i18next bug).
  */
 function TawkVisibility() {
   const { user, isLoading } = useAuth();
@@ -107,32 +110,39 @@ function TawkVisibility() {
   useEffect(() => {
     if (isLoading) return;
 
-    const tawk = (window as any).Tawk_API;
-    if (!tawk) return;
+    const shouldShow = !user;
+    let cancelled = false;
 
-    const apply = () => {
-      if (user) {
-        // Logged in: hide widget; re-hide whenever user minimizes the chat
-        tawk.hideWidget?.();
-        tawk.onChatMinimized = () => tawk.hideWidget?.();
-      } else {
-        // Logged out / on auth page: show widget; minimizing just collapses it
-        tawk.showWidget?.();
+    function applyVisibility(): boolean {
+      const tawk = (window as any).Tawk_API;
+      if (!tawk || typeof tawk.hideWidget !== "function") return false;
+
+      if (shouldShow) {
+        // Logged out / auth page: show the floating widget
+        tawk.showWidget();
+        // Minimising just collapses the bubble — don't auto-hide
         tawk.onChatMinimized = undefined;
+      } else {
+        // Logged in: hide widget; re-hide if user minimises it
+        tawk.hideWidget();
+        tawk.onChatMinimized = () => {
+          (window as any).Tawk_API?.hideWidget?.();
+        };
       }
-    };
-
-    // If Tawk has already loaded, apply immediately; otherwise chain into onLoad
-    if (typeof tawk.hideWidget === "function") {
-      apply();
-    } else {
-      const prev = tawk.onLoad;
-      tawk.onLoad = () => {
-        prev?.();
-        apply();
-      };
+      return true;
     }
-  }, [user, isLoading]);
+
+    // Try immediately; if Tawk isn't ready yet, poll every 300 ms for up to 10 s
+    if (!applyVisibility()) {
+      let attempts = 0;
+      const timer = setInterval(() => {
+        if (cancelled) { clearInterval(timer); return; }
+        attempts++;
+        if (applyVisibility() || attempts >= 33) clearInterval(timer);
+      }, 300);
+      return () => { cancelled = true; clearInterval(timer); };
+    }
+  }, [user?.id, isLoading]);
 
   return null;
 }
