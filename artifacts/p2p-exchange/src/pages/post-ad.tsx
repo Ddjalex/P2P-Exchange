@@ -84,13 +84,21 @@ export default function PostAdPage() {
 
   useEffect(() => {
     if (existingAd && !loaded) {
+      const adAvail = parseFloat(String((existingAd as any).availableAmount ?? 0));
+      const adTotal = parseFloat(String(existingAd.totalAmount ?? 0));
+      const consumed = Math.max(0, adTotal - adAvail);
+      // In top-up mode (sell ad, all consumed), leave totalAmount blank so user
+      // enters how much they want to sell — backend auto-adjusts the lifetime total.
+      const prefillTotal = existingAd.type === "sell" && adAvail === 0 && consumed > 0
+        ? ""
+        : String(existingAd.totalAmount ?? "");
       setAd({
         type: existingAd.type as any,
         priceType: (existingAd as any).priceType ?? "fixed",
         asset: existingAd.asset,
         fiat: existingAd.fiat,
         price: String(existingAd.price),
-        totalAmount: String(existingAd.totalAmount ?? ""),
+        totalAmount: prefillTotal,
         minLimit: String(existingAd.minLimit ?? ""),
         maxLimit: String(existingAd.maxLimit ?? ""),
         paymentMethods: existingAd.paymentMethods ?? [],
@@ -131,14 +139,15 @@ export default function PostAdPage() {
   const adAvailableAmount = isEdit && existingAd?.type === "sell"
     ? parseFloat(String((existingAd as any).availableAmount ?? 0))
     : 0;
-  // For sell ad edits: floor = already-consumed amount (cannot reduce below this)
   const existingAdTotal = isEdit && existingAd?.type === "sell"
     ? parseFloat(String((existingAd as any).totalAmount ?? 0))
     : 0;
   const alreadyConsumed = Math.max(0, existingAdTotal - adAvailableAmount);
-  // Max totalAmount = what's already consumed + ad's current available + wallet available
+  // "Top-up mode": editing a sell ad where all previous balance was consumed
+  const isTopUpMode = isEdit && ad.type === "sell" && adAvailableAmount === 0 && alreadyConsumed > 0;
+  // Max totalAmount for ceiling (top-up: wallet only; normal: wallet + ad available)
   const maxSellTotal = rawWalletAvailable === null ? null : alreadyConsumed + adAvailableAmount + rawWalletAvailable;
-  // For display: wallet.available is how much more they can add
+  // What the user can freely set (their available balance for this operation)
   const availableBalance = rawWalletAvailable === null ? null : rawWalletAvailable + adAvailableAmount;
 
   const adLockedInOrders = isEdit && existingAd
@@ -172,14 +181,11 @@ export default function PostAdPage() {
           setStep2Error(`Total cannot be less than ${adLockedInOrders.toFixed(4)} USDT (locked in active orders).`);
           return;
         }
-        // Cannot reduce below the already-traded floor
-        if (isEdit && alreadyConsumed > 0 && Number(ad.totalAmount) < alreadyConsumed) {
-          setStep2Error(`This ad has already traded ${alreadyConsumed.toFixed(4)} USDT — total cannot be reduced below that. To add more USDT, set the total above ${existingAdTotal.toFixed(4)} USDT.`);
-          return;
-        }
-        const ceiling = isEdit ? maxSellTotal : availableBalance;
+        // In top-up mode the user enters what they want to make available (≤ wallet balance)
+        // In normal mode we check against total ceiling
+        const ceiling = isTopUpMode ? rawWalletAvailable : (isEdit ? maxSellTotal : availableBalance);
         if (ceiling !== null && Number(ad.totalAmount) > ceiling) {
-          setStep2Error(`Insufficient balance. Maximum you can set is ${ceiling.toFixed(4)} USDT.`);
+          setStep2Error(`Insufficient balance. You only have ${ceiling.toFixed(4)} USDT available.`);
           return;
         }
       }
@@ -361,43 +367,44 @@ export default function PostAdPage() {
           <div className="space-y-6">
             <div className="space-y-2">
               <div className="flex justify-between items-center">
-                <label className="text-sm font-medium">Total Amount</label>
+                <label className="text-sm font-medium">
+                  {isTopUpMode ? "Amount to Sell" : "Total Amount"}
+                </label>
                 {ad.type === "sell" && rawWalletAvailable !== null && (
                   <span className="text-xs text-muted-foreground">
-                    {isEdit && alreadyConsumed > 0
-                      ? <>Min: <span className="font-mono font-semibold text-muted-foreground">{alreadyConsumed.toFixed(4)}</span> · Add up to: <span className="text-primary font-mono font-semibold">{rawWalletAvailable.toFixed(4)} USDT</span></>
-                      : <>Available: <span className="text-primary font-mono font-semibold">{(availableBalance ?? 0).toFixed(4)} USDT</span></>
-                    }
+                    Available: <span className="text-primary font-mono font-semibold">{rawWalletAvailable.toFixed(4)} USDT</span>
                   </span>
                 )}
               </div>
+              {isTopUpMode && (
+                <p className="text-xs text-muted-foreground -mt-1">
+                  Enter how much USDT you want to make available for sale.
+                </p>
+              )}
               <div className="relative flex items-center">
                 <input
                   type="number"
-                  placeholder="Enter total amount"
+                  placeholder={isTopUpMode ? "Enter amount to sell" : "Enter total amount"}
                   value={ad.totalAmount}
                   onChange={e => {
                     setStep2Error("");
                     setAd({ ...ad, totalAmount: e.target.value });
                   }}
                   className={`w-full p-3 pr-24 bg-card border rounded outline-none font-mono transition-colors ${
-                    (() => {
-                      const v = Number(ad.totalAmount);
-                      const ceil = isEdit ? maxSellTotal : availableBalance;
-                      return ad.type === "sell" && ((ceil !== null && v > ceil) || (isEdit && alreadyConsumed > 0 && v < alreadyConsumed && v > 0))
-                        ? "border-destructive"
-                        : "border-border";
-                    })()
+                    ad.type === "sell" && rawWalletAvailable !== null && Number(ad.totalAmount) > rawWalletAvailable && ad.totalAmount !== ""
+                      ? "border-destructive"
+                      : "border-border"
                   }`}
                 />
                 <div className="absolute right-2 flex items-center gap-1.5">
-                  {ad.type === "sell" && (isEdit ? maxSellTotal : availableBalance) !== null && (
+                  {ad.type === "sell" && rawWalletAvailable !== null && rawWalletAvailable > 0 && (
                     <button
                       type="button"
                       onClick={() => {
                         setStep2Error("");
-                        const maxVal = isEdit ? maxSellTotal : availableBalance;
-                        setAd({ ...ad, totalAmount: (maxVal ?? 0).toFixed(4) });
+                        // Top-up mode: max = wallet available; normal: max = availableBalance ceiling
+                        const maxVal = isTopUpMode ? rawWalletAvailable : (availableBalance ?? rawWalletAvailable);
+                        setAd({ ...ad, totalAmount: maxVal.toFixed(4) });
                       }}
                       className="px-2 py-0.5 bg-primary/15 text-primary text-xs font-bold rounded"
                     >
@@ -407,15 +414,11 @@ export default function PostAdPage() {
                   <span className="text-muted-foreground font-medium text-sm">USDT</span>
                 </div>
               </div>
-              {ad.type === "sell" && (() => {
-                const v = Number(ad.totalAmount);
-                const ceil = isEdit ? maxSellTotal : availableBalance;
-                if (ceil !== null && v > ceil)
-                  return <p className="text-xs text-destructive flex items-center gap-1">⚠ Exceeds maximum of {ceil.toFixed(4)} USDT</p>;
-                if (isEdit && alreadyConsumed > 0 && v > 0 && v < alreadyConsumed)
-                  return <p className="text-xs text-destructive flex items-center gap-1">⚠ Minimum is {alreadyConsumed.toFixed(4)} USDT (already traded)</p>;
-                return null;
-              })()}
+              {ad.type === "sell" && rawWalletAvailable !== null && Number(ad.totalAmount) > rawWalletAvailable && ad.totalAmount !== "" && (
+                <p className="text-xs text-destructive flex items-center gap-1">
+                  ⚠ Exceeds your available balance of {rawWalletAvailable.toFixed(4)} USDT
+                </p>
+              )}
             </div>
 
             <div className="space-y-2">

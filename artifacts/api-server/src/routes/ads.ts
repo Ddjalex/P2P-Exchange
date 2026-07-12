@@ -309,37 +309,40 @@ router.patch("/:id", async (req, res) => {
         });
       }
 
-      // Hard error: can't reduce below what has already been traded
-      if (newAvailable < 0) {
-        const floor = (oldTotal - oldAvailable).toFixed(4);
-        return res.status(400).json({
-          message: `This ad has already traded ${floor} USDT — the total cannot be reduced below that amount. To add more USDT to sell, set the total above ${oldTotal.toFixed(4)} USDT.`,
-        });
+      // If the requested total would make newAvailable < 0 and there are no locked orders,
+      // the user intends to SET the available amount (not the lifetime total).
+      // Auto-adjust: treat newTotal as the desired available; add it on top of already-consumed.
+      let adjustedTotal = newTotal;
+      let adjustedAvailable = newAvailable;
+      if (newAvailable < 0 && lockedInOrders === 0) {
+        const alreadyConsumed = oldTotal - oldAvailable;
+        adjustedTotal = alreadyConsumed + newTotal;   // real new lifetime total
+        adjustedAvailable = newTotal;                  // newTotal is now the desired available
       }
 
-      updates.totalAmount = String(newTotal);
-      updates.availableAmount = newAvailable.toFixed(4);
+      updates.totalAmount = String(adjustedTotal);
+      updates.availableAmount = adjustedAvailable.toFixed(4);
+      const effectiveDiff = adjustedTotal - oldTotal; // wallet delta
 
-      if (ad.type === "sell" && totalDiff !== 0) {
-        // totalDiff > 0: seller increased ad — deduct extra from wallet.available, add to frozen
-        // totalDiff < 0: seller decreased ad — return |diff| from frozen back to wallet.available
+      if (ad.type === "sell" && effectiveDiff !== 0) {
+        // effectiveDiff > 0: freeze more from wallet; effectiveDiff < 0: return to wallet
         const wallet = await getOrCreateWallet(userId);
         const walletAvailable = parseFloat(wallet.availableBalance);
         const walletFrozen = parseFloat(wallet.frozenBalance);
 
         console.log('[Ad] Edit sell ad:', id, 'user:', userId);
-        console.log('[Ad] Old totalAmount:', oldTotal, 'New totalAmount:', newTotal, 'Diff:', totalDiff);
+        console.log('[Ad] Old totalAmount:', oldTotal, 'Adjusted totalAmount:', adjustedTotal, 'Diff:', effectiveDiff);
         console.log('[Ad] Active orders locked:', lockedInOrders);
         console.log('[Ad] Wallet before edit — available:', walletAvailable, 'frozen:', walletFrozen);
 
-        if (totalDiff > 0 && walletAvailable < totalDiff) {
+        if (effectiveDiff > 0 && walletAvailable < effectiveDiff) {
           return res.status(400).json({
-            message: `Insufficient balance. You need ${totalDiff.toFixed(4)} more USDT but only have ${walletAvailable.toFixed(4)} available.`,
+            message: `Insufficient balance. You need ${effectiveDiff.toFixed(4)} more USDT but only have ${walletAvailable.toFixed(4)} available.`,
           });
         }
 
-        const newWalletAvailable = Math.max(0, walletAvailable - totalDiff);
-        const newWalletFrozen = Math.max(0, walletFrozen + totalDiff);
+        const newWalletAvailable = Math.max(0, walletAvailable - effectiveDiff);
+        const newWalletFrozen = Math.max(0, walletFrozen + effectiveDiff);
 
         await db.update(walletsTable).set({
           availableBalance: newWalletAvailable.toFixed(4),
