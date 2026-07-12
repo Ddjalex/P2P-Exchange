@@ -192,8 +192,9 @@ export default function PostAdPage() {
           queryClient.invalidateQueries({ queryKey: getListAdsQueryKey({ mine: true }) });
           setLocation("/ads");
         },
-        onError: () => {
-          toast({ title: "Failed to update ad", variant: "destructive" });
+        onError: (err: any) => {
+          const msg = err?.response?.data?.message ?? err?.message ?? "Failed to update ad";
+          toast({ title: msg, variant: "destructive" });
         },
       });
     } else {

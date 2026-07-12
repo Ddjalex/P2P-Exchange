@@ -281,6 +281,9 @@ router.patch("/:id", async (req, res) => {
     // Handle totalAmount change for sell ads — must adjust wallet frozen/available
     if (totalAmount !== undefined) {
       const newTotal = parseFloat(totalAmount);
+      if (isNaN(newTotal) || newTotal <= 0) {
+        return res.status(400).json({ message: "Please enter a valid total amount." });
+      }
       const oldTotal = parseFloat(ad.totalAmount ?? "0");
       const oldAvailable = parseFloat(ad.availableAmount ?? "0");
 
