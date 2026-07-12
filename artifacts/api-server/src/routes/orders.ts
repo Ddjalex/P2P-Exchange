@@ -214,29 +214,54 @@ router.post("/", async (req, res) => {
       }
     }
 
-    const [order] = await db.insert(ordersTable).values({
-      adId,
-      buyerId,
-      sellerId,
-      amountUsdt,
-      amountEtb,
-      price: ad.price,
-      paymentMethod,
-      paymentTimeLimit: ad.paymentTimeLimit,
-      status: "unpaid",
-      frozenAt: now,
-      appealAvailableAt,
-    }).returning();
+    // Re-read the ad's availableAmount WITH A ROW LOCK inside a transaction, then insert the
+    // order and decrement it atomically. Without this lock, two concurrent order-creation
+    // requests against the same ad can both read the same stale `availableAmount`, both pass
+    // the balance check, and both write back — silently losing one deduction and leaving the
+    // ad (and downstream wallet frozen balance) permanently overstated versus what was really sold.
+    let order: typeof ordersTable.$inferSelect;
+    try {
+      order = await db.transaction(async (tx) => {
+        const [lockedAd] = await tx.select().from(adsTable).where(eq(adsTable.id, adId)).for("update");
+        if (!lockedAd) throw new Error("AD_NOT_FOUND");
+        const freshAvailable = parseFloat(lockedAd.availableAmount);
+        if (usdt > freshAvailable) throw new Error("INSUFFICIENT_AD_BALANCE");
+
+        const [inserted] = await tx.insert(ordersTable).values({
+          adId,
+          buyerId,
+          sellerId,
+          amountUsdt,
+          amountEtb,
+          price: ad.price,
+          paymentMethod,
+          paymentTimeLimit: ad.paymentTimeLimit,
+          status: "unpaid",
+          frozenAt: now,
+          appealAvailableAt,
+        }).returning();
+
+        const newAvailable = Math.max(0, freshAvailable - usdt);
+        await tx.update(adsTable).set({
+          availableAmount: newAvailable.toFixed(4),
+        }).where(eq(adsTable.id, adId));
+
+        return inserted;
+      });
+    } catch (err: any) {
+      if (err?.message === "INSUFFICIENT_AD_BALANCE") {
+        return res.status(400).json({ message: "Insufficient ad balance. Please reduce your amount." });
+      }
+      if (err?.message === "AD_NOT_FOUND") {
+        return res.status(404).json({ message: "Advertisement not found" });
+      }
+      throw err;
+    }
 
     // If selling to a buy ad, freeze the seller's USDT now (escrow per order)
     if (!isBuying) {
       await freezeSellerUsdt(sellerId, amountUsdt);
     }
-
-    const newAvailable = Math.max(0, available - usdt);
-    await db.update(adsTable).set({
-      availableAmount: newAvailable.toFixed(4),
-    }).where(eq(adsTable.id, adId));
 
     await db.insert(messagesTable).values({
       orderId: order.id,
