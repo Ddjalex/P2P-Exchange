@@ -370,19 +370,26 @@ router.delete("/blocked/:userId", async (req, res) => {
 });
 
 // ── Global payment methods catalogue (Binance-style) ─────────────────────────
-import { getMethodsForCountry, SUPPORTED_COUNTRIES } from "../data/global-payment-methods.js";
+import { getCountryMethods, SUPPORTED_COUNTRIES, GLOBAL_PAYMENT_METHODS } from "../data/global-payment-methods.js";
 
-/** GET /api/profile/payment-methods/available?country=ET
- *  Returns the catalogue of payment method definitions for a given country.
- *  If no country is supplied, uses the authenticated user's country. */
+/** GET /api/profile/payment-methods/available?country=ET|ALL
+ *  country=ALL  → returns all 160 countries + their methods as `{ groups }`
+ *  country=XX   → returns methods for that country as `{ country, methods }`
+ *  (no param)   → uses the authenticated user's country */
 router.get("/payment-methods/available", async (req, res) => {
   try {
-    const countryCode = (req.query.country as string | undefined)?.toUpperCase()
+    const countryParam = (req.query.country as string | undefined)?.toUpperCase();
+
+    if (countryParam === "ALL") {
+      return res.json({ country: "ALL", groups: GLOBAL_PAYMENT_METHODS });
+    }
+
+    const countryCode = countryParam
       ?? await db.select({ country: usersTable.country }).from(usersTable)
            .where(eq(usersTable.id, (req as any).userId)).then(r => r[0]?.country ?? "ET");
 
-    const methods = getMethodsForCountry(countryCode);
-    res.json({ country: countryCode, methods });
+    const entry = getCountryMethods(countryCode);
+    res.json({ country: countryCode, methods: entry?.methods ?? [] });
   } catch (err) {
     req.log.error({ err }, "Failed to get available payment methods");
     res.status(500).json({ error: "Internal server error" });

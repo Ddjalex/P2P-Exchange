@@ -25,16 +25,23 @@ interface PaymentMethodDef {
   inputType: "text" | "tel" | "number";
 }
 
-interface AvailableMethodsResponse {
+interface CountryGroup {
   country: string;
+  countryName: string;
+  currency: string;
   methods: PaymentMethodDef[];
+}
+
+interface AllMethodsResponse {
+  country: "ALL";
+  groups: CountryGroup[];
 }
 
 // ── API helpers ───────────────────────────────────────────────────────────────
 
-async function fetchAvailableMethods(country: string): Promise<AvailableMethodsResponse> {
+async function fetchAllMethods(): Promise<AllMethodsResponse> {
   const token = localStorage.getItem("p2p_token");
-  const res = await fetch(`/api/profile/payment-methods/available?country=${country}`, {
+  const res = await fetch(`/api/profile/payment-methods/available?country=ALL`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
   if (!res.ok) throw new Error("Failed to fetch available methods");
@@ -76,44 +83,65 @@ function AddPaymentMethodForm({ userCountry, kycName, onClose, onSaved }: AddFor
   const { toast } = useToast();
   const addMethod = useAddPaymentMethod();
 
-  // Lock country to user's registration country
-  const selectedCountry = userCountry || "ET";
-
-  // Method selection within the country
   const [selectedMethodId, setSelectedMethodId] = useState<string | null>(null);
+  const [selectedMethodCountry, setSelectedMethodCountry] = useState(userCountry || "ET");
   const [accountName, setAccountName] = useState(kycName || "");
   const [accountNumber, setAccountNumber] = useState("");
   const [methodSearch, setMethodSearch] = useState("");
 
+  // Fetch all 1,760 methods across all countries
   const { data: available, isLoading: loadingMethods } = useQuery({
-    queryKey: ["available-payment-methods", selectedCountry],
-    queryFn: () => fetchAvailableMethods(selectedCountry),
-    staleTime: 5 * 60 * 1000,
+    queryKey: ["available-payment-methods-all"],
+    queryFn: fetchAllMethods,
+    staleTime: 10 * 60 * 1000,
   });
 
-  const allMethods = available?.methods ?? [];
+  // Build ordered groups: user's country first, then rest alphabetically
+  const allGroups: CountryGroup[] = useMemo(() => {
+    const groups = available?.groups ?? [];
+    const userGroup = groups.find(g => g.country === (userCountry || "ET"));
+    const rest = groups.filter(g => g.country !== (userCountry || "ET"));
+    return userGroup ? [userGroup, ...rest] : rest;
+  }, [available, userCountry]);
 
-  // Auto-select first method when list loads
+  // Auto-select first method of user's country when list loads
   useEffect(() => {
-    if (allMethods.length > 0 && !selectedMethodId) {
-      setSelectedMethodId(allMethods[0].id);
+    if (allGroups.length > 0 && !selectedMethodId) {
+      const first = allGroups[0]?.methods[0];
+      if (first) {
+        setSelectedMethodId(first.id);
+        setSelectedMethodCountry(allGroups[0].country);
+      }
     }
-  }, [allMethods.length]);
+  }, [allGroups.length]);
 
-  const filteredMethods = useMemo(() => {
-    const q = methodSearch.toLowerCase();
-    return q ? allMethods.filter(m => m.name.toLowerCase().includes(q)) : allMethods;
-  }, [allMethods, methodSearch]);
+  // Filter groups by search query (matches method name or country name)
+  const filteredGroups: CountryGroup[] = useMemo(() => {
+    const q = methodSearch.toLowerCase().trim();
+    if (!q) return allGroups;
+    return allGroups
+      .map(g => ({
+        ...g,
+        methods: g.methods.filter(m => m.name.toLowerCase().includes(q)),
+      }))
+      .filter(g => g.methods.length > 0 || g.countryName.toLowerCase().includes(q));
+  }, [allGroups, methodSearch]);
 
-  const selectedMethod = allMethods.find(m => m.id === selectedMethodId);
+  // Find the currently selected method across all groups
+  const selectedMethod = useMemo(() => {
+    for (const g of allGroups) {
+      const m = g.methods.find(m => m.id === selectedMethodId);
+      if (m) return m;
+    }
+    return null;
+  }, [allGroups, selectedMethodId]);
 
-  // Group methods by type
-  const grouped = useMemo(() => {
-    const banks = filteredMethods.filter(m => m.fieldType === "bank");
-    const mobiles = filteredMethods.filter(m => m.fieldType === "mobile");
-    const wallets = filteredMethods.filter(m => m.fieldType === "wallet" || m.fieldType === "card");
-    return { banks, mobiles, wallets };
-  }, [filteredMethods]);
+  const totalCount = useMemo(() => allGroups.reduce((s, g) => s + g.methods.length, 0), [allGroups]);
+
+  const handleSelect = (method: PaymentMethodDef, countryCode: string) => {
+    setSelectedMethodId(method.id);
+    setSelectedMethodCountry(countryCode);
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -136,7 +164,7 @@ function AddPaymentMethodForm({ userCountry, kycName, onClose, onSaved }: AddFor
         type: selectedMethod.id,
         accountName: finalName,
         accountNumber: accountNumber.trim(),
-        country: selectedCountry,
+        country: selectedMethodCountry,
       } as any
     }, {
       onSuccess: () => {
@@ -155,7 +183,12 @@ function AddPaymentMethodForm({ userCountry, kycName, onClose, onSaved }: AddFor
         <button onClick={onClose} className="text-muted-foreground">
           <ArrowLeft className="w-5 h-5" />
         </button>
-        <h1 className="font-bold">Add Payment Method</h1>
+        <div>
+          <h1 className="font-bold">Add Payment Method</h1>
+          {totalCount > 0 && (
+            <p className="text-[11px] text-muted-foreground">{totalCount.toLocaleString()} methods · {allGroups.length} countries</p>
+          )}
+        </div>
       </header>
 
       <form onSubmit={handleSubmit} className="p-4 space-y-5 pb-24">
@@ -167,7 +200,7 @@ function AddPaymentMethodForm({ userCountry, kycName, onClose, onSaved }: AddFor
             <Search className="absolute left-3 top-2.5 w-4 h-4 text-muted-foreground" />
             <input
               type="text"
-              placeholder="Search methods..."
+              placeholder="Search by method or country…"
               value={methodSearch}
               onChange={e => setMethodSearch(e.target.value)}
               className="w-full pl-9 pr-3 py-2 bg-secondary border border-border rounded-lg text-sm outline-none focus:border-primary"
@@ -179,46 +212,43 @@ function AddPaymentMethodForm({ userCountry, kycName, onClose, onSaved }: AddFor
               {[1, 2, 3].map(i => <Skeleton key={i} className="h-10 w-full rounded-lg" />)}
             </div>
           ) : (
-            <div className="border border-border rounded-lg overflow-hidden max-h-64 overflow-y-auto">
-              {grouped.mobiles.length > 0 && (
-                <>
-                  <div className="px-3 py-1.5 bg-secondary/60 text-xs text-muted-foreground font-semibold uppercase tracking-wide">
-                    Mobile Money / Wallets
-                  </div>
-                  {[...grouped.mobiles, ...grouped.wallets].map(m => (
-                    <button
-                      key={m.id}
-                      type="button"
-                      onClick={() => setSelectedMethodId(m.id)}
-                      className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm text-left hover:bg-secondary transition-colors border-b border-border/40 last:border-0 ${selectedMethodId === m.id ? "bg-primary/10 text-primary font-semibold" : ""}`}
-                    >
-                      <MethodIcon fieldType={m.fieldType} />
-                      {m.name}
-                    </button>
-                  ))}
-                </>
-              )}
-              {grouped.banks.length > 0 && (
-                <>
-                  <div className="px-3 py-1.5 bg-secondary/60 text-xs text-muted-foreground font-semibold uppercase tracking-wide">
-                    Banks
-                  </div>
-                  {grouped.banks.map(m => (
-                    <button
-                      key={m.id}
-                      type="button"
-                      onClick={() => setSelectedMethodId(m.id)}
-                      className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm text-left hover:bg-secondary transition-colors border-b border-border/40 last:border-0 ${selectedMethodId === m.id ? "bg-primary/10 text-primary font-semibold" : ""}`}
-                    >
-                      <MethodIcon fieldType={m.fieldType} />
-                      {m.name}
-                    </button>
-                  ))}
-                </>
-              )}
-              {filteredMethods.length === 0 && (
+            <div className="border border-border rounded-lg overflow-hidden max-h-72 overflow-y-auto">
+              {filteredGroups.length === 0 && (
                 <div className="py-6 text-center text-sm text-muted-foreground">No methods found</div>
               )}
+              {filteredGroups.map(group => (
+                <div key={group.country}>
+                  {/* Country header */}
+                  <div className="px-3 py-1.5 bg-secondary/80 text-xs text-muted-foreground font-semibold uppercase tracking-wide sticky top-0 z-10 border-b border-border/40">
+                    {group.countryName}
+                    <span className="ml-1.5 font-normal opacity-60">({group.currency})</span>
+                  </div>
+                  {/* Mobile money + wallets first */}
+                  {group.methods.filter(m => m.fieldType === "mobile" || m.fieldType === "wallet" || m.fieldType === "card").map(m => (
+                    <button
+                      key={`${group.country}-${m.id}`}
+                      type="button"
+                      onClick={() => handleSelect(m, group.country)}
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm text-left hover:bg-secondary transition-colors border-b border-border/40 last:border-0 ${selectedMethodId === m.id && selectedMethodCountry === group.country ? "bg-primary/10 text-primary font-semibold" : ""}`}
+                    >
+                      <MethodIcon fieldType={m.fieldType} />
+                      {m.name}
+                    </button>
+                  ))}
+                  {/* Banks */}
+                  {group.methods.filter(m => m.fieldType === "bank").map(m => (
+                    <button
+                      key={`${group.country}-${m.id}`}
+                      type="button"
+                      onClick={() => handleSelect(m, group.country)}
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm text-left hover:bg-secondary transition-colors border-b border-border/40 last:border-0 ${selectedMethodId === m.id && selectedMethodCountry === group.country ? "bg-primary/10 text-primary font-semibold" : ""}`}
+                    >
+                      <MethodIcon fieldType={m.fieldType} />
+                      {m.name}
+                    </button>
+                  ))}
+                </div>
+              ))}
             </div>
           )}
 
@@ -304,17 +334,20 @@ export default function PaymentMethodsPage() {
     : registrationCountry;
   const userCountry = fiatCountry;
 
-  // Pre-load available methods cache for user's country
+  // Re-use the all-methods cache already populated by the add form
   const { data: catalogue } = useQuery({
-    queryKey: ["available-payment-methods", userCountry],
-    queryFn: () => fetchAvailableMethods(userCountry),
-    staleTime: 5 * 60 * 1000,
-    enabled: !!userCountry,
+    queryKey: ["available-payment-methods-all"],
+    queryFn: fetchAllMethods,
+    staleTime: 10 * 60 * 1000,
   });
 
-  const getMethodDef = (type: string, country: string) => {
-    // Try catalogue match for the row's country if different from user country
-    return catalogue?.methods.find(m => m.id === type) ?? {
+  const getMethodDef = (type: string, _country: string) => {
+    // Search across all country groups for the matching method definition
+    for (const g of catalogue?.groups ?? []) {
+      const m = g.methods.find(m => m.id === type);
+      if (m) return m;
+    }
+    return {
       id: type,
       name: type,
       fieldType: "bank" as const,
