@@ -1,5 +1,5 @@
 import { AppLayout } from "@/components/layout";
-import { Edit2, ShieldCheck, HelpCircle, Info, LogOut, ChevronRight, CheckCircle2, X, Loader2, ExternalLink, Headphones } from "lucide-react"; // ExternalLink used by TelegramJoinButton
+import { Edit2, ShieldCheck, HelpCircle, Info, LogOut, ChevronRight, CheckCircle2, X, Loader2, ExternalLink, Headphones, Shield, FileText, RefreshCw, Mail } from "lucide-react"; // ExternalLink used by TelegramJoinButton
 import { useGetProfile, getGetProfileQueryKey } from "@workspace/api-client-react";
 import { useState, useEffect } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -806,6 +806,22 @@ export default function ProfilePage() {
             </Link>
             <Link href="/about" className="flex items-center justify-between p-4 border-b border-border hover:bg-secondary/50 transition-colors">
               <span className="text-sm font-medium flex items-center"><Info className="w-4 h-4 mr-2 text-muted-foreground" />About Xendrx</span>
+              <ChevronRight className="w-4 h-4 text-muted-foreground" />
+            </Link>
+            <Link href="/privacy" className="flex items-center justify-between p-4 border-b border-border hover:bg-secondary/50 transition-colors">
+              <span className="text-sm font-medium flex items-center"><Shield className="w-4 h-4 mr-2 text-muted-foreground" />Privacy Policy</span>
+              <ChevronRight className="w-4 h-4 text-muted-foreground" />
+            </Link>
+            <Link href="/terms" className="flex items-center justify-between p-4 border-b border-border hover:bg-secondary/50 transition-colors">
+              <span className="text-sm font-medium flex items-center"><FileText className="w-4 h-4 mr-2 text-muted-foreground" />Terms &amp; Conditions</span>
+              <ChevronRight className="w-4 h-4 text-muted-foreground" />
+            </Link>
+            <Link href="/refund" className="flex items-center justify-between p-4 border-b border-border hover:bg-secondary/50 transition-colors">
+              <span className="text-sm font-medium flex items-center"><RefreshCw className="w-4 h-4 mr-2 text-muted-foreground" />Refund Policy</span>
+              <ChevronRight className="w-4 h-4 text-muted-foreground" />
+            </Link>
+            <Link href="/contact" className="flex items-center justify-between p-4 border-b border-border hover:bg-secondary/50 transition-colors">
+              <span className="text-sm font-medium flex items-center"><Mail className="w-4 h-4 mr-2 text-muted-foreground" />Contact Us</span>
               <ChevronRight className="w-4 h-4 text-muted-foreground" />
             </Link>
             <TelegramJoinButton />

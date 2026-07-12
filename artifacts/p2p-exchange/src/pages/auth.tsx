@@ -871,6 +871,22 @@ export default function AuthPage() {
           <p className="slide-element">Fast &amp; secure P2P exchange</p>
         </div>
       </div>
+
+      {/* Compliance footer — always visible, required for ad platform review */}
+      <div style={{ textAlign: "center", padding: "16px 24px 24px", display: "flex", flexWrap: "wrap", justifyContent: "center", gap: "4px 16px" }}>
+        {[
+          { label: "Privacy Policy", href: "/privacy" },
+          { label: "Terms & Conditions", href: "/terms" },
+          { label: "Refund Policy", href: "/refund" },
+          { label: "Contact Us", href: "/contact" },
+          { label: "About", href: "/about" },
+        ].map(({ label, href }) => (
+          <a key={href} href={href} style={{ color: "rgba(0,212,255,0.7)", fontSize: 11, textDecoration: "none", whiteSpace: "nowrap" }}
+            onMouseEnter={e => (e.currentTarget.style.color = "#00d4ff")}
+            onMouseLeave={e => (e.currentTarget.style.color = "rgba(0,212,255,0.7)")}
+          >{label}</a>
+        ))}
+      </div>
     </div>
   );
 }

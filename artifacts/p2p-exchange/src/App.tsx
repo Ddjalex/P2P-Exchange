@@ -34,6 +34,10 @@ import BlockedUsersPage from "@/pages/blocked-users";
 import TraderProfilePage from "@/pages/trader-profile";
 import HelpCenterPage from "@/pages/help-center";
 import AboutPage from "@/pages/about";
+import PrivacyPage from "@/pages/privacy";
+import TermsPage from "@/pages/terms";
+import ContactPage from "@/pages/contact";
+import RefundPage from "@/pages/refund";
 import SharedAdPage from "@/pages/shared-ad";
 import CardPage from "@/pages/card";
 import TransferHistoryPage from "@/pages/transfer-history";
@@ -153,6 +157,12 @@ function Router() {
 
       {/* Forgot password flow — public */}
       <Route path="/forgot-password" component={ForgotPasswordPage} />
+
+      {/* Compliance pages — public (no login required, needed for ad platforms) */}
+      <Route path="/privacy" component={PrivacyPage} />
+      <Route path="/terms" component={TermsPage} />
+      <Route path="/contact" component={ContactPage} />
+      <Route path="/refund" component={RefundPage} />
 
       {/* Shared ad link — public, handles own auth redirect */}
       <Route path="/p2p/ad/:adId" component={SharedAdPage} />

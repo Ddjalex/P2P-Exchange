@@ -62,18 +62,34 @@ export default function AboutPage() {
         </div>
 
         <div className="bg-card border border-card-border rounded-xl divide-y divide-border">
-          {[
-            ["Website", "www.xendrx.com"],
-            ["Support", "support@xendrx.com"],
-            ["Telegram", "@Xendrx"],
-            ["Terms of Service", "xendrx.com/terms"],
-            ["Privacy Policy", "xendrx.com/privacy"],
-          ].map(([label, value]) => (
-            <div key={label} className="flex items-center justify-between p-4">
-              <span className="text-sm text-muted-foreground">{label}</span>
-              <span className="text-sm text-primary">{value}</span>
-            </div>
-          ))}
+          <a href="https://www.xendrx.com" className="flex items-center justify-between p-4">
+            <span className="text-sm text-muted-foreground">Website</span>
+            <span className="text-sm text-primary">www.xendrx.com</span>
+          </a>
+          <a href="mailto:support@xendrx.com" className="flex items-center justify-between p-4">
+            <span className="text-sm text-muted-foreground">Support</span>
+            <span className="text-sm text-primary">support@xendrx.com</span>
+          </a>
+          <a href="https://t.me/Xendrx" className="flex items-center justify-between p-4">
+            <span className="text-sm text-muted-foreground">Telegram</span>
+            <span className="text-sm text-primary">@Xendrx</span>
+          </a>
+          <Link href="/terms" className="flex items-center justify-between p-4">
+            <span className="text-sm text-muted-foreground">Terms of Service</span>
+            <span className="text-sm text-primary">View →</span>
+          </Link>
+          <Link href="/privacy" className="flex items-center justify-between p-4">
+            <span className="text-sm text-muted-foreground">Privacy Policy</span>
+            <span className="text-sm text-primary">View →</span>
+          </Link>
+          <Link href="/refund" className="flex items-center justify-between p-4">
+            <span className="text-sm text-muted-foreground">Refund Policy</span>
+            <span className="text-sm text-primary">View →</span>
+          </Link>
+          <Link href="/contact" className="flex items-center justify-between p-4">
+            <span className="text-sm text-muted-foreground">Contact Us</span>
+            <span className="text-sm text-primary">View →</span>
+          </Link>
         </div>
 
         <p className="text-center text-xs text-muted-foreground pb-2">
