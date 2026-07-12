@@ -131,6 +131,14 @@ export default function PostAdPage() {
   const adAvailableAmount = isEdit && existingAd?.type === "sell"
     ? parseFloat(String((existingAd as any).availableAmount ?? 0))
     : 0;
+  // For sell ad edits: floor = already-consumed amount (cannot reduce below this)
+  const existingAdTotal = isEdit && existingAd?.type === "sell"
+    ? parseFloat(String((existingAd as any).totalAmount ?? 0))
+    : 0;
+  const alreadyConsumed = Math.max(0, existingAdTotal - adAvailableAmount);
+  // Max totalAmount = what's already consumed + ad's current available + wallet available
+  const maxSellTotal = rawWalletAvailable === null ? null : alreadyConsumed + adAvailableAmount + rawWalletAvailable;
+  // For display: wallet.available is how much more they can add
   const availableBalance = rawWalletAvailable === null ? null : rawWalletAvailable + adAvailableAmount;
 
   const adLockedInOrders = isEdit && existingAd
@@ -164,8 +172,14 @@ export default function PostAdPage() {
           setStep2Error(`Total cannot be less than ${adLockedInOrders.toFixed(4)} USDT (locked in active orders).`);
           return;
         }
-        if (availableBalance !== null && Number(ad.totalAmount) > availableBalance) {
-          setStep2Error(`Insufficient balance. You only have ${availableBalance.toFixed(4)} USDT available.`);
+        // Cannot reduce below the already-traded floor
+        if (isEdit && alreadyConsumed > 0 && Number(ad.totalAmount) < alreadyConsumed) {
+          setStep2Error(`This ad has already traded ${alreadyConsumed.toFixed(4)} USDT — total cannot be reduced below that. To add more USDT, set the total above ${existingAdTotal.toFixed(4)} USDT.`);
+          return;
+        }
+        const ceiling = isEdit ? maxSellTotal : availableBalance;
+        if (ceiling !== null && Number(ad.totalAmount) > ceiling) {
+          setStep2Error(`Insufficient balance. Maximum you can set is ${ceiling.toFixed(4)} USDT.`);
           return;
         }
       }
@@ -348,9 +362,12 @@ export default function PostAdPage() {
             <div className="space-y-2">
               <div className="flex justify-between items-center">
                 <label className="text-sm font-medium">Total Amount</label>
-                {ad.type === "sell" && availableBalance !== null && (
+                {ad.type === "sell" && rawWalletAvailable !== null && (
                   <span className="text-xs text-muted-foreground">
-                    Available: <span className="text-primary font-mono font-semibold">{availableBalance.toFixed(4)} USDT</span>
+                    {isEdit && alreadyConsumed > 0
+                      ? <>Min: <span className="font-mono font-semibold text-muted-foreground">{alreadyConsumed.toFixed(4)}</span> · Add up to: <span className="text-primary font-mono font-semibold">{rawWalletAvailable.toFixed(4)} USDT</span></>
+                      : <>Available: <span className="text-primary font-mono font-semibold">{(availableBalance ?? 0).toFixed(4)} USDT</span></>
+                    }
                   </span>
                 )}
               </div>
@@ -364,18 +381,23 @@ export default function PostAdPage() {
                     setAd({ ...ad, totalAmount: e.target.value });
                   }}
                   className={`w-full p-3 pr-24 bg-card border rounded outline-none font-mono transition-colors ${
-                    ad.type === "sell" && availableBalance !== null && Number(ad.totalAmount) > availableBalance
-                      ? "border-destructive"
-                      : "border-border"
+                    (() => {
+                      const v = Number(ad.totalAmount);
+                      const ceil = isEdit ? maxSellTotal : availableBalance;
+                      return ad.type === "sell" && ((ceil !== null && v > ceil) || (isEdit && alreadyConsumed > 0 && v < alreadyConsumed && v > 0))
+                        ? "border-destructive"
+                        : "border-border";
+                    })()
                   }`}
                 />
                 <div className="absolute right-2 flex items-center gap-1.5">
-                  {ad.type === "sell" && availableBalance !== null && (
+                  {ad.type === "sell" && (isEdit ? maxSellTotal : availableBalance) !== null && (
                     <button
                       type="button"
                       onClick={() => {
                         setStep2Error("");
-                        setAd({ ...ad, totalAmount: availableBalance.toFixed(4) });
+                        const maxVal = isEdit ? maxSellTotal : availableBalance;
+                        setAd({ ...ad, totalAmount: (maxVal ?? 0).toFixed(4) });
                       }}
                       className="px-2 py-0.5 bg-primary/15 text-primary text-xs font-bold rounded"
                     >
@@ -385,11 +407,15 @@ export default function PostAdPage() {
                   <span className="text-muted-foreground font-medium text-sm">USDT</span>
                 </div>
               </div>
-              {ad.type === "sell" && availableBalance !== null && Number(ad.totalAmount) > availableBalance && (
-                <p className="text-xs text-destructive flex items-center gap-1">
-                  ⚠ Exceeds your available balance of {availableBalance.toFixed(4)} USDT
-                </p>
-              )}
+              {ad.type === "sell" && (() => {
+                const v = Number(ad.totalAmount);
+                const ceil = isEdit ? maxSellTotal : availableBalance;
+                if (ceil !== null && v > ceil)
+                  return <p className="text-xs text-destructive flex items-center gap-1">⚠ Exceeds maximum of {ceil.toFixed(4)} USDT</p>;
+                if (isEdit && alreadyConsumed > 0 && v > 0 && v < alreadyConsumed)
+                  return <p className="text-xs text-destructive flex items-center gap-1">⚠ Minimum is {alreadyConsumed.toFixed(4)} USDT (already traded)</p>;
+                return null;
+              })()}
             </div>
 
             <div className="space-y-2">
