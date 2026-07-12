@@ -6,6 +6,8 @@ export interface Country {
 }
 
 export const COUNTRIES: Country[] = [
+  // Ethiopia first so COUNTRIES[0] === ET
+  { code: "ET", name: "Ethiopia", dial: "+251", flag: "🇪🇹" },
   { code: "AF", name: "Afghanistan", dial: "+93", flag: "🇦🇫" },
   { code: "AL", name: "Albania", dial: "+355", flag: "🇦🇱" },
   { code: "DZ", name: "Algeria", dial: "+213", flag: "🇩🇿" },
@@ -63,7 +65,6 @@ export const COUNTRIES: Country[] = [
   { code: "ER", name: "Eritrea", dial: "+291", flag: "🇪🇷" },
   { code: "EE", name: "Estonia", dial: "+372", flag: "🇪🇪" },
   { code: "SZ", name: "Eswatini", dial: "+268", flag: "🇸🇿" },
-  { code: "ET", name: "Ethiopia", dial: "+251", flag: "🇪🇹" },
   { code: "FJ", name: "Fiji", dial: "+679", flag: "🇫🇯" },
   { code: "FI", name: "Finland", dial: "+358", flag: "🇫🇮" },
   { code: "FR", name: "France", dial: "+33", flag: "🇫🇷" },

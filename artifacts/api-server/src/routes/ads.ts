@@ -278,87 +278,71 @@ router.patch("/:id", async (req, res) => {
     if (region !== undefined) updates.region = region;
     if (status !== undefined) updates.status = status;
 
-    // Handle totalAmount change for sell ads — must adjust wallet frozen/available.
-    // Everything that reads-then-writes the ad's availableAmount and the wallet balances runs
-    // inside one transaction with row locks (FOR UPDATE) on both rows. Without this, a save here
-    // racing a concurrent order creation (or a double-click double-submit) can both read the same
-    // stale availableAmount/wallet figures and both write back, silently losing one side's
-    // deduction — the exact class of bug that previously overstated a seller's ad inventory and
-    // wallet frozen balance beyond what was actually sold.
+    // Handle totalAmount change for sell ads — must adjust wallet frozen/available
     if (totalAmount !== undefined) {
       const newTotal = parseFloat(totalAmount);
       if (isNaN(newTotal) || newTotal <= 0) {
         return res.status(400).json({ message: "Please enter a valid total amount." });
       }
+      const oldTotal = parseFloat(ad.totalAmount ?? "0");
+      const oldAvailable = parseFloat(ad.availableAmount ?? "0");
 
-      let txErr: { status: number; message: string } | null = null;
-      const updated = await db.transaction(async (tx) => {
-        const [lockedAd] = await tx.select().from(adsTable).where(eq(adsTable.id, id)).for("update");
-        if (!lockedAd) { txErr = { status: 404, message: "Ad not found" }; return null; }
+      // Query active orders (unpaid/paid/appeal) to enforce minimum
+      const activeOrders = await db.select({ amountUsdt: ordersTable.amountUsdt })
+        .from(ordersTable)
+        .where(and(
+          eq(ordersTable.adId, id),
+          sql`${ordersTable.status} IN ('unpaid', 'paid', 'appeal')`
+        ));
+      const lockedInOrders = activeOrders.reduce((sum, o) => sum + parseFloat(o.amountUsdt ?? "0"), 0);
 
-        const oldTotal = parseFloat(lockedAd.totalAmount ?? "0");
-        const oldAvailable = parseFloat(lockedAd.availableAmount ?? "0");
+      // newAvailable = shift old available by the same delta as totalAmount.
+      // This correctly handles ads with completed trades (availableAmount < totalAmount - lockedInOrders).
+      const totalDiff = newTotal - oldTotal;
+      const newAvailable = oldAvailable + totalDiff;
 
-        // Query active orders (unpaid/paid/appeal) to enforce minimum
-        const activeOrders = await tx.select({ amountUsdt: ordersTable.amountUsdt })
-          .from(ordersTable)
-          .where(and(
-            eq(ordersTable.adId, id),
-            sql`${ordersTable.status} IN ('unpaid', 'paid', 'appeal')`
-          ));
-        const lockedInOrders = activeOrders.reduce((sum, o) => sum + parseFloat(o.amountUsdt ?? "0"), 0);
+      if (newAvailable < 0) {
+        return res.status(400).json({
+          message: `Cannot reduce ad below what has already been traded.`,
+        });
+      }
+      if (newAvailable < lockedInOrders) {
+        return res.status(400).json({
+          message: `Cannot set total below ${lockedInOrders.toFixed(4)} USDT — that amount is locked in active orders.`,
+        });
+      }
 
-        // newAvailable = shift old available by the same delta as totalAmount.
-        // This correctly handles ads with completed trades (availableAmount < totalAmount - lockedInOrders).
-        const totalDiff = newTotal - oldTotal;
-        const newAvailable = oldAvailable + totalDiff;
+      updates.totalAmount = String(newTotal);
+      updates.availableAmount = newAvailable.toFixed(4);
 
-        if (newAvailable < 0) {
-          txErr = { status: 400, message: `Cannot reduce ad below what has already been traded.` };
-          return null;
-        }
-        if (newAvailable < lockedInOrders) {
-          txErr = { status: 400, message: `Cannot set total below ${lockedInOrders.toFixed(4)} USDT — that amount is locked in active orders.` };
-          return null;
-        }
+      if (ad.type === "sell" && totalDiff !== 0) {
+        // totalDiff > 0: seller increased ad — deduct extra from wallet.available, add to frozen
+        // totalDiff < 0: seller decreased ad — return |diff| from frozen back to wallet.available
+        const wallet = await getOrCreateWallet(userId);
+        const walletAvailable = parseFloat(wallet.availableBalance);
+        const walletFrozen = parseFloat(wallet.frozenBalance);
 
-        updates.totalAmount = String(newTotal);
-        updates.availableAmount = newAvailable.toFixed(4);
+        console.log('[Ad] Edit sell ad:', id, 'user:', userId);
+        console.log('[Ad] Old totalAmount:', oldTotal, 'New totalAmount:', newTotal, 'Diff:', totalDiff);
+        console.log('[Ad] Active orders locked:', lockedInOrders);
+        console.log('[Ad] Wallet before edit — available:', walletAvailable, 'frozen:', walletFrozen);
 
-        if (lockedAd.type === "sell" && totalDiff !== 0) {
-          // totalDiff > 0: seller increased ad — deduct extra from wallet.available, add to frozen
-          // totalDiff < 0: seller decreased ad — return |diff| from frozen back to wallet.available
-          const [wallet] = await tx.select().from(walletsTable).where(eq(walletsTable.userId, userId)).for("update");
-          const walletAvailable = wallet ? parseFloat(wallet.availableBalance) : 0;
-          const walletFrozen = wallet ? parseFloat(wallet.frozenBalance) : 0;
-
-          if (totalDiff > 0 && walletAvailable < totalDiff) {
-            txErr = { status: 400, message: `Insufficient balance. You need ${totalDiff.toFixed(4)} more USDT but only have ${walletAvailable.toFixed(4)} available.` };
-            return null;
-          }
-
-          const newWalletAvailable = Math.max(0, walletAvailable - totalDiff);
-          const newWalletFrozen = Math.max(0, walletFrozen + totalDiff);
-
-          if (wallet) {
-            await tx.update(walletsTable).set({
-              availableBalance: newWalletAvailable.toFixed(4),
-              frozenBalance: newWalletFrozen.toFixed(4),
-            }).where(eq(walletsTable.userId, userId));
-          } else {
-            await tx.insert(walletsTable).values({
-              userId, availableBalance: newWalletAvailable.toFixed(4), frozenBalance: newWalletFrozen.toFixed(4),
-            });
-          }
+        if (totalDiff > 0 && walletAvailable < totalDiff) {
+          return res.status(400).json({
+            message: `Insufficient balance. You need ${totalDiff.toFixed(4)} more USDT but only have ${walletAvailable.toFixed(4)} available.`,
+          });
         }
 
-        const [row] = await tx.update(adsTable).set(updates).where(eq(adsTable.id, id)).returning();
-        return row;
-      });
+        const newWalletAvailable = Math.max(0, walletAvailable - totalDiff);
+        const newWalletFrozen = Math.max(0, walletFrozen + totalDiff);
 
-      if (txErr) return res.status(txErr.status).json({ message: txErr.message });
-      if (!updated) return res.status(404).json({ message: "Ad not found" });
-      return res.json(await formatAd(updated));
+        await db.update(walletsTable).set({
+          availableBalance: newWalletAvailable.toFixed(4),
+          frozenBalance: newWalletFrozen.toFixed(4),
+        }).where(eq(walletsTable.userId, userId));
+
+        console.log('[Ad] Wallet after edit — available:', newWalletAvailable.toFixed(4), 'frozen:', newWalletFrozen.toFixed(4));
+      }
     }
 
     const [updated] = await db.update(adsTable).set(updates).where(eq(adsTable.id, id)).returning();
