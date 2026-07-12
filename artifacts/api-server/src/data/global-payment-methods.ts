@@ -1079,6 +1079,7 @@ export const GLOBAL_PAYMENT_METHODS: CountryMethods[] = [
       bank("ZKB", "Zürcher Kantonalbank (ZKB)"),
       bank("POSTFINANCE", "PostFinance"),
       bank("RAIFFEISEN_CH", "Raiffeisen Switzerland"),
+      bank("DUKASCOPY", "Dukascopy Bank"),
       PAYPAL, WISE, REVOLUT, SWIFT,
     ],
   },
