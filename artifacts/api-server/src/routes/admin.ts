@@ -916,18 +916,46 @@ router.post("/wallet/recalculate-frozen", adminAuth, async (req: any, res) => {
     const results: Array<{ userId: number; username: string; oldFrozen: string; newFrozen: string; released: string }> = [];
 
     for (const wallet of allWallets) {
-      // Sum USDT from orders where this user is the seller AND order is still active (frozen)
-      const activeSellerOrders = await db.select().from(ordersTable)
+      // Frozen USDT comes from two independent escrow mechanisms:
+      // 1. Sell ads freeze their FULL remaining (unsold) amount at post/edit time, regardless of
+      //    whether any orders exist against them yet — see ads.ts POST/PATCH. That remaining
+      //    amount is exactly availableAmount + whatever is currently locked in active orders
+      //    against that ad (availableAmount already has active-order amounts subtracted out).
+      const sellAds = await db.select().from(adsTable)
+        .where(and(eq(adsTable.userId, wallet.userId), eq(adsTable.type, "sell" as any)));
+      let sellAdEscrow = 0;
+      for (const ad of sellAds) {
+        const activeLocked = await db.select({ amountUsdt: ordersTable.amountUsdt })
+          .from(ordersTable)
+          .where(and(
+            eq(ordersTable.adId, ad.id),
+            or(
+              eq(ordersTable.status, "unpaid" as any),
+              eq(ordersTable.status, "paid" as any),
+              eq(ordersTable.status, "appeal" as any)
+            )
+          ));
+        const lockedSum = activeLocked.reduce((sum, o) => sum + parseFloat(o.amountUsdt ?? "0"), 0);
+        sellAdEscrow += parseFloat(ad.availableAmount ?? "0") + lockedSum;
+      }
+
+      // 2. Selling INTO someone else's buy ad freezes per-order at order-creation time
+      //    (freezeSellerUsdt in orders.ts) — that escrow is exactly the active order amount.
+      const activeSellerOrders = await db.select({ amountUsdt: ordersTable.amountUsdt, adType: adsTable.type })
+        .from(ordersTable)
+        .innerJoin(adsTable, eq(adsTable.id, ordersTable.adId))
         .where(and(
           eq(ordersTable.sellerId, wallet.userId),
+          eq(adsTable.type, "buy" as any),
           or(
             eq(ordersTable.status, "unpaid" as any),
             eq(ordersTable.status, "paid" as any),
             eq(ordersTable.status, "appeal" as any)
           )
         ));
+      const buyOrderEscrow = activeSellerOrders.reduce((sum, o) => sum + parseFloat(o.amountUsdt ?? "0"), 0);
 
-      const correctFrozen = activeSellerOrders.reduce((sum, o) => sum + parseFloat(o.amountUsdt), 0);
+      const correctFrozen = sellAdEscrow + buyOrderEscrow;
       const oldFrozen = parseFloat(wallet.frozenBalance);
       const diff = oldFrozen - correctFrozen;
 
