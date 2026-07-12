@@ -128,10 +128,20 @@ export default function PostAdPage() {
       .catch(() => {});
   }, []);
 
-  const adAvailableAmount = isEdit && existingAd?.type === "sell"
+  // For an ad being edited, part of totalAmount may already be sold/locked (totalAmount - availableAmount).
+  // The max total the ad can be raised to is that already-committed amount plus whatever is still
+  // available on the ad plus whatever free balance the wallet has — i.e. existing totalAmount + free wallet balance.
+  const adOldTotalAmount = isEdit && existingAd?.type === "sell"
+    ? parseFloat(String((existingAd as any).totalAmount ?? 0))
+    : 0;
+  const adOldAvailableAmount = isEdit && existingAd?.type === "sell"
     ? parseFloat(String((existingAd as any).availableAmount ?? 0))
     : 0;
-  const availableBalance = rawWalletAvailable === null ? null : rawWalletAvailable + adAvailableAmount;
+  // Amount already sold or locked in orders — the total can never be reduced below this.
+  const adAlreadyCommitted = isEdit && existingAd?.type === "sell"
+    ? Math.max(0, adOldTotalAmount - adOldAvailableAmount)
+    : 0;
+  const availableBalance = rawWalletAvailable === null ? null : rawWalletAvailable + adOldTotalAmount;
 
   const adLockedInOrders = isEdit && existingAd
     ? ((existingAd as any).activeOrdersLocked ?? 0)
@@ -160,8 +170,8 @@ export default function PostAdPage() {
         return;
       }
       if (ad.type === "sell") {
-        if (isEdit && adLockedInOrders > 0 && Number(ad.totalAmount) < adLockedInOrders) {
-          setStep2Error(`Total cannot be less than ${adLockedInOrders.toFixed(4)} USDT (locked in active orders).`);
+        if (isEdit && adAlreadyCommitted > 0 && Number(ad.totalAmount) < adAlreadyCommitted) {
+          setStep2Error(`Total cannot be less than ${adAlreadyCommitted.toFixed(4)} USDT (already traded or locked in active orders).`);
           return;
         }
         if (availableBalance !== null && Number(ad.totalAmount) > availableBalance) {
@@ -350,7 +360,7 @@ export default function PostAdPage() {
                 <label className="text-sm font-medium">Total Amount</label>
                 {ad.type === "sell" && availableBalance !== null && (
                   <span className="text-xs text-muted-foreground">
-                    Available: <span className="text-primary font-mono font-semibold">{availableBalance.toFixed(4)} USDT</span>
+                    Max total: <span className="text-primary font-mono font-semibold">{availableBalance.toFixed(4)} USDT</span>
                   </span>
                 )}
               </div>
@@ -361,10 +371,21 @@ export default function PostAdPage() {
                   value={ad.totalAmount}
                   onChange={e => {
                     setStep2Error("");
-                    setAd({ ...ad, totalAmount: e.target.value });
+                    const val = e.target.value;
+                    // Keep the order-limit max in sync with the total amount so it can never
+                    // be left pointing at a stale, larger figure than the ad's own total.
+                    const numVal = Number(val);
+                    setAd({
+                      ...ad,
+                      totalAmount: val,
+                      maxLimit: val && numVal > 0 ? val : ad.maxLimit,
+                    });
                   }}
                   className={`w-full p-3 pr-24 bg-card border rounded outline-none font-mono transition-colors ${
-                    ad.type === "sell" && availableBalance !== null && Number(ad.totalAmount) > availableBalance
+                    ad.type === "sell" && (
+                      (availableBalance !== null && Number(ad.totalAmount) > availableBalance) ||
+                      (isEdit && adAlreadyCommitted > 0 && ad.totalAmount !== "" && Number(ad.totalAmount) < adAlreadyCommitted)
+                    )
                       ? "border-destructive"
                       : "border-border"
                   }`}
@@ -375,7 +396,8 @@ export default function PostAdPage() {
                       type="button"
                       onClick={() => {
                         setStep2Error("");
-                        setAd({ ...ad, totalAmount: availableBalance.toFixed(4) });
+                        const maxVal = availableBalance.toFixed(4);
+                        setAd({ ...ad, totalAmount: maxVal, maxLimit: maxVal });
                       }}
                       className="px-2 py-0.5 bg-primary/15 text-primary text-xs font-bold rounded"
                     >
@@ -387,7 +409,12 @@ export default function PostAdPage() {
               </div>
               {ad.type === "sell" && availableBalance !== null && Number(ad.totalAmount) > availableBalance && (
                 <p className="text-xs text-destructive flex items-center gap-1">
-                  ⚠ Exceeds your available balance of {availableBalance.toFixed(4)} USDT
+                  ⚠ Exceeds your maximum total of {availableBalance.toFixed(4)} USDT
+                </p>
+              )}
+              {ad.type === "sell" && isEdit && adAlreadyCommitted > 0 && ad.totalAmount !== "" && Number(ad.totalAmount) < adAlreadyCommitted && (
+                <p className="text-xs text-destructive flex items-center gap-1">
+                  ⚠ Cannot go below {adAlreadyCommitted.toFixed(4)} USDT (already traded or locked in active orders)
                 </p>
               )}
             </div>
