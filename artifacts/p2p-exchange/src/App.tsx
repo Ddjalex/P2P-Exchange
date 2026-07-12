@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Switch, Route, Router as WouterRouter, Redirect } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -87,12 +88,58 @@ function KycProtectedRoute({ component: Component }: { component: React.Componen
   return <KycGate><Component /></KycGate>;
 }
 
+/**
+ * Controls Tawk.to widget visibility based on auth state.
+ *
+ * Rules:
+ *   - Unauthenticated (auth page, post-logout): widget visible
+ *   - Authenticated: widget hidden; only shown on-demand via Profile → Contact Support
+ *   - onChatMinimized while authenticated: hide widget (so it doesn't persist)
+ *   - onChatMinimized while unauthenticated: no-op (floating button stays visible)
+ */
+function TawkVisibility() {
+  const { user, isLoading } = useAuth();
+
+  useEffect(() => {
+    if (isLoading) return;
+
+    const tawk = (window as any).Tawk_API;
+    if (!tawk) return;
+
+    const apply = () => {
+      if (user) {
+        // Logged in: hide widget; re-hide whenever user minimizes the chat
+        tawk.hideWidget?.();
+        tawk.onChatMinimized = () => tawk.hideWidget?.();
+      } else {
+        // Logged out / on auth page: show widget; minimizing just collapses it
+        tawk.showWidget?.();
+        tawk.onChatMinimized = undefined;
+      }
+    };
+
+    // If Tawk has already loaded, apply immediately; otherwise chain into onLoad
+    if (typeof tawk.hideWidget === "function") {
+      apply();
+    } else {
+      const prev = tawk.onLoad;
+      tawk.onLoad = () => {
+        prev?.();
+        apply();
+      };
+    }
+  }, [user, isLoading]);
+
+  return null;
+}
+
 function Router() {
   const { user, isLoading } = useAuth();
   useSse();
 
   return (
     <>
+    <TawkVisibility />
     <Switch>
       {/* Root redirect */}
       <Route path="/">
