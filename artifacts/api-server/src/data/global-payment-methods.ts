@@ -2546,6 +2546,9 @@ export const GLOBAL_PAYMENT_METHODS: CountryMethods[] = [
 
 // ── Lookup helpers ────────────────────────────────────────────────────────────
 
+export const SUPPORTED_COUNTRIES: { country: string; countryName: string; currency: string }[] =
+  GLOBAL_PAYMENT_METHODS.map(({ country, countryName, currency }) => ({ country, countryName, currency }));
+
 export function getCountryMethods(countryCode: string): CountryMethods | undefined {
   return GLOBAL_PAYMENT_METHODS.find(c => c.country === countryCode);
 }
