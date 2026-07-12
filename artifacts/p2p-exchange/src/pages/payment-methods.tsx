@@ -44,9 +44,23 @@ async function fetchAvailableMethods(country: string): Promise<AvailableMethodsR
 // ── Icon helper ───────────────────────────────────────────────────────────────
 
 function MethodIcon({ fieldType }: { fieldType: string }) {
-  if (fieldType === "mobile") return <Smartphone className="w-4 h-4 text-primary" />;
-  if (fieldType === "wallet") return <Wallet className="w-4 h-4 text-primary" />;
-  return <Building2 className="w-4 h-4 text-primary" />;
+  if (fieldType === "mobile")
+    return (
+      <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 flex-shrink-0">
+        <Smartphone className="w-3.5 h-3.5" />
+      </span>
+    );
+  if (fieldType === "wallet")
+    return (
+      <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-violet-500/20 text-violet-400 flex-shrink-0">
+        <Wallet className="w-3.5 h-3.5" />
+      </span>
+    );
+  return (
+    <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-primary/20 text-primary flex-shrink-0">
+      <Building2 className="w-3.5 h-3.5" />
+    </span>
+  );
 }
 
 // ── Add form ──────────────────────────────────────────────────────────────────
