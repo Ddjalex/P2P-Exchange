@@ -301,40 +301,47 @@ router.patch("/:id", async (req, res) => {
       const totalDiff = newTotal - oldTotal;
       const newAvailable = oldAvailable + totalDiff;
 
+      // Hard error only when active orders would be left short (funds are locked)
+      if (lockedInOrders > 0 && newAvailable < lockedInOrders) {
+        const minAllowed = (oldTotal - oldAvailable + lockedInOrders).toFixed(4);
+        return res.status(400).json({
+          message: `Cannot set total below ${minAllowed} USDT — ${lockedInOrders.toFixed(4)} USDT is locked in active orders.`,
+        });
+      }
+
+      // If reducing below already-traded amount (no locked orders), clamp to floor gracefully
+      let effectiveDiff = totalDiff;
       if (newAvailable < 0) {
-        return res.status(400).json({
-          message: `Cannot reduce ad below what has already been traded.`,
-        });
-      }
-      if (newAvailable < lockedInOrders) {
-        return res.status(400).json({
-          message: `Cannot set total below ${lockedInOrders.toFixed(4)} USDT — that amount is locked in active orders.`,
-        });
+        // Floor = what has already been consumed by completed trades
+        const clampedTotal = oldTotal - oldAvailable;
+        effectiveDiff = clampedTotal - oldTotal; // = -oldAvailable
+        updates.totalAmount = String(clampedTotal);
+        updates.availableAmount = "0.0000";
+      } else {
+        updates.totalAmount = String(newTotal);
+        updates.availableAmount = newAvailable.toFixed(4);
       }
 
-      updates.totalAmount = String(newTotal);
-      updates.availableAmount = newAvailable.toFixed(4);
-
-      if (ad.type === "sell" && totalDiff !== 0) {
-        // totalDiff > 0: seller increased ad — deduct extra from wallet.available, add to frozen
-        // totalDiff < 0: seller decreased ad — return |diff| from frozen back to wallet.available
+      if (ad.type === "sell" && effectiveDiff !== 0) {
+        // effectiveDiff > 0: seller increased ad — deduct extra from wallet.available, add to frozen
+        // effectiveDiff < 0: seller decreased ad — return |diff| from frozen back to wallet.available
         const wallet = await getOrCreateWallet(userId);
         const walletAvailable = parseFloat(wallet.availableBalance);
         const walletFrozen = parseFloat(wallet.frozenBalance);
 
         console.log('[Ad] Edit sell ad:', id, 'user:', userId);
-        console.log('[Ad] Old totalAmount:', oldTotal, 'New totalAmount:', newTotal, 'Diff:', totalDiff);
+        console.log('[Ad] Old totalAmount:', oldTotal, 'New totalAmount:', newTotal, 'Effective diff:', effectiveDiff);
         console.log('[Ad] Active orders locked:', lockedInOrders);
         console.log('[Ad] Wallet before edit — available:', walletAvailable, 'frozen:', walletFrozen);
 
-        if (totalDiff > 0 && walletAvailable < totalDiff) {
+        if (effectiveDiff > 0 && walletAvailable < effectiveDiff) {
           return res.status(400).json({
-            message: `Insufficient balance. You need ${totalDiff.toFixed(4)} more USDT but only have ${walletAvailable.toFixed(4)} available.`,
+            message: `Insufficient balance. You need ${effectiveDiff.toFixed(4)} more USDT but only have ${walletAvailable.toFixed(4)} available.`,
           });
         }
 
-        const newWalletAvailable = Math.max(0, walletAvailable - totalDiff);
-        const newWalletFrozen = Math.max(0, walletFrozen + totalDiff);
+        const newWalletAvailable = Math.max(0, walletAvailable - effectiveDiff);
+        const newWalletFrozen = Math.max(0, walletFrozen + effectiveDiff);
 
         await db.update(walletsTable).set({
           availableBalance: newWalletAvailable.toFixed(4),
