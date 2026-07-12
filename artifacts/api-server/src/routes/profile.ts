@@ -4,6 +4,7 @@ import { usersTable, paymentMethodsTable, ordersTable, feedbackTable, followsTab
 import { eq, and, or, gte, desc, gt, sql } from "drizzle-orm";
 import { emitToUser } from "../lib/sse.js";
 import { randomInt } from "node:crypto";
+import { isValidPhoneNumber, parsePhoneNumberFromString } from "libphonenumber-js";
 
 const router = Router();
 
@@ -175,12 +176,20 @@ router.patch("/email", async (req, res) => {
 // PATCH /api/profile/phone — add/update phone for email-registered users
 router.patch("/phone", async (req, res) => {
   try {
-    const { phone, code } = req.body;
+    const { phone, code, country } = req.body;
     const userId = (req as any).userId;
 
     if (!phone || !code) return res.status(400).json({ error: "phone and code are required" });
 
-    const normalizedPhone = String(phone).trim();
+    const rawPhone = String(phone).trim();
+    const isValid = country
+      ? isValidPhoneNumber(rawPhone, country as any)
+      : isValidPhoneNumber(rawPhone);
+    if (!isValid) {
+      return res.status(400).json({ error: "Invalid phone number. Please check the number and selected country." });
+    }
+    const parsed = parsePhoneNumberFromString(rawPhone, country as any);
+    const normalizedPhone = parsed ? parsed.format("E.164") : rawPhone;
 
     const now = new Date();
     const records = await db.select().from(verificationCodesTable)

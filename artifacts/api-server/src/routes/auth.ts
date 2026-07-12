@@ -6,6 +6,31 @@ import { eq, and, gt } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { checkSendAbility, sendTelegramOtp, checkTelegramOtp, formatToE164 } from "../lib/telegram-gateway.js";
+import { isValidPhoneNumber, parsePhoneNumberFromString } from "libphonenumber-js";
+import { OAuth2Client } from "google-auth-library";
+
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "";
+const googleClient = GOOGLE_CLIENT_ID ? new OAuth2Client(GOOGLE_CLIENT_ID) : null;
+
+/**
+ * Validates + normalizes a phone number to E.164 form.
+ * - If `isoCountry` is given, `raw` is treated as the national number typed
+ *   for that country (may include a leading trunk "0" — libphonenumber
+ *   strips it correctly per-country).
+ * - If `isoCountry` is omitted, `raw` is expected to already start with "+"
+ *   (dial code + national number), e.g. the OTP `target` sent by the client.
+ * Returns null if the number is not a valid number for the given country.
+ */
+function normalizePhoneE164(raw: string, isoCountry?: string): string | null {
+  try {
+    const valid = isoCountry ? isValidPhoneNumber(raw, isoCountry as any) : isValidPhoneNumber(raw);
+    if (!valid) return null;
+    const parsed = parsePhoneNumberFromString(raw, isoCountry as any);
+    return parsed ? parsed.format("E.164") : null;
+  } catch {
+    return null;
+  }
+}
 
 const router = Router();
 
@@ -143,7 +168,7 @@ async function sendBrevoEmail(to: string, code: string, senderEmail: string, sen
 // POST /api/auth/send-code
 router.post("/send-code", sendCodeLimiter, async (req, res) => {
   try {
-    const { target, type, turnstileToken } = req.body ?? {};
+    let { target, type, turnstileToken } = req.body ?? {};
     if (!target || !type || !["phone", "email"].includes(type)) {
       return res.status(400).json({ error: "target and type (phone|email) are required" });
     }
@@ -158,6 +183,14 @@ router.post("/send-code", sendCodeLimiter, async (req, res) => {
     const isDev = process.env.NODE_ENV !== "production";
 
     if (type === "phone") {
+      const normalized = normalizePhoneE164(target);
+      if (!normalized) {
+        return res.status(400).json({ error: "Invalid phone number. Please check the number and selected country." });
+      }
+      // Use the library-normalized E.164 number consistently as the OTP target
+      // so it matches what /register and /login look up later, regardless of
+      // minor formatting differences (leading zeros, spacing, etc.) in the input.
+      target = normalized;
       const phoneE164 = formatToE164(target);
       console.log('[Auth] Attempting Telegram Gateway OTP for:', phoneE164);
 
@@ -288,15 +321,15 @@ router.post("/register", async (req, res) => {
       return res.status(400).json({ error: "Username must be at least 3 characters" });
     }
 
-    if (type === "phone" && country === "ET") {
-      const bare = String(identifier).replace(/\D/g, "").slice(-9);
-      if (!/^[97]\d{8}$/.test(bare)) {
-        return res.status(400).json({ error: "Ethiopian phone must start with 9 or 7 (9 digits)" });
-      }
-    }
-
     const isPhone = type === "phone";
-    const phone = isPhone ? `${dialCode ?? ""}${identifier}` : null;
+    let phone: string | null = null;
+    if (isPhone) {
+      const normalized = normalizePhoneE164(String(identifier), country);
+      if (!normalized) {
+        return res.status(400).json({ error: "Invalid phone number for the selected country." });
+      }
+      phone = normalized;
+    }
     const email = isPhone ? `${identifier}@phone.xendrx.com` : String(identifier).toLowerCase();
     const codeTarget = isPhone ? phone! : email;
 
@@ -374,10 +407,92 @@ router.post("/register", async (req, res) => {
   }
 });
 
+// GET /api/auth/google-config — public config so the frontend doesn't need
+// its own copy of the (non-secret) OAuth client ID.
+router.get("/google-config", (_req, res) => {
+  res.json({ clientId: GOOGLE_CLIENT_ID, enabled: !!googleClient });
+});
+
+// POST /api/auth/google — sign in or register via a Google ID token.
+// Matches/creates accounts by verified Google email; no schema change needed
+// since `password_hash` is already nullable for password-less accounts.
+router.post("/google", async (req, res) => {
+  try {
+    if (!googleClient) {
+      return res.status(503).json({ error: "Google sign-in is not configured." });
+    }
+    const { credential } = req.body ?? {};
+    if (!credential) return res.status(400).json({ error: "credential is required" });
+
+    let payload;
+    try {
+      const ticket = await googleClient.verifyIdToken({ idToken: credential, audience: GOOGLE_CLIENT_ID });
+      payload = ticket.getPayload();
+    } catch (err) {
+      req.log.warn({ err }, "Google token verification failed");
+      return res.status(401).json({ error: "Invalid Google credential" });
+    }
+    if (!payload?.email || !payload.email_verified) {
+      return res.status(401).json({ error: "Google account email is not verified" });
+    }
+
+    const email = payload.email.toLowerCase();
+    let user = await db.select().from(usersTable).where(eq(usersTable.email, email)).then(r => r[0]);
+
+    if (!user) {
+      // Create a new account. Base the username on the email/display name and
+      // disambiguate with a numeric suffix if it's already taken.
+      const base = (payload.name || email.split("@")[0])
+        .toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 20) || "user";
+      let username = base;
+      for (let attempts = 0; attempts < 20; attempts++) {
+        const taken = await db.select({ id: usersTable.id }).from(usersTable)
+          .where(eq(usersTable.username, username)).then(r => r[0]);
+        if (!taken) break;
+        username = `${base}${Math.floor(1000 + Math.random() * 9000)}`;
+      }
+
+      let finalUid = generateUID();
+      for (let attempts = 0; attempts < 10; attempts++) {
+        const existing = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.uid, finalUid)).then(r => r[0]);
+        if (!existing) break;
+        finalUid = generateUID();
+      }
+
+      [user] = await db.insert(usersTable).values({
+        username,
+        uid: finalUid,
+        email,
+        country: "US",
+        passwordHash: null,
+        kycStatus: "none",
+        isMerchant: false,
+        emailVerified: true,
+        smsVerified: false,
+        addressVerified: false,
+      }).returning();
+
+      await db.insert(walletsTable).values({
+        userId: user.id,
+        availableBalance: "0.00",
+        frozenBalance: "0.00",
+      });
+    }
+
+    if (user.isSuspended) return res.status(403).json({ error: "Account suspended" });
+
+    const token = signToken(user.id);
+    res.json({ token, user: formatUser(user) });
+  } catch (err) {
+    req.log.error({ err }, "Google sign-in failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // POST /api/auth/login
 router.post("/login", loginLimiter, async (req, res) => {
   try {
-    const { identifier, password, type, dialCode, turnstileToken } = req.body ?? {};
+    const { identifier, password, type, country, dialCode, turnstileToken } = req.body ?? {};
     if (!identifier || !password) return res.status(400).json({ error: "identifier and password are required" });
     if (!(await verifyTurnstile(turnstileToken, req.ip))) {
       return res.status(400).json({ error: "Security check failed. Please try again." });
@@ -387,7 +502,11 @@ router.post("/login", loginLimiter, async (req, res) => {
     let user: any;
 
     if (isPhone) {
-      const fullPhone = `${dialCode ?? ""}${identifier}`;
+      const normalized = country ? normalizePhoneE164(String(identifier), country) : null;
+      if (country && !normalized) {
+        return res.status(400).json({ error: "Invalid phone number for the selected country." });
+      }
+      const fullPhone = normalized ?? `${dialCode ?? ""}${identifier}`;
       const allUsers = await db.select().from(usersTable);
       user = allUsers.find(u => u.phone && (u.phone === fullPhone || u.phone.endsWith(identifier)));
     } else {

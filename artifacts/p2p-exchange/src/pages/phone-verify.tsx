@@ -6,6 +6,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { getGetMeQueryKey, useGetMe } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
+import { COUNTRIES, DEFAULT_COUNTRY, type Country } from "@/lib/countries";
+import { isPhoneValidForCountry, normalizeNationalNumber } from "@/lib/phone";
 
 const TOKEN_KEY = "p2p_token";
 function getToken() { return localStorage.getItem(TOKEN_KEY) ?? ""; }
@@ -20,7 +22,7 @@ export default function PhoneVerifyPage() {
   const queryClient = useQueryClient();
 
   const [step, setStep] = useState<"phone" | "code">("phone");
-  const [dialCode, setDialCode] = useState("+251");
+  const [country, setCountry] = useState<Country>(DEFAULT_COUNTRY);
   const [phone, setPhone] = useState("");
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
@@ -28,7 +30,8 @@ export default function PhoneVerifyPage() {
   const [done, setDone] = useState(false);
   const [otpMethod, setOtpMethod] = useState<"telegram" | "sms" | "email" | null>(null);
 
-  const fullPhone = `${dialCode}${phone.replace(/^0+/, "")}`;
+  const phoneValid = phone.length === 0 || isPhoneValidForCountry(phone, country);
+  const fullPhone = `${country.dial}${normalizeNationalNumber(phone, country)}`;
 
   if (isSmsVerified) {
     return (
@@ -59,8 +62,10 @@ export default function PhoneVerifyPage() {
   }
 
   const sendCode = async () => {
-    const bare = phone.replace(/\D/g, "").replace(/^0+/, "");
-    if (bare.length < 7) { setError("Enter a valid phone number"); return; }
+    if (!isPhoneValidForCountry(phone, country)) {
+      setError(`This doesn't look like a valid phone number for ${country.name}`);
+      return;
+    }
     setLoading(true); setError("");
     try {
       const res = await fetch("/api/auth/send-code", {
@@ -94,7 +99,7 @@ export default function PhoneVerifyPage() {
       const res = await fetch("/api/profile/phone", {
         method: "PATCH",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
-        body: JSON.stringify({ phone: fullPhone, code }),
+        body: JSON.stringify({ phone: fullPhone, code, country: country.code }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to verify");
@@ -159,15 +164,13 @@ export default function PhoneVerifyPage() {
         {step === "phone" ? (
           <div className="flex gap-2">
             <select
-              value={dialCode}
-              onChange={e => setDialCode(e.target.value)}
-              className="bg-secondary border border-border rounded-xl px-3 py-3 text-sm focus:outline-none focus:border-primary w-28"
+              value={country.code}
+              onChange={e => setCountry(COUNTRIES.find(c => c.code === e.target.value) ?? DEFAULT_COUNTRY)}
+              className="bg-secondary border border-border rounded-xl px-3 py-3 text-sm focus:outline-none focus:border-primary w-32"
             >
-              <option value="+251">🇪🇹 +251</option>
-              <option value="+1">🇺🇸 +1</option>
-              <option value="+44">🇬🇧 +44</option>
-              <option value="+971">🇦🇪 +971</option>
-              <option value="+966">🇸🇦 +966</option>
+              {COUNTRIES.map(c => (
+                <option key={c.code} value={c.code}>{c.flag} {c.dial} {c.name}</option>
+              ))}
             </select>
             <input
               type="tel"
@@ -180,7 +183,13 @@ export default function PhoneVerifyPage() {
               inputMode="numeric"
             />
           </div>
-        ) : (
+        ) : null}
+
+        {step === "phone" && phone.length > 0 && !phoneValid && (
+          <p className="text-xs text-destructive">This doesn't look like a valid phone number for {country.name}</p>
+        )}
+
+        {step === "code" && (
           <input
             type="text"
             placeholder="000000"
@@ -197,7 +206,7 @@ export default function PhoneVerifyPage() {
 
         <button
           onClick={step === "phone" ? sendCode : verify}
-          disabled={loading}
+          disabled={loading || (step === "phone" && (phone.length === 0 || !phoneValid))}
           className="w-full bg-primary text-background rounded-xl py-4 text-sm font-bold disabled:opacity-50 flex items-center justify-center space-x-2"
         >
           {loading

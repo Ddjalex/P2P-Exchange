@@ -11,3 +11,5 @@
 - [Per-user HD deposit addresses](hd-deposit-addresses.md) — BSC_HOT_WALLET_PRIVATE_KEY doubles as HD seed; path m/44'/60'/0'/0/<userId>; monitor uses topics[2] OR filter for all users in one getLogs call
 - [Global payment methods](global-payment-methods.md) — 800+ methods, 119 countries; type column is now text (not enum); country column added; generated client types updated; Niger = NE not NG
 - [Neon legacy schema push](neon-legacy-schema-push.md) — real Neon DB has legacy columns/tables; never `push --force` (auto-drops data), add legacy_*.ts schema files instead
+- [Phone validation via libphonenumber-js](phone-validation-libphonenumber.md) — country-aware `isValidPhoneNumber(number, isoCountry)`; normalize to E.164 both client and server for defense in depth
+- [Google Sign-In (P2P exchange)](google-oauth-p2p.md) — ID-token flow needs only GOOGLE_CLIENT_ID; "origin not allowed" errors are a Google Cloud Console config issue, not a code bug
