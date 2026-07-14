@@ -191,6 +191,7 @@ export default function LandingPage() {
   const [splashOut, setSplashOut] = useState(false);
   const [splashGone, setSplashGone] = useState(false);
   const [splashPhase, setSplashPhase] = useState<"init"|"ring"|"logo"|"bar">("init");
+  const [menuOpen, setMenuOpen] = useState(false);
   const cursorRef = useRef<HTMLDivElement>(null);
 
   useReveal();
@@ -334,8 +335,8 @@ export default function LandingPage() {
             </svg>
             <span className="xndr-nav__wordmark">xen<span>drx</span></span>
           </div>
+          {/* desktop links */}
           <div className="xndr-nav__links">
-            {/* FIX #4 — nav section links use smooth-scroll hrefs, not goAuth */}
             <a href="#exchange">Exchange</a>
             <a href="#markets">Markets</a>
             <a href="#how">How It Works</a>
@@ -345,7 +346,27 @@ export default function LandingPage() {
             <button className="xndr-btn xndr-btn--ghost" onClick={goAuth}>Sign In</button>
             <button className="xndr-btn xndr-btn--primary" onClick={goAuth}>Get Started</button>
           </div>
+          {/* mobile hamburger */}
+          <button
+            className={`xndr-hamburger${menuOpen ? " xndr-hamburger--open" : ""}`}
+            onClick={() => setMenuOpen(v => !v)}
+            aria-label="Menu"
+          >
+            <span /><span /><span />
+          </button>
         </nav>
+
+        {/* ── Mobile drawer ────────────────────────────────────── */}
+        <div className={`xndr-drawer${menuOpen ? " xndr-drawer--open" : ""}`}>
+          <a href="#exchange" onClick={() => setMenuOpen(false)}>Exchange</a>
+          <a href="#markets"  onClick={() => setMenuOpen(false)}>Markets</a>
+          <a href="#how"      onClick={() => setMenuOpen(false)}>How It Works</a>
+          <a href="#security" onClick={() => setMenuOpen(false)}>Security</a>
+          <div className="xndr-drawer__btns">
+            <button className="xndr-btn xndr-btn--ghost" onClick={() => { setMenuOpen(false); goAuth(); }}>Sign In</button>
+            <button className="xndr-btn xndr-btn--primary" onClick={() => { setMenuOpen(false); goAuth(); }}>Get Started</button>
+          </div>
+        </div>
 
         {/* ── Hero ─────────────────────────────────────────────── */}
         <section className="xndr-hero" id="exchange">

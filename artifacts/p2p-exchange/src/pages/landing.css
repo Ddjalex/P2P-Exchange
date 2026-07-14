@@ -576,6 +576,48 @@
 .up { color: var(--green) !important; }
 .dn { color: var(--red)   !important; }
 
+/* ── Hamburger button ─────────────────────────────────────────── */
+.xndr-hamburger {
+  display: none;
+  flex-direction: column; justify-content: center; align-items: center;
+  gap: 5px; width: 36px; height: 36px;
+  background: transparent; border: none; cursor: pointer; padding: 4px;
+  z-index: 600;
+}
+.xndr-hamburger span {
+  display: block; width: 22px; height: 2px;
+  background: var(--white); border-radius: 2px;
+  transition: transform .25s ease, opacity .25s ease;
+  transform-origin: center;
+}
+.xndr-hamburger--open span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+.xndr-hamburger--open span:nth-child(2) { opacity: 0; transform: scaleX(0); }
+.xndr-hamburger--open span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+
+/* ── Mobile drawer ────────────────────────────────────────────── */
+.xndr-drawer {
+  display: none;
+  flex-direction: column;
+  background: rgba(8,13,24,.97); backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border);
+  padding: 0 20px;
+  max-height: 0; overflow: hidden;
+  transition: max-height .35s cubic-bezier(.4,0,.2,1), padding .35s;
+  position: sticky; top: 64px; z-index: 490;
+}
+.xndr-drawer--open { max-height: 420px; padding: 16px 20px 24px; }
+.xndr-drawer a {
+  font-size: .95rem; font-weight: 500; color: var(--muted);
+  text-decoration: none; padding: 13px 0;
+  border-bottom: 1px solid rgba(255,255,255,.06);
+  transition: color .2s;
+}
+.xndr-drawer a:hover { color: var(--cyan); }
+.xndr-drawer__btns {
+  display: flex; gap: 10px; margin-top: 18px;
+}
+.xndr-drawer__btns .xndr-btn { flex: 1; justify-content: center; padding: 12px; }
+
 /* ── Responsive ───────────────────────────────────────────────── */
 @media (max-width: 1024px) {
   .xndr-hero { flex-direction: column; padding: 60px 28px 40px; min-height: auto; }
@@ -583,22 +625,76 @@
   .xndr-stats { grid-template-columns: repeat(2,1fr); }
   .xndr-stat { border-bottom: 1px solid var(--border); }
   .xndr-feat-grid { grid-template-columns: repeat(2,1fr); }
-  .xndr-live-section { grid-template-columns: 1fr; gap: 40px; padding: 60px 28px; }
   .xndr-footer__top { grid-template-columns: 1fr; }
   .xndr-footer__cols { grid-template-columns: repeat(3,1fr); }
 }
+
 @media (max-width: 768px) {
+  /* ── Nav: hide desktop elements, show hamburger ── */
   .xndr-nav { padding: 0 18px; }
   .xndr-nav__links { display: none; }
-  .xndr-hero { padding: 48px 18px 32px; }
-  .xndr-hero__right { display: none; }
-  .xndr-how { padding: 60px 18px; }
-  .xndr-steps { flex-direction: column; align-items: center; gap: 32px; }
-  .xndr-step__arrow { display: none; }
-  .xndr-features { padding: 60px 18px; }
-  .xndr-feat-grid { grid-template-columns: 1fr; }
-  .xndr-cta { padding: 80px 18px; }
-  .xndr-footer { padding: 48px 18px 24px; }
-  .xndr-footer__cols { grid-template-columns: 1fr 1fr; }
+  .xndr-nav__actions { display: none; }
+  .xndr-hamburger { display: flex; }
+  .xndr-drawer { display: flex; }
+
+  /* ── Hero: Binance-style — big stat first, then headline ── */
+  .xndr-hero {
+    flex-direction: column; align-items: flex-start;
+    padding: 40px 20px 36px; min-height: auto; gap: 0;
+  }
+  .xndr-hero__left { max-width: 100%; }
+
+  /* big stat number above headline (Binance pattern) */
+  .xndr-hero__badge { margin-bottom: 28px; }
+  .xndr-hero__headline {
+    font-size: clamp(2.4rem, 10vw, 3rem);
+    margin-bottom: 18px;
+  }
+  .xndr-hero__sub { font-size: .85rem; margin-bottom: 28px; }
+
+  /* full-width buttons stacked like Binance */
+  .xndr-hero__ctas {
+    flex-direction: column; gap: 10px; width: 100%;
+  }
+  .xndr-hero__ctas .xndr-btn {
+    width: 100%; justify-content: center;
+    padding: 14px 20px; font-size: .9rem; border-radius: 10px;
+  }
+  .xndr-hero__trust {
+    flex-direction: row; flex-wrap: wrap; gap: 12px; margin-top: 20px;
+  }
+
+  /* widget: visible but compact below hero on mobile */
+  .xndr-hero__right {
+    display: block; width: 100%; max-width: 100%;
+    margin-top: 36px;
+  }
+  /* stop float animation on small screens */
+  .xndr-widget { animation: none; }
+
+  /* ── Stats: 2×2, bigger numbers ── */
   .xndr-stats { grid-template-columns: 1fr 1fr; }
+  .xndr-stat { padding: 28px 16px; }
+  .xndr-stat__val { font-size: 1.8rem; }
+
+  /* ── How it works ── */
+  .xndr-how { padding: 60px 20px; }
+  .xndr-steps { flex-direction: column; align-items: center; gap: 28px; }
+  .xndr-step { max-width: 100%; padding: 0; }
+  .xndr-step__arrow { display: none; }
+
+  /* ── Features ── */
+  .xndr-features { padding: 60px 20px; }
+  .xndr-feat-grid { grid-template-columns: 1fr; gap: 14px; }
+  .xndr-feat { padding: 22px; }
+
+  /* ── CTA ── */
+  .xndr-cta { padding: 70px 20px; }
+  .xndr-cta__btns { flex-direction: column; }
+  .xndr-cta__btns .xndr-btn { width: 100%; justify-content: center; }
+
+  /* ── Footer ── */
+  .xndr-footer { padding: 48px 20px 24px; }
+  .xndr-footer__cols { grid-template-columns: 1fr 1fr; gap: 24px; }
+  .xndr-footer__bottom { flex-direction: column; align-items: flex-start; }
 }
