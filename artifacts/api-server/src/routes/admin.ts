@@ -15,7 +15,7 @@ import { getFeePercents, calculateFees } from "../helpers/fees.js";
 import { PushNotify, sendPushBroadcast } from "./push.js";
 import { TelegramNotify } from "../telegram/notify.js";
 import { telegramUsersTable } from "@workspace/db";
-import { sendTelegramMessage, restartBotWithToken, getBotStatus } from "../telegram/bot.js";
+import { sendTelegramMessage, sendChannelMessage, restartBotWithToken, getBotStatus } from "../telegram/bot.js";
 import { sendUsdtBsc, getBscUsdtBalance, getBnbBalance } from "../lib/bsc.js";
 import { sweepAllStuckFunds } from "../lib/deposit-monitor.js";
 
@@ -1375,7 +1375,10 @@ router.post("/notifications/send", adminAuth, async (req: any, res) => {
       const channelId = chRows[0]?.value;
       if (channelId) {
         const broadcastText = `📢 *${title}*\n\n${message}`;
-        await sendTelegramMessage(channelId, broadcastText, process.env.APP_URL || undefined).catch(() => {});
+        // Channels require a plain URL button — web_app buttons are forbidden in channels (Telegram 400 error)
+        await sendChannelMessage(channelId, broadcastText, process.env.APP_URL || undefined).catch((err) => {
+          req.log.error({ err, channelId }, "[Broadcast] Failed to send to Telegram channel");
+        });
       }
     }
 

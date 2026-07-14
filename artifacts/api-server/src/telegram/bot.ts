@@ -167,6 +167,31 @@ export async function sendTelegramMessage(
   }
 }
 
+/**
+ * Send a message to a Telegram channel.
+ * Channels do not support web_app keyboard buttons — only plain URL buttons are
+ * allowed. Using web_app here would silently fail with Telegram error 400
+ * "inline keyboard buttons of this type are forbidden for this chat type".
+ */
+export async function sendChannelMessage(
+  channelId: string,
+  text: string,
+  url?: string
+): Promise<void> {
+  if (!activeToken || !channelId || !bot) return;
+  try {
+    const targetUrl = url ?? APP_URL ?? "https://xendrx.replit.app";
+    const keyboard = new InlineKeyboard().url("🚀 Open Xendrx", targetUrl);
+    await bot.api.sendMessage(channelId, text, {
+      parse_mode: "Markdown",
+      reply_markup: keyboard,
+    });
+  } catch (error: any) {
+    console.error(`[Bot] Channel send error (${channelId}):`, error?.description ?? error);
+    throw error; // re-throw so callers know it failed
+  }
+}
+
 export function getBotStatus(): { running: boolean; username: string | null } {
   return { running: bot !== null, username: bot !== null ? activeBotUsername : null };
 }
