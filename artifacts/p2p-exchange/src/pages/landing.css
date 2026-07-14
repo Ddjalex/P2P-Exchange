@@ -237,16 +237,10 @@
 .xndr-btn--lg  { padding: 12px 26px; font-size: .9rem; border-radius: 10px; }
 .xndr-btn--xl  { padding: 14px 32px; font-size: .95rem; border-radius: 10px; }
 
-/* ── Hero image slider ────────────────────────────────────────── */
-.xndr-hero-slider {
-  position: absolute; inset: 0; z-index: 0;
-  overflow: hidden;
-}
+/* ── Hero image slider — shared ───────────────────────────────── */
 .xndr-hero-slide {
   position: absolute; inset: 0;
   width: 100%; height: 100%;
-  /* right-center keeps the card/subject visible on the right half */
-  object-fit: cover; object-position: right center;
   opacity: 0;
   transition: opacity 1.2s ease;
   will-change: opacity;
@@ -254,31 +248,63 @@
 .xndr-hero-slide--in  { opacity: 1; }
 .xndr-hero-slide--out { opacity: 0; }
 
-/* Desktop overlay: heavy left so text reads cleanly, lighter right so imagery shows */
+/* ── Desktop background slider ────────────────────────────────── */
+.xndr-hero-slider--bg {
+  position: absolute; inset: 0; z-index: 0;
+  overflow: hidden;
+}
+.xndr-hero-slider--bg .xndr-hero-slide {
+  object-fit: cover; object-position: right center;
+}
+
+/* gradient overlay: heavy left (text readable), lighter right (image visible) */
 .xndr-hero-slider__overlay {
   position: absolute; inset: 0;
   background: linear-gradient(
     105deg,
-    rgba(8,13,24,.92) 0%,
-    rgba(8,13,24,.78) 40%,
-    rgba(8,13,24,.50) 65%,
-    rgba(8,13,24,.20) 100%
+    rgba(8,13,24,.94) 0%,
+    rgba(8,13,24,.80) 38%,
+    rgba(8,13,24,.45) 65%,
+    rgba(8,13,24,.15) 100%
   );
 }
 
-/* Mobile: full-section dark veil so stacked text/buttons always readable */
+/* ── Mobile inline slider (hidden on desktop) ─────────────────── */
+.xndr-hero-slider--inline { display: none; }
+
+/* ── Dot indicators ───────────────────────────────────────────── */
+.xndr-hero-slider__dots {
+  position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%);
+  display: flex; gap: 6px; z-index: 2;
+}
+.xndr-slider-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: rgba(255,255,255,.35); transition: all .3s;
+}
+.xndr-slider-dot--active {
+  background: var(--cyan); width: 18px; border-radius: 3px;
+  box-shadow: 0 0 6px var(--cyan);
+}
+
+/* ── Mobile overrides ─────────────────────────────────────────── */
 @media (max-width: 768px) {
-  .xndr-hero-slide {
-    /* center the subject on narrow screens */
-    object-position: center center;
+  /* hide desktop background slider */
+  .xndr-hero-slider--bg { display: none !important; }
+
+  /* show inline slider as a real image card */
+  .xndr-hero-slider--inline {
+    display: block; position: relative;
+    width: 100%; aspect-ratio: 16 / 9;
+    border-radius: 14px; overflow: hidden;
+    margin-top: 28px;
+    border: 1px solid var(--border);
+    box-shadow: 0 8px 32px rgba(0,0,0,.5), 0 0 0 1px rgba(0,229,255,.08);
+    background: #060c1a;
+    flex-shrink: 0;
   }
-  .xndr-hero-slider__overlay {
-    background: linear-gradient(
-      180deg,
-      rgba(8,13,24,.82) 0%,
-      rgba(8,13,24,.70) 50%,
-      rgba(8,13,24,.88) 100%
-    );
+  .xndr-hero-slider--inline .xndr-hero-slide {
+    /* object-fit: contain shows every detail — no cropping */
+    object-fit: contain; object-position: center;
   }
 }
 

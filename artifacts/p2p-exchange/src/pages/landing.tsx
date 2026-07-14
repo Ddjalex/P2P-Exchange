@@ -26,7 +26,7 @@ const BUY_ADS = [
 ];
 
 // ── Hero image slideshow ─────────────────────────────────────────
-const HERO_SLIDES = ["/hero1.jpg", "/hero2.png"];
+const HERO_SLIDES = ["/hero1.jpg", "/hero2.png", "/hero3.png"];
 
 function HeroSlider() {
   const [current, setCurrent] = useState(0);
@@ -42,22 +42,33 @@ function HeroSlider() {
     return () => clearInterval(iv);
   }, []);
 
+  const cls = (i: number) =>
+    i === current ? " xndr-hero-slide--in" :
+    i === prev    ? " xndr-hero-slide--out" : "";
+
   return (
-    <div className="xndr-hero-slider">
-      {HERO_SLIDES.map((src, i) => (
-        <img
-          key={src}
-          src={src}
-          alt=""
-          className={`xndr-hero-slide${
-            i === current ? " xndr-hero-slide--in" :
-            i === prev    ? " xndr-hero-slide--out" : ""
-          }`}
-        />
-      ))}
-      {/* dark gradient so text stays readable */}
-      <div className="xndr-hero-slider__overlay" />
-    </div>
+    <>
+      {/* ── Desktop: full-hero background ── */}
+      <div className="xndr-hero-slider xndr-hero-slider--bg">
+        {HERO_SLIDES.map((src, i) => (
+          <img key={`bg-${src}`} src={src} alt="" className={`xndr-hero-slide${cls(i)}`} />
+        ))}
+        <div className="xndr-hero-slider__overlay" />
+      </div>
+
+      {/* ── Mobile: inline visible image panel (shown below text) ── */}
+      <div className="xndr-hero-slider xndr-hero-slider--inline">
+        {HERO_SLIDES.map((src, i) => (
+          <img key={`inline-${src}`} src={src} alt="Xendrx" className={`xndr-hero-slide${cls(i)}`} />
+        ))}
+        {/* dot indicators */}
+        <div className="xndr-hero-slider__dots">
+          {HERO_SLIDES.map((_, i) => (
+            <span key={i} className={`xndr-slider-dot${i === current ? " xndr-slider-dot--active" : ""}`} />
+          ))}
+        </div>
+      </div>
+    </>
   );
 }
 
