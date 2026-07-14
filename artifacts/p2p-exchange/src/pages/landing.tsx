@@ -26,7 +26,7 @@ const BUY_ADS = [
 ];
 
 // ── Hero image slideshow ─────────────────────────────────────────
-const HERO_SLIDES = ["/hero1.jpg", "/hero2.png", "/hero3.png"];
+const HERO_SLIDES = ["/hero1.jpg", "/hero-card-pay.png", "/hero-card-zero.png"];
 
 function HeroSlider() {
   const [current, setCurrent] = useState(0);
@@ -430,9 +430,6 @@ export default function LandingPage() {
           <div className="xndr-hero__glow" />
 
           <div className="xndr-hero__left">
-            <div className="xndr-hero__badge">
-              <span className="xndr-hero__dot" /> Live · 50,000+ Traders Online
-            </div>
             <h1 className="xndr-hero__headline">
               <Typewriter lines={["Trade USDT", "Peer-to-Peer."]} speed={40} />
             </h1>
