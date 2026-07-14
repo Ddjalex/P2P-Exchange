@@ -192,7 +192,15 @@ export default function LandingPage() {
   const [splashGone, setSplashGone] = useState(false);
   const [splashPhase, setSplashPhase] = useState<"init"|"ring"|"logo"|"bar">("init");
   const [menuOpen, setMenuOpen] = useState(false);
+  const [modal, setModal] = useState<null|"about"|"privacy"|"terms"|"contact">(null);
   const cursorRef = useRef<HTMLDivElement>(null);
+
+  // Close modal on Escape
+  useEffect(() => {
+    const fn = (e: KeyboardEvent) => { if (e.key === "Escape") setModal(null); };
+    window.addEventListener("keydown", fn);
+    return () => window.removeEventListener("keydown", fn);
+  }, []);
 
   useReveal();
 
@@ -553,18 +561,32 @@ export default function LandingPage() {
               </p>
             </div>
             <div className="xndr-footer__cols">
-              {/* FIX #4 — footer links are noOp, don't navigate anywhere */}
               {[
-                { title: "Platform", links: ["P2P Trading", "Escrow System", "Virtual Cards", "Dispute Resolution"] },
-                { title: "Company",  links: ["About", "Privacy Policy", "Terms", "Contact Us"] },
-                { title: "Support",  links: ["Help Center", "Security Tips", "KYC Guide", "API Docs"] },
+                { title: "Platform", links: [
+                    { label: "P2P Trading",       action: noOp },
+                    { label: "Escrow System",     action: noOp },
+                    { label: "Virtual Cards",     action: noOp },
+                    { label: "Dispute Resolution",action: noOp },
+                ]},
+                { title: "Company", links: [
+                    { label: "About",          action: (e: React.MouseEvent) => { e.preventDefault(); setModal("about"); } },
+                    { label: "Privacy Policy", action: (e: React.MouseEvent) => { e.preventDefault(); setModal("privacy"); } },
+                    { label: "Terms",          action: (e: React.MouseEvent) => { e.preventDefault(); setModal("terms"); } },
+                    { label: "Contact Us",     action: (e: React.MouseEvent) => { e.preventDefault(); setModal("contact"); } },
+                ]},
+                { title: "Support", links: [
+                    { label: "Help Center",   action: noOp },
+                    { label: "Security Tips", action: noOp },
+                    { label: "KYC Guide",     action: noOp },
+                    { label: "API Docs",      action: noOp },
+                ]},
               ].map(col => (
                 <div key={col.title} className="xndr-footer__col">
                   <p className="xndr-footer__col-title">{col.title}</p>
                   <ul>
                     {col.links.map(l => (
-                      <li key={l}>
-                        <a href="#" onClick={noOp}>{l}</a>
+                      <li key={l.label}>
+                        <a href="#" onClick={l.action}>{l.label}</a>
                       </li>
                     ))}
                   </ul>
@@ -583,6 +605,111 @@ export default function LandingPage() {
         </footer>
 
       </div>
+
+      {/* ── Info Modals ───────────────────────────────────────── */}
+      {modal && (
+        <div className="xndr-modal-backdrop" onClick={() => setModal(null)}>
+          <div className="xndr-modal" onClick={e => e.stopPropagation()}>
+            <button className="xndr-modal__close" onClick={() => setModal(null)} aria-label="Close">✕</button>
+
+            {modal === "about" && (
+              <>
+                <h2 className="xndr-modal__title">About Xendrx</h2>
+                <div className="xndr-modal__body">
+                  <p>Xendrx is a peer-to-peer USDT exchange built for the next generation of global traders. We connect buyers and sellers directly — no middlemen, no hidden fees, no counterparty risk.</p>
+                  <h3>Our Mission</h3>
+                  <p>To make crypto trading accessible, secure, and instant for everyone, everywhere. We support 119 countries and over 800 payment methods so you can trade in the way that works for you.</p>
+                  <h3>How We Work</h3>
+                  <p>Every trade on Xendrx is protected by cryptographic escrow on the BEP20 / BSC network. USDT is locked on-chain the moment a trade is initiated and released automatically once both parties confirm — no trust required.</p>
+                  <h3>Our Numbers</h3>
+                  <ul>
+                    <li>50,000+ active traders worldwide</li>
+                    <li>2,400,000+ completed trades</li>
+                    <li>800+ accepted payment methods</li>
+                    <li>119 countries supported</li>
+                  </ul>
+                </div>
+              </>
+            )}
+
+            {modal === "privacy" && (
+              <>
+                <h2 className="xndr-modal__title">Privacy Policy</h2>
+                <div className="xndr-modal__body">
+                  <p><em>Effective date: January 1, 2026</em></p>
+                  <h3>1. Information We Collect</h3>
+                  <p>We collect your name, email address, phone number, and identity documents during KYC verification. We also collect trade history, transaction metadata, and device/session information to operate the platform securely.</p>
+                  <h3>2. How We Use Your Data</h3>
+                  <p>Your data is used to verify your identity, facilitate trades, prevent fraud, comply with applicable regulations, and improve our services. We never sell your personal data to third parties.</p>
+                  <h3>3. Data Security</h3>
+                  <p>All data is encrypted in transit (TLS 1.3) and at rest (AES-256). Access is restricted to authorised personnel on a need-to-know basis. We undergo regular security audits.</p>
+                  <h3>4. Your Rights</h3>
+                  <p>You may request access to, correction of, or deletion of your personal data at any time by contacting our support team. Account deletion requests are processed within 30 days.</p>
+                  <h3>5. Contact</h3>
+                  <p>Privacy inquiries: <strong>privacy@xendrx.com</strong></p>
+                </div>
+              </>
+            )}
+
+            {modal === "terms" && (
+              <>
+                <h2 className="xndr-modal__title">Terms of Service</h2>
+                <div className="xndr-modal__body">
+                  <p><em>Effective date: January 1, 2026</em></p>
+                  <h3>1. Acceptance</h3>
+                  <p>By accessing or using Xendrx you agree to these Terms. If you do not agree, do not use the platform.</p>
+                  <h3>2. Eligibility</h3>
+                  <p>You must be at least 18 years old and not located in a jurisdiction where P2P crypto trading is prohibited. You are responsible for compliance with your local laws.</p>
+                  <h3>3. Account & KYC</h3>
+                  <p>You must complete KYC verification to unlock full trading access. Providing false information is grounds for immediate account suspension.</p>
+                  <h3>4. Trading Rules</h3>
+                  <p>All trades are bound by our escrow system. Attempting to manipulate trades, defraud counterparties, or circumvent escrow will result in permanent account termination and may be reported to relevant authorities.</p>
+                  <h3>5. Fees</h3>
+                  <p>Xendrx charges a small platform fee on completed trades. Fee schedules are displayed before you confirm any trade.</p>
+                  <h3>6. Disputes</h3>
+                  <p>Disputes must be raised within 24 hours of a trade deadline. Our arbitration team reviews all evidence and makes a binding decision.</p>
+                  <h3>7. Liability</h3>
+                  <p>Xendrx is not liable for losses arising from market volatility, user error, or third-party payment delays. Our maximum liability is limited to fees paid in the 30 days preceding a claim.</p>
+                </div>
+              </>
+            )}
+
+            {modal === "contact" && (
+              <>
+                <h2 className="xndr-modal__title">Contact Us</h2>
+                <div className="xndr-modal__body xndr-modal__body--contact">
+                  <div className="xndr-contact-grid">
+                    <div className="xndr-contact-card">
+                      <span className="xndr-contact-card__icon">💬</span>
+                      <h3>Live Support</h3>
+                      <p>Available 24/7 via in-app chat once you are logged in.</p>
+                      <button className="xndr-btn xndr-btn--primary" onClick={goAuth}>Open Chat</button>
+                    </div>
+                    <div className="xndr-contact-card">
+                      <span className="xndr-contact-card__icon">📧</span>
+                      <h3>Email</h3>
+                      <p>For general enquiries and partnership requests.</p>
+                      <a href="mailto:support@xendrx.com" className="xndr-btn xndr-btn--secondary">support@xendrx.com</a>
+                    </div>
+                    <div className="xndr-contact-card">
+                      <span className="xndr-contact-card__icon">🛡️</span>
+                      <h3>Dispute Team</h3>
+                      <p>Raise a trade dispute directly from your order page once logged in.</p>
+                      <button className="xndr-btn xndr-btn--ghost" onClick={goAuth}>Go to Orders</button>
+                    </div>
+                    <div className="xndr-contact-card">
+                      <span className="xndr-contact-card__icon">🔐</span>
+                      <h3>Security</h3>
+                      <p>Report vulnerabilities responsibly to our security team.</p>
+                      <a href="mailto:security@xendrx.com" className="xndr-btn xndr-btn--ghost">security@xendrx.com</a>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </>
   );
 }
