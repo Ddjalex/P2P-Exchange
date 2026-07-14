@@ -67,10 +67,12 @@ A Binance-style peer-to-peer cryptocurrency exchange — mobile-first dark-theme
 - The `desc` import from drizzle-orm was causing an unused-variable build warning in wallet.ts
 - Legacy DB has extra columns on `push_subscriptions` (p256dh/auth/user_agent/last_used_at) and a `pending_registrations` table not used by current app code; declared in schema (push_subscriptions.ts / legacy_pending_registrations.ts) solely so `drizzle-kit push` doesn't try to drop them
 
-## Setup status (re-import)
+## Setup status (re-import, July 14 2026)
 
-- Connected to the user's own Neon database via `NEON_DATABASE_URL` secret; schema pushed successfully
+- Re-imported from GitHub; dependencies were reinstalled (`pnpm install`) and the three artifact workflows (`p2p-exchange`, `api-server`, `mockup-sandbox`) were restarted after being auto-recreated.
+- Reconnected to the user's own Neon database via the `NEON_DATABASE_URL` secret — all tables present, no missing-relation errors, deposit monitor loaded 23 real user addresses.
 - Not configured (optional features will be degraded/disabled until set): `BSC_HOT_WALLET_PRIVATE_KEY` (real withdrawals & new deposit-address derivation), `VAPID_PRIVATE_KEY` (push notifications), `TURNSTILE_SECRET_KEY` (bot-protection verification — bypassed outside production), `TELEGRAM_GATEWAY_TOKEN`, `STROWALLET_PUBLIC_KEY`/`STROWALLET_SECRET_KEY` (card issuing), `GOOGLE_CLIENT_ID` (Google sign-in). Telegram bot itself is running using a token already stored in `system_settings`.
+- Known non-fatal issue: public BSC RPC endpoints (bsc-pokt, ankr, publicnode) are currently rate-limiting/rejecting the deposit monitor's `getLogs` calls — deposits still get picked up on retry, but a dedicated RPC key would remove the noise.
 
 ## Pointers
 
