@@ -12,6 +12,19 @@ let activeBotUsername: string = process.env.TELEGRAM_BOT_USERNAME ?? "XendrxBot"
 function buildBot(token: string): Bot {
   const b = new Bot(token);
 
+  // Prevent individual update errors (e.g. user blocked bot, 403) from
+  // crashing the polling loop. Without this handler grammy re-throws and
+  // bot.start() rejects, setting bot = null and showing "⚪ Inactive".
+  b.catch((err) => {
+    const code = (err.error as any)?.error_code;
+    if (code === 403 || code === 400) {
+      // User blocked the bot or bad request — not fatal, just log quietly.
+      console.log(`[Bot] Ignored update error (${code}):`, (err.error as any)?.description ?? err.message);
+    } else {
+      console.error("[Bot] Update error:", err);
+    }
+  });
+
   b.command("start", async (ctx) => {
     const firstName = ctx.from?.first_name ?? "Trader";
     const code = ctx.message.text.split(" ")[1]?.toUpperCase();

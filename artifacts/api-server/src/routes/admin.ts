@@ -1491,16 +1491,22 @@ router.get("/telegram/bot-status", adminAuth, async (_req, res) => {
 
 router.post("/telegram/apply-token", adminAuth, async (req: any, res) => {
   try {
-    const { token, username } = req.body ?? {};
+    const { token, username, channelId } = req.body ?? {};
     if (!token?.trim()) return res.status(400).json({ error: "Bot token is required" });
 
     const info = await restartBotWithToken(token.trim(), username?.trim() || undefined);
 
-    // Persist in DB settings
+    // Persist token + username in DB settings
     await db.insert(systemSettingsTable).values({ key: "telegramBotToken", value: token.trim(), updatedAt: new Date() })
       .onConflictDoUpdate({ target: systemSettingsTable.key, set: { value: token.trim(), updatedAt: new Date() } });
     await db.insert(systemSettingsTable).values({ key: "telegramBotUsername", value: info.username, updatedAt: new Date() })
       .onConflictDoUpdate({ target: systemSettingsTable.key, set: { value: info.username, updatedAt: new Date() } });
+
+    // Also persist channelId if provided
+    if (channelId?.trim()) {
+      await db.insert(systemSettingsTable).values({ key: "telegramChannelId", value: channelId.trim(), updatedAt: new Date() })
+        .onConflictDoUpdate({ target: systemSettingsTable.key, set: { value: channelId.trim(), updatedAt: new Date() } });
+    }
 
     await log(req.adminEmail, "update_telegram_bot", "settings", undefined, `@${info.username}`);
     res.json({ success: true, username: info.username });

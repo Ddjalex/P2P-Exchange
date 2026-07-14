@@ -65,6 +65,7 @@ export default function AdminSettingsPage() {
       const data = await adminPost<{ success: boolean; username: string; error?: string }>("/telegram/apply-token", {
         token,
         username: settings["telegramBotUsername"]?.trim() || undefined,
+        channelId: settings["telegramChannelId"]?.trim() || undefined,
       });
       setBotStatus({ running: true, username: data.username });
       setTgApplyStatus({ ok: true, msg: `✅ Bot @${data.username} is now live!` });
