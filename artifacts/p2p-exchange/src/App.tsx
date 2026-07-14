@@ -12,6 +12,9 @@ import { NotificationPermissionModal } from "@/components/notification-permissio
 import { InstallAppModal } from "@/components/install-app-modal";
 import { TelegramConnectPopup } from "@/components/telegram-connect-popup";
 
+// Landing page
+import LandingPage from "@/pages/landing";
+
 // Regular pages
 import AuthPage from "@/pages/auth";
 import ForgotPasswordPage from "@/pages/forgot-password";
@@ -155,9 +158,9 @@ function Router() {
     <>
     <TawkVisibility />
     <Switch>
-      {/* Root redirect */}
+      {/* Root — landing for guests, wallet for authenticated */}
       <Route path="/">
-        {isLoading ? null : user ? <Redirect to="/wallet" /> : <Redirect to="/auth" />}
+        {isLoading ? null : user ? <Redirect to="/wallet" /> : <LandingPage />}
       </Route>
 
       {/* Auth page — handles own redirect after login/register */}
