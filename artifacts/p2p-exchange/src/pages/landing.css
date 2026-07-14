@@ -368,8 +368,8 @@
 .xndr-hero__trust span {
   font-size: .75rem; color: var(--faint);
 }
-.xndr-hero__right {
-  position: relative; z-index: 1; flex-shrink: 0; width: 380px;
+.xndr-widget--compact {
+  width: 100%; max-width: 380px; margin-top: 28px;
 }
 
 /* ── Widget ───────────────────────────────────────────────────── */
@@ -424,46 +424,6 @@
   animation: sparkDraw 1.8s ease forwards .4s;
 }
 @keyframes sparkDraw { to { stroke-dashoffset: 0; } }
-.xndr-widget__cols {
-  display: grid; grid-template-columns: 1fr 1.2fr 1.1fr 60px;
-  padding: 8px 16px; font-size: .62rem; font-weight: 600;
-  color: var(--faint); letter-spacing: .05em;
-  border-bottom: 1px solid rgba(255,255,255,.05);
-}
-.xndr-widget__offers { padding: 6px 0 0; }
-.xndr-offer {
-  display: grid; grid-template-columns: 1fr 1.2fr 1.1fr 60px;
-  align-items: center; padding: 10px 16px;
-  border-bottom: 1px solid rgba(255,255,255,.04);
-  transition: background .2s;
-  animation: offerIn .3s ease both;
-}
-@keyframes offerIn { from { opacity: 0; transform: translateX(8px); } }
-.xndr-offer:hover { background: rgba(0,229,255,.04); }
-.xndr-offer__price {
-  font-family: var(--mono); font-size: .82rem; font-weight: 700;
-}
-.xndr-offer__price.up { color: var(--green); }
-.xndr-offer__price.dn { color: var(--red); }
-.xndr-offer__limit,.xndr-offer__method {
-  font-size: .72rem; color: var(--muted);
-}
-.xndr-offer__btn {
-  font-family: var(--font); font-size: .68rem; font-weight: 700;
-  color: #080d18; background: var(--cyan); border: none;
-  border-radius: 6px; padding: 5px 10px; cursor: pointer;
-  transition: all .2s;
-}
-.xndr-offer__btn:hover { background: #33eeff; transform: scale(1.04); }
-.xndr-widget__more {
-  width: 100%; background: transparent; border: none;
-  color: var(--cyan); font-family: var(--font); font-size: .78rem;
-  font-weight: 600; cursor: pointer; padding: 14px;
-  border-top: 1px solid rgba(0,229,255,.08);
-  transition: background .2s;
-}
-.xndr-widget__more:hover { background: rgba(0,229,255,.05); }
-
 /* ── Stats ────────────────────────────────────────────────────── */
 .xndr-stats {
   display: grid; grid-template-columns: repeat(4,1fr);
@@ -775,7 +735,7 @@
 /* ── Responsive ───────────────────────────────────────────────── */
 @media (max-width: 1024px) {
   .xndr-hero { flex-direction: column; padding: 60px 28px 40px; min-height: auto; }
-  .xndr-hero__right { width: 100%; max-width: 420px; margin: 0 auto; }
+  .xndr-widget--compact { width: 100%; max-width: 420px; margin: 28px auto 0; }
   .xndr-stats { grid-template-columns: repeat(2,1fr); }
   .xndr-stat { border-bottom: 1px solid var(--border); }
   .xndr-feat-grid { grid-template-columns: repeat(2,1fr); }
@@ -819,9 +779,9 @@
   }
 
   /* widget: visible but compact below hero on mobile */
-  .xndr-hero__right {
+  .xndr-widget--compact {
     display: block; width: 100%; max-width: 100%;
-    margin-top: 36px;
+    margin-top: 24px;
   }
   /* stop float animation on small screens */
   .xndr-widget { animation: none; }

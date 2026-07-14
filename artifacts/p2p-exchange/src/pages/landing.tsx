@@ -18,13 +18,6 @@ const TICKER_ITEMS = [
   "🔵 Kwame O. sold 250 USDT via MTN Mobile",
 ];
 
-const BUY_ADS = [
-  { price: "1.002", limit: "100 – 5,000",  method: "Bank Transfer", rate: "+0.2%" },
-  { price: "1.001", limit: "50 – 2,000",   method: "PayPal",        rate: "+0.1%" },
-  { price: "1.000", limit: "200 – 10,000", method: "Wise",          rate: "0.0%"  },
-  { price: "0.999", limit: "100 – 3,000",  method: "Revolut",       rate: "-0.1%" },
-];
-
 // ── Hero image slideshow ─────────────────────────────────────────
 const HERO_SLIDES = ["/hero1.jpg", "/hero-card-pay.png", "/hero-card-zero.png"];
 
@@ -453,11 +446,9 @@ export default function LandingPage() {
               <span>⚡ &lt;1s Settlement</span>
               <span>🌍 119 Countries</span>
             </div>
-          </div>
 
-          {/* Live P2P widget */}
-          <div className="xndr-hero__right">
-            <div className="xndr-widget">
+            {/* Live price ticker */}
+            <div className="xndr-widget xndr-widget--compact">
               <div className="xndr-widget__head">
                 <div>
                   <div className="xndr-widget__title">USDT / USD</div>
@@ -480,25 +471,6 @@ export default function LandingPage() {
                   <path className="xndr-spark__line" d="M0,50 L30,42 L60,38 L90,44 L120,30 L150,26 L180,32 L210,18 L240,22 L270,12 L300,8" fill="none" stroke="#00e5ff" strokeWidth="1.5" />
                 </svg>
               </div>
-              <div className="xndr-widget__cols">
-                <span>Price (USD)</span>
-                <span>Limit</span>
-                <span>Method</span>
-                <span></span>
-              </div>
-              <div className="xndr-widget__offers">
-                {BUY_ADS.map((ad, i) => (
-                  <div key={i} className="xndr-offer" style={{ animationDelay: `${i * 0.1}s` }}>
-                    <span className={`xndr-offer__price ${parseFloat(ad.rate) >= 0 ? "up" : "dn"}`}>{ad.price}</span>
-                    <span className="xndr-offer__limit">{ad.limit}</span>
-                    <span className="xndr-offer__method">{ad.method}</span>
-                    <button className="xndr-offer__btn" onClick={goAuth}>Buy</button>
-                  </div>
-                ))}
-              </div>
-              <button className="xndr-widget__more" onClick={goAuth}>
-                View all offers →
-              </button>
             </div>
           </div>
         </section>
