@@ -322,18 +322,6 @@ export default function LandingPage() {
       {/* ── Page ────────────────────────────────────────────────── */}
       <div className={`xndr-page${splashGone ? " xndr-page--in" : ""}`}>
 
-        {/* ── Live ticker ──────────────────────────────────────── */}
-        <div className="xndr-ticker">
-          <span className="xndr-ticker__badge">● LIVE</span>
-          <div className="xndr-ticker__track">
-            <div className="xndr-ticker__inner">
-              {[...TICKER_ITEMS, ...TICKER_ITEMS].map((item, i) => (
-                <span key={i} className="xndr-ticker__item">{item}</span>
-              ))}
-            </div>
-          </div>
-        </div>
-
         {/* ── Navbar ───────────────────────────────────────────── */}
         <nav className="xndr-nav">
           <div className="xndr-nav__brand">

@@ -177,35 +177,7 @@
 }
 .xndr-page--in { opacity: 1; }
 
-/* ── Ticker ───────────────────────────────────────────────────── */
-.xndr-ticker {
-  display: flex; align-items: center; gap: 12px;
-  background: rgba(0,229,255,.06);
-  border-bottom: 1px solid var(--border);
-  padding: 0 20px; height: 36px; overflow: hidden;
-}
-.xndr-ticker__badge {
-  font-family: var(--mono); font-size: .6rem;
-  color: var(--cyan); letter-spacing: .12em;
-  white-space: nowrap; flex-shrink: 0;
-  animation: tickerPulse 1.4s ease-in-out infinite alternate;
-}
-@keyframes tickerPulse { from { opacity: .6; } to { opacity: 1; } }
-.xndr-ticker__track { overflow: hidden; flex: 1; }
-.xndr-ticker__inner {
-  display: flex; gap: 0; width: max-content;
-  animation: tickerScroll 38s linear infinite;
-}
-@keyframes tickerScroll {
-  0%   { transform: translateX(0); }
-  100% { transform: translateX(-50%); }
-}
-.xndr-ticker__item {
-  font-family: var(--mono); font-size: .62rem;
-  color: var(--muted); white-space: nowrap;
-  padding: 0 40px;
-}
-.xndr-ticker__item:nth-child(even) { color: rgba(255,255,255,.35); }
+/* ticker removed */
 
 /* ── Navbar ───────────────────────────────────────────────────── */
 .xndr-nav {
