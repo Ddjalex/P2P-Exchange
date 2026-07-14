@@ -237,6 +237,34 @@
 .xndr-btn--lg  { padding: 12px 26px; font-size: .9rem; border-radius: 10px; }
 .xndr-btn--xl  { padding: 14px 32px; font-size: .95rem; border-radius: 10px; }
 
+/* ── Hero image slider ────────────────────────────────────────── */
+.xndr-hero-slider {
+  position: absolute; inset: 0; z-index: 0;
+  overflow: hidden;
+}
+.xndr-hero-slide {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  object-fit: cover; object-position: center;
+  opacity: 0;
+  transition: opacity 1s ease;
+  will-change: opacity;
+}
+.xndr-hero-slide--in  { opacity: 1; }
+.xndr-hero-slide--out { opacity: 0; }
+
+/* layered overlay: left = solid dark so text is readable; right fades to transparent so widget shows */
+.xndr-hero-slider__overlay {
+  position: absolute; inset: 0;
+  background: linear-gradient(
+    105deg,
+    rgba(8,13,24,.88) 0%,
+    rgba(8,13,24,.72) 45%,
+    rgba(8,13,24,.45) 70%,
+    rgba(8,13,24,.15) 100%
+  );
+}
+
 /* ── Hero ─────────────────────────────────────────────────────── */
 .xndr-hero {
   position: relative; min-height: calc(100vh - 100px);

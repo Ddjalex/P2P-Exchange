@@ -25,6 +25,42 @@ const BUY_ADS = [
   { price: "0.999", limit: "100 – 3,000",  method: "Revolut",       rate: "-0.1%" },
 ];
 
+// ── Hero image slideshow ─────────────────────────────────────────
+const HERO_SLIDES = ["/hero1.jpg", "/hero2.png"];
+
+function HeroSlider() {
+  const [current, setCurrent] = useState(0);
+  const [prev, setPrev] = useState<number | null>(null);
+
+  useEffect(() => {
+    const iv = setInterval(() => {
+      setCurrent(c => {
+        setPrev(c);
+        return (c + 1) % HERO_SLIDES.length;
+      });
+    }, 2000);
+    return () => clearInterval(iv);
+  }, []);
+
+  return (
+    <div className="xndr-hero-slider">
+      {HERO_SLIDES.map((src, i) => (
+        <img
+          key={src}
+          src={src}
+          alt=""
+          className={`xndr-hero-slide${
+            i === current ? " xndr-hero-slide--in" :
+            i === prev    ? " xndr-hero-slide--out" : ""
+          }`}
+        />
+      ))}
+      {/* dark gradient so text stays readable */}
+      <div className="xndr-hero-slider__overlay" />
+    </div>
+  );
+}
+
 // ── Canvas particle network ──────────────────────────────────────
 function ParticleCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -378,6 +414,7 @@ export default function LandingPage() {
 
         {/* ── Hero ─────────────────────────────────────────────── */}
         <section className="xndr-hero" id="exchange">
+          <HeroSlider />
           <ParticleCanvas />
           <div className="xndr-hero__glow" />
 
