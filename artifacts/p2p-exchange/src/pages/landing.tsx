@@ -38,7 +38,7 @@ function HeroSlider() {
         setPrev(c);
         return (c + 1) % HERO_SLIDES.length;
       });
-    }, 2000);
+    }, 4000);
     return () => clearInterval(iv);
   }, []);
 
