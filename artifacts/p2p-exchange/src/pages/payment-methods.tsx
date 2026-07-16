@@ -308,14 +308,14 @@ function AddPaymentMethodForm({ userCountry, kycName: kycNameProp, onClose, onSa
             </>
           )}
 
-          {/* Case 4: verified but no stored name (legacy account) → editable */}
+          {/* Case 4: verified but no stored name (legacy account) → editable once */}
           {kycLoaded && isVerified && !kycName && (
             <>
               <input type="text" value={accountName} onChange={e => setAccountName(e.target.value)}
-                placeholder="Enter exact name on account"
+                placeholder="Enter your exact legal name"
                 className="w-full p-3 rounded-lg outline-none text-sm border bg-card border-border focus:border-primary" />
-              <p className="text-xs text-muted-foreground">
-                Must match the name registered with {selectedMethod?.name ?? "the provider"}.
+              <p className="text-xs text-amber-400">
+                Enter your exact legal name — this cannot be changed after saving.
               </p>
             </>
           )}
