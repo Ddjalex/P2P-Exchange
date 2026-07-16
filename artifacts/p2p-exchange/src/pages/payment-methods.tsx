@@ -5,7 +5,7 @@ import {
 } from "lucide-react";
 import {
   useListPaymentMethods, useAddPaymentMethod, useDeletePaymentMethod,
-  getListPaymentMethodsQueryKey, useGetKycStatus, useGetMe,
+  getListPaymentMethodsQueryKey, useGetMe,
 } from "@workspace/api-client-react";
 import { useState, useEffect, useMemo } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -83,15 +83,16 @@ function AddPaymentMethodForm({ userCountry, kycName: kycNameProp, onClose, onSa
   const { toast } = useToast();
   const addMethod = useAddPaymentMethod();
 
-  // Fetch KYC data directly inside the form so we never depend on the parent
+  // Fetch me directly inside the form so we never depend on the parent
   // having already resolved its queries when the form opens.
   const { data: formMe } = useGetMe();
-  const { data: formKycData } = useGetKycStatus();
-  const kycName = formMe?.kycFullName || (formKycData as any)?.fullName || kycNameProp || "";
+  // kycFullName is only set by the server when the user has a verified KYC submission
+  // (or is a legacy pre-KYC account with ID 3/4/5). Treat undefined (still loading) as null.
+  const kycName: string | null = formMe !== undefined ? (formMe.kycFullName ?? null) : null;
+  const kycLoaded = formMe !== undefined;
 
   const [selectedMethodId, setSelectedMethodId] = useState<string | null>(null);
   const [selectedMethodCountry, setSelectedMethodCountry] = useState(userCountry || "ET");
-  const [accountName, setAccountName] = useState("");
   const [accountNumber, setAccountNumber] = useState("");
   const [methodSearch, setMethodSearch] = useState("");
 
@@ -151,13 +152,12 @@ function AddPaymentMethodForm({ userCountry, kycName: kycNameProp, onClose, onSa
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedMethod) {
-      toast({ title: "Please select a payment method", variant: "destructive" });
+    if (!kycName) {
+      toast({ title: "Please complete KYC verification to add a payment method", variant: "destructive" });
       return;
     }
-    const finalName = kycName || accountName.trim();
-    if (!finalName) {
-      toast({ title: "Please enter your account name", variant: "destructive" });
+    if (!selectedMethod) {
+      toast({ title: "Please select a payment method", variant: "destructive" });
       return;
     }
     if (!accountNumber.trim()) {
@@ -168,7 +168,7 @@ function AddPaymentMethodForm({ userCountry, kycName: kycNameProp, onClose, onSa
     addMethod.mutate({
       data: {
         type: selectedMethod.id,
-        accountName: finalName,
+        accountName: kycName,
         accountNumber: accountNumber.trim(),
         country: selectedMethodCountry,
       } as any
@@ -267,29 +267,32 @@ function AddPaymentMethodForm({ userCountry, kycName: kycNameProp, onClose, onSa
           )}
         </div>
 
-        {/* Account name */}
+        {/* Account name — always read-only, sourced from verified KYC */}
         <div className="space-y-2">
           <label className="text-sm font-medium">
             Full Name
-            {kycName && (
+            {kycLoaded && kycName && (
               <span className="ml-2 text-[10px] font-normal text-primary bg-primary/10 px-1.5 py-0.5 rounded-full">
                 KYC Verified
               </span>
             )}
           </label>
-          <input
-            type="text"
-            readOnly={!!kycName}
-            value={kycName || accountName}
-            onChange={e => !kycName && setAccountName(e.target.value)}
-            placeholder="Exact name on account"
-            className={`w-full p-3 rounded-lg outline-none text-sm border ${kycName ? "bg-secondary border-border cursor-not-allowed" : "bg-card border-border focus:border-primary"}`}
-          />
-          <p className="text-xs text-muted-foreground">
-            {kycName
-              ? "Locked to your KYC-verified name."
-              : `Must match the name registered with ${selectedMethod?.name ?? "the provider"}`}
-          </p>
+          {kycLoaded && !kycName ? (
+            <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-sm text-amber-400">
+              Please complete KYC verification to add a payment method
+            </div>
+          ) : (
+            <input
+              type="text"
+              readOnly
+              value={kycName ?? ""}
+              placeholder={kycLoaded ? "" : "Loading…"}
+              className="w-full p-3 rounded-lg outline-none text-sm border bg-secondary border-border cursor-not-allowed"
+            />
+          )}
+          {kycLoaded && kycName && (
+            <p className="text-xs text-muted-foreground">Locked to your KYC-verified name.</p>
+          )}
         </div>
 
         {/* Account number / identifier */}
@@ -308,7 +311,7 @@ function AddPaymentMethodForm({ userCountry, kycName: kycNameProp, onClose, onSa
 
         <button
           type="submit"
-          disabled={addMethod.isPending || !selectedMethod}
+          disabled={addMethod.isPending || !selectedMethod || !kycName}
           className="w-full py-3 mt-2 bg-primary text-primary-foreground rounded-lg font-bold disabled:opacity-50"
         >
           {addMethod.isPending ? "Saving..." : "Save Payment Method"}
@@ -322,16 +325,15 @@ function AddPaymentMethodForm({ userCountry, kycName: kycNameProp, onClose, onSa
 
 export default function PaymentMethodsPage() {
   const { data: methods, isLoading } = useListPaymentMethods();
-  const { data: kycData } = useGetKycStatus();
   const { data: me } = useGetMe();
   const [showAdd, setShowAdd] = useState(false);
   const deleteMethod = useDeletePaymentMethod();
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  // Prefer kycFullName from /api/auth/me (always joined from KYC table),
-  // fall back to fullName from /api/kyc/status (only present when submission exists).
-  const kycName = me?.kycFullName || kycData?.fullName || "";
+  // kycFullName is only set by the server when the user has a verified KYC submission
+  // (or is a legacy pre-KYC account with ID 3/4/5). Never fall back to unverified sources.
+  const kycName = me?.kycFullName ?? "";
   const registrationCountry = me?.country ?? "ET";
 
   // Use the fiat currency the user selected on the P2P page (persisted in localStorage).
