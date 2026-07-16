@@ -242,17 +242,31 @@ export default function LandingPage() {
       {/* ── HERO ── */}
       <section className="lp-hero" ref={heroRef}>
 
-        {/* Subtle ambient background glow */}
-        <div className="lp-hero-bg-glow" />
+        {/* Full-bleed background slideshow */}
+        <div className="lp-slideshow">
+          {slides.map((src, i) => (
+            <img
+              key={src}
+              src={src}
+              className={`lp-slide${i === slideIndex ? ' lp-slide-active' : ''}`}
+              alt={`Xendrx ${i + 1}`}
+              loading={i === 0 ? 'eager' : 'lazy'}
+              decoding="async"
+            />
+          ))}
+        </div>
+
+        <div className="lp-hero-overlay" />
+
         <div
           className="lp-hero-glow"
           style={{
-            background: `radial-gradient(ellipse 60% 50% at ${glowX}% ${glowY}%, rgba(0,229,255,0.07) 0%, transparent 70%)`,
+            background: `radial-gradient(ellipse 60% 50% at ${glowX}% ${glowY}%, rgba(0,229,255,0.10) 0%, transparent 70%)`,
           }}
         />
 
-        {/* ── LEFT: Text content ── */}
-        <div className="lp-hero-left" style={{ transform: `translateY(${heroParallax * 0.5}px)` }}>
+        {/* Parallax text wrapper — drifts up as user scrolls */}
+        <div className="lp-hero-parallax" style={{ transform: `translateY(${heroParallax}px)` }}>
           <div className="lp-hero-label">P2P Crypto Exchange · Global</div>
           <h1 className="lp-hero-headline">
             <span className="lp-hero-line1">TRADING</span>
@@ -263,53 +277,37 @@ export default function LandingPage() {
             no banks, no borders, no limits.
           </p>
           <div className="lp-hero-actions">
-            <button className="lp-btn-primary" onClick={() => setLocation("/auth?tab=register")}>Start Trading</button>
+            <button className="lp-btn-primary" onClick={() => setLocation("/auth")}>Start Trading</button>
             <a href="#how" className="lp-btn-ghost">How it works ↓</a>
           </div>
-          {/* Trust stats row */}
-          <div className="lp-hero-stats">
-            <div className="lp-stat">
-              <span className="lp-stat-num">119+</span>
-              <span className="lp-stat-label">Countries</span>
-            </div>
-            <div className="lp-stat-divider" />
-            <div className="lp-stat">
-              <span className="lp-stat-num">1,300+</span>
-              <span className="lp-stat-label">Payment Methods</span>
-            </div>
-            <div className="lp-stat-divider" />
-            <div className="lp-stat">
-              <span className="lp-stat-num">0%</span>
-              <span className="lp-stat-label">Platform Fee</span>
-            </div>
-          </div>
+
         </div>
 
-        {/* ── RIGHT: Floating image card ── */}
-        <div className="lp-hero-right">
-          <div className="lp-hero-card">
-            {slides.map((src, i) => (
-              <img
-                key={src}
-                src={src}
-                className={`lp-hero-card-img${i === slideIndex ? ' lp-hero-card-img-active' : ''}`}
-                alt={`Xendrx ${i + 1}`}
-                loading={i === 0 ? 'eager' : 'lazy'}
-                decoding="async"
-              />
-            ))}
-            {/* Card overlay badges */}
-            <div className="lp-hero-card-badge lp-badge-top">
-              <span className="lp-badge-dot" />
-              <span>Live P2P Market</span>
-            </div>
-            <div className="lp-hero-card-badge lp-badge-bottom">
-              <span>🔒</span>
-              <span>Escrow Protected</span>
-            </div>
-          </div>
-          {/* Slide dots below card */}
-          <div className="lp-hero-card-dots">
+        {/* Desktop slide dots */}
+        <div className="lp-slide-dots">
+          {slides.map((_, i) => (
+            <button
+              key={i}
+              className={`lp-slide-dot${i === slideIndex ? ' lp-slide-dot-active' : ''}`}
+              onClick={() => setSlideIndex(i)}
+              aria-label={`Slide ${i + 1}`}
+            />
+          ))}
+        </div>
+
+        {/* Mobile: contained image card */}
+        <div className="lp-hero-mobile-preview">
+          {slides.map((src, i) => (
+            <img
+              key={src}
+              src={src}
+              className={`lp-mobile-slide${i === slideIndex ? ' lp-mobile-slide-active' : ''}`}
+              alt={`Xendrx ${i + 1}`}
+              loading={i === 0 ? 'eager' : 'lazy'}
+              decoding="async"
+            />
+          ))}
+          <div className="lp-mobile-dots">
             {slides.map((_, i) => (
               <button
                 key={i}
