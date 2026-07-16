@@ -2,6 +2,44 @@ import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import "./landing.css";
 
+// ── Static data ────────────────────────────────────────────────────────────
+const MARKET_BUYS = [
+  { init: 'AK', name: 'Alex K.',     orders: 312, rate: '1.052', limits: '50 – 500',    method: 'Wise' },
+  { init: 'SM', name: 'Sara M.',     orders: 204, rate: '1.048', limits: '100 – 1,000', method: 'Revolut' },
+  { init: 'JD', name: 'James D.',    orders: 478, rate: '1.055', limits: '20 – 200',    method: 'PayPal' },
+  { init: 'LN', name: 'Lena N.',     orders: 139, rate: '1.044', limits: '500 – 2,000', method: 'Bank Transfer' },
+  { init: 'MO', name: 'Mark O.',     orders: 561, rate: '1.060', limits: '10 – 100',    method: 'M-Pesa' },
+];
+const MARKET_SELLS = [
+  { init: 'FH', name: 'Fatima H.',  orders: 287, rate: '1.038', limits: '50 – 500',    method: 'Wise' },
+  { init: 'RC', name: 'Ryan C.',    orders: 411, rate: '1.035', limits: '200 – 2,000', method: 'PayPal' },
+  { init: 'YB', name: 'Yuki B.',    orders: 193, rate: '1.041', limits: '100 – 800',   method: 'Bank Transfer' },
+  { init: 'PW', name: 'Priya W.',   orders: 356, rate: '1.032', limits: '20 – 250',    method: 'Revolut' },
+  { init: 'TG', name: 'Tom G.',     orders: 628, rate: '1.045', limits: '500 – 5,000', method: 'MTN Money' },
+];
+const PAYMENT_METHODS = [
+  { name: 'Wise',           icon: '💳' },
+  { name: 'PayPal',         icon: '🅿️' },
+  { name: 'Revolut',        icon: '🔄' },
+  { name: 'Bank Transfer',  icon: '🏦' },
+  { name: 'M-Pesa',         icon: '📱' },
+  { name: 'MTN Money',      icon: '📲' },
+  { name: 'Airtel Money',   icon: '📡' },
+  { name: 'Skrill',         icon: '💜' },
+  { name: 'Neteller',       icon: '🌐' },
+  { name: 'Payoneer',       icon: '💰' },
+  { name: 'Cash App',       icon: '💵' },
+  { name: 'Zelle',          icon: '⚡' },
+  { name: 'Venmo',          icon: '🅥' },
+  { name: 'SEPA Transfer',  icon: '🇪🇺' },
+  { name: 'JazzCash',       icon: '🎵' },
+  { name: 'EasyPaisa',      icon: '✅' },
+  { name: 'bKash',          icon: '🟠' },
+  { name: 'Nagad',          icon: '🔵' },
+  { name: 'Telebirr',       icon: '📶' },
+  { name: 'OPay',           icon: '🟢' },
+];
+
 export default function LandingPage() {
   const [, setLocation] = useLocation();
   const [loaded, setLoaded]           = useState(false);
@@ -12,6 +50,7 @@ export default function LandingPage() {
   const [slideIndex, setSlideIndex]   = useState(0);
   const [scrollY, setScrollY]         = useState(0);
   const [scrollPct, setScrollPct]     = useState(0);
+  const [marketTab, setMarketTab]     = useState<'buy' | 'sell'>('buy');
   const heroRef = useRef<HTMLElement>(null);
 
   const slides = [
@@ -206,6 +245,29 @@ export default function LandingPage() {
             <button className="lp-btn-primary" onClick={() => setLocation("/auth")}>Start Trading</button>
             <a href="#how" className="lp-btn-ghost">How it works ↓</a>
           </div>
+
+          {/* ── Hero Stats ── */}
+          <div className="lp-hero-stats">
+            <div className="lp-stat">
+              <span className="lp-stat-num">50K+</span>
+              <span className="lp-stat-label">Verified Traders</span>
+            </div>
+            <div className="lp-stat-divider" />
+            <div className="lp-stat">
+              <span className="lp-stat-num">$2M+</span>
+              <span className="lp-stat-label">Monthly Volume</span>
+            </div>
+            <div className="lp-stat-divider" />
+            <div className="lp-stat">
+              <span className="lp-stat-num">119</span>
+              <span className="lp-stat-label">Countries</span>
+            </div>
+            <div className="lp-stat-divider" />
+            <div className="lp-stat">
+              <span className="lp-stat-num">0%</span>
+              <span className="lp-stat-label">Platform Fee</span>
+            </div>
+          </div>
         </div>
 
         {/* Desktop slide dots */}
@@ -244,6 +306,93 @@ export default function LandingPage() {
           </div>
         </div>
 
+      </section>
+
+      {/* ── BENEFITS TICKER ── */}
+      <div className="lp-ticker" aria-hidden="true">
+        <div className="lp-ticker-track">
+          {[
+            '⚡ Instant Settlement',
+            '🔒 Escrow Protected',
+            '0% Platform Fee',
+            '🌍 119 Countries',
+            '💳 20+ Payment Methods',
+            '✅ KYC Verified Traders',
+            '📱 24/7 Support',
+            '🔐 BEP-20 Native',
+            '⚡ Instant Settlement',
+            '🔒 Escrow Protected',
+            '0% Platform Fee',
+            '🌍 119 Countries',
+            '💳 20+ Payment Methods',
+            '✅ KYC Verified Traders',
+            '📱 24/7 Support',
+            '🔐 BEP-20 Native',
+          ].map((item, i) => (
+            <span key={i} className="lp-ticker-item">{item}</span>
+          ))}
+        </div>
+      </div>
+
+      {/* ── LIVE MARKET PREVIEW ── */}
+      <section className="lp-market-section" id="market">
+        <div className="lp-market-header-row">
+          <div>
+            <div className="lp-market-eyebrow" data-reveal="down" style={delay(0)}>◈ &nbsp;Live Market</div>
+            <h2 className="lp-market-title" data-reveal="up" style={delay(0.1)}>
+              Trade at the Best Price
+            </h2>
+            <p className="lp-market-subtitle" data-reveal="blur" style={delay(0.18)}>
+              Real-time peer-to-peer offers from verified traders worldwide.
+            </p>
+          </div>
+          <div className="lp-market-tabs" data-reveal="right" style={delay(0.1)}>
+            <button
+              className={`lp-market-tab${marketTab === 'buy' ? ' lp-market-tab-active-buy' : ''}`}
+              onClick={() => setMarketTab('buy')}
+            >Buy USDT</button>
+            <button
+              className={`lp-market-tab${marketTab === 'sell' ? ' lp-market-tab-active-sell' : ''}`}
+              onClick={() => setMarketTab('sell')}
+            >Sell USDT</button>
+          </div>
+        </div>
+
+        <div className="lp-market-preview" data-reveal="up" style={delay(0.22)}>
+          <div className="lp-market-row lp-market-header">
+            <span>Trader</span>
+            <span>Price (USD)</span>
+            <span>Limits (USDT)</span>
+            <span>Method</span>
+            <span></span>
+          </div>
+          {(marketTab === 'buy' ? MARKET_BUYS : MARKET_SELLS).map((row) => (
+            <div className="lp-market-row" key={row.name}>
+              <span className="lp-trader-name">
+                <span className="lp-trader-avatar">{row.init}</span>
+                <span>
+                  <span style={{ display: 'block', fontWeight: 600 }}>{row.name}</span>
+                  <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>{row.orders} orders</span>
+                </span>
+              </span>
+              <span className="lp-price">{row.rate} <small>USD</small></span>
+              <span className="lp-limits">{row.limits}</span>
+              <span className="lp-method">{row.method}</span>
+              <button
+                className={`lp-trade-btn ${marketTab === 'buy' ? 'lp-buy' : 'lp-sell'}`}
+                onClick={() => setLocation('/auth')}
+              >
+                {marketTab === 'buy' ? 'Buy' : 'Sell'}
+              </button>
+            </div>
+          ))}
+        </div>
+
+        <div className="lp-market-cta" data-reveal="up" style={delay(0.35)}>
+          <button className="lp-btn-outline" onClick={() => setLocation('/auth')}>
+            View All Offers →
+          </button>
+        </div>
       </section>
 
       {/* ── CARD SECTION ── */}
@@ -349,6 +498,29 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* ── PAYMENT METHODS ── */}
+      <section className="lp-pm-section">
+        <div className="lp-pm-inner">
+          <div className="lp-pm-header">
+            <div className="lp-market-eyebrow" data-reveal="down" style={delay(0)}>◈ &nbsp;Payment Methods</div>
+            <h2 className="lp-pm-title" data-reveal="up" style={delay(0.1)}>
+              Pay Your Way
+            </h2>
+            <p className="lp-pm-subtitle" data-reveal="blur" style={delay(0.18)}>
+              Over 20 payment methods across 119 countries — bank transfers, mobile wallets, and more.
+            </p>
+          </div>
+          <div className="lp-pm-grid" data-reveal="up" style={delay(0.25)}>
+            {PAYMENT_METHODS.map((m) => (
+              <div className="lp-pm-chip" key={m.name}>
+                <span className="lp-pm-icon">{m.icon}</span>
+                <span className="lp-pm-name">{m.name}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* ── CTA ── */}
       <section className="lp-cta-section">
         <div className="lp-cta-glow" />
@@ -373,7 +545,7 @@ export default function LandingPage() {
               <span className="lp-logo-mark">◆</span>
               <span className="lp-logo-text">xen<span className="lp-cyan">drx</span></span>
             </div>
-            <p>Architecting peer-to-peer crypto trade<br />for the Horn of Africa.</p>
+            <p>Peer-to-peer USDT trading — fast,<br />secure, and borderless.</p>
           </div>
           <div className="lp-footer-cols">
             <div className="lp-footer-col">
