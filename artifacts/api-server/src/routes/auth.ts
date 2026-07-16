@@ -295,17 +295,17 @@ router.get("/me", async (req, res) => {
     const user = await db.select().from(usersTable).where(eq(usersTable.id, payload.sub)).then(r => r[0]);
     if (!user) return res.status(401).json({ error: "User not found" });
     if (user.isSuspended) return res.status(403).json({ error: "Account suspended" });
-    // kycFullName: only from a verified KYC submission.
-    // Legacy accounts (IDs 3, 4, 5) predate the kyc_submissions table — fall back to users.name for those only.
+    // kycFullName: prefer the full_name from a verified kyc_submissions row.
+    // Fall back to users.name for any account whose kyc_status is already 'verified'
+    // but has no submission row — this covers legacy accounts that predate the table.
     const kyc = await db
       .select({ fullName: kycSubmissionsTable.fullName })
       .from(kycSubmissionsTable)
       .where(and(eq(kycSubmissionsTable.userId, user.id), eq(kycSubmissionsTable.status, "verified")))
       .orderBy(desc(kycSubmissionsTable.submittedAt))
       .then(r => r[0]);
-    const LEGACY_VERIFIED_USER_IDS = [3, 4, 5];
     const kycFullName = kyc?.fullName
-      ?? (LEGACY_VERIFIED_USER_IDS.includes(user.id) ? ((user as any).name ?? null) : null);
+      ?? (user.kycStatus === "verified" ? ((user as any).name ?? null) : null);
     res.json({ ...formatUser(user), kycFullName });
   } catch (err) {
     req.log.error({ err }, "Failed to get user");
