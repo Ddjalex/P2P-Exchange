@@ -86,64 +86,63 @@ export default function LandingPage() {
 
       {/* ── HERO ── */}
       <section className="lp-hero" ref={heroRef}>
-        {/* Mouse-tracking atmospheric glow */}
+        {/* ── Full-bleed background slideshow ── */}
+        <div className="lp-slideshow">
+          {slides.map((src, i) => (
+            <img
+              key={src}
+              src={src}
+              className={`lp-slide${i === slideIndex ? ' lp-slide-active' : ''}`}
+              alt={`Xendrx ${i + 1}`}
+              loading={i === 0 ? 'eager' : 'lazy'}
+              decoding="async"
+            />
+          ))}
+        </div>
+
+        {/* Dark gradient overlay — left opaque → right transparent */}
+        <div className="lp-hero-overlay" />
+
+        {/* Mouse-tracking glow on top */}
         <div
           className="lp-hero-glow"
           style={{
-            background: `radial-gradient(ellipse 75% 60% at ${glowX}% ${glowY}%, rgba(0,229,255,0.16) 0%, rgba(0,120,160,0.07) 45%, transparent 70%)`,
+            background: `radial-gradient(ellipse 60% 50% at ${glowX}% ${glowY}%, rgba(0,229,255,0.10) 0%, transparent 70%)`,
           }}
         />
-        {/* Subtle grid overlay */}
-        <div className="lp-hero-grid" />
 
-        {/* Left — text content */}
-        <div className="lp-hero-left">
-          <div className="lp-hero-label">P2P Crypto Exchange · Ethiopia</div>
+        {/* Text content */}
+        <div className="lp-hero-label">P2P Crypto Exchange · Ethiopia</div>
 
-          <h1 className="lp-hero-headline">
-            <span className="lp-hero-line1">TRADING</span>
-            <span className="lp-hero-line2">USDT.</span>
-          </h1>
+        <h1 className="lp-hero-headline">
+          <span className="lp-hero-line1">TRADING</span>
+          <span className="lp-hero-line2">USDT.</span>
+        </h1>
 
-          <p className="lp-hero-sub">
-            Buy and sell USDT using Ethiopian Birr — directly peer-to-peer,
-            <br />without banks, without borders.
-          </p>
+        <p className="lp-hero-sub">
+          Buy and sell USDT using Ethiopian Birr — directly peer-to-peer,<br className="lp-br-desktop" />
+          without banks, without borders.
+        </p>
 
-          <div className="lp-hero-actions">
-            <button className="lp-btn-primary" onClick={() => setLocation("/auth")}>
-              Start Trading
-            </button>
-            <a href="#how" className="lp-btn-ghost">
-              How it works ↓
-            </a>
-          </div>
+        <div className="lp-hero-actions">
+          <button className="lp-btn-primary" onClick={() => setLocation("/auth")}>
+            Start Trading
+          </button>
+          <a href="#how" className="lp-btn-ghost">
+            How it works ↓
+          </a>
         </div>
 
-        {/* Right — image slideshow */}
-        <div className="lp-hero-right">
-          <div className="lp-slideshow">
-            {slides.map((src, i) => (
-              <img
-                key={src}
-                src={src}
-                className={`lp-slide${i === slideIndex ? ' lp-slide-active' : ''}`}
-                alt={`Xendrx ${i + 1}`}
-                loading={i === 0 ? 'eager' : 'lazy'}
-                decoding="async"
-              />
-            ))}
-            <div className="lp-slide-dots">
-              {slides.map((_, i) => (
-                <button
-                  key={i}
-                  className={`lp-slide-dot${i === slideIndex ? ' lp-slide-dot-active' : ''}`}
-                  onClick={() => setSlideIndex(i)}
-                  aria-label={`Slide ${i + 1}`}
-                />
-              ))}
-            </div>
-          </div>
+        {/* Slide indicator dots */}
+        <div className="lp-slide-dots">
+          {slides.map((_, i) => (
+            <button
+              key={i}
+              className={`lp-slide-dot${i === slideIndex ? ' lp-slide-dot-active' : ''}`}
+              onClick={() => setSlideIndex(i)}
+              aria-label={`Slide ${i + 1}`}
+            />
+          ))}
         </div>
 
       </section>
