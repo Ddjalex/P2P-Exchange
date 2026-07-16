@@ -147,6 +147,53 @@ export default function LandingPage() {
 
       </section>
 
+      {/* ── CARD SECTION ── */}
+      <section className="lp-card-section" id="card">
+        <div className="lp-card-section-inner">
+
+          {/* Animated card visual */}
+          <div className="lp-card-visual lp-reveal">
+            <div className="lp-card-orbit" />
+            <div className="lp-card-orbit lp-card-orbit-2" />
+            <div className="lp-card-glow-base" />
+            <img src="/slide4.webp" alt="Xendrx Card" className="lp-card-img" loading="lazy" decoding="async" />
+          </div>
+
+          {/* Content */}
+          <div className="lp-card-content">
+            <div className="lp-card-eyebrow lp-reveal">◈ &nbsp;Card System</div>
+            <h2 className="lp-card-title lp-reveal">
+              Pay anywhere.<br />
+              <span className="lp-cyan">Instantly.</span>
+            </h2>
+            <p className="lp-card-desc lp-reveal">
+              Your USDT balance, spendable everywhere. Get a virtual Xendrx Visa card
+              in seconds — accepted at 50 million+ merchants in 119 countries.
+              No bank required.
+            </p>
+            <div className="lp-card-features lp-reveal">
+              {[
+                { icon: '⚡', label: 'Instant Setup',   sub: 'Virtual card live in under a minute' },
+                { icon: '🌍', label: 'Global Reach',    sub: '119 countries · 50M+ merchants'      },
+                { icon: '◈',  label: 'Crypto-Backed',   sub: 'Spend your USDT balance directly'     },
+                { icon: '◻',  label: 'Visa Network',    sub: 'Accepted everywhere Visa works'       },
+              ].map(f => (
+                <div className="lp-card-feature" key={f.label}>
+                  <div className="lp-card-feature-icon">{f.icon}</div>
+                  <div>
+                    <div className="lp-card-feature-label">{f.label}</div>
+                    <div className="lp-card-feature-sub">{f.sub}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <button className="lp-btn-card-cta lp-reveal" onClick={() => setLocation('/auth')}>
+              Create Your Card &nbsp;→
+            </button>
+          </div>
+        </div>
+      </section>
+
       {/* ── SECTION 01 — HOW IT WORKS ── */}
       <section className="lp-section" id="how">
         <div className="lp-section-number lp-reveal">01</div>
