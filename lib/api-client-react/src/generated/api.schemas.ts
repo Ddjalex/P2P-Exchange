@@ -30,6 +30,8 @@ export interface User {
   kycStatus: UserKycStatus;
   isMerchant: boolean;
   createdAt: string;
+  /** @nullable — only present on /api/auth/me response */
+  kycFullName?: string | null;
 }
 
 export interface Wallet {

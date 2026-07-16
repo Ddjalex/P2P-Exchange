@@ -323,7 +323,9 @@ export default function PaymentMethodsPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  const kycName = kycData?.fullName ?? "";
+  // Prefer kycFullName from /api/auth/me (always joined from KYC table),
+  // fall back to fullName from /api/kyc/status (only present when submission exists).
+  const kycName = me?.kycFullName || kycData?.fullName || "";
   const registrationCountry = me?.country ?? "ET";
 
   // Use the fiat currency the user selected on the P2P page (persisted in localStorage).
