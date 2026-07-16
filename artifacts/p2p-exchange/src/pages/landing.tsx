@@ -366,69 +366,6 @@ export default function LandingPage() {
         </div>
       </div>
 
-      {/* ── LIVE MARKET PREVIEW ── */}
-      <section className="lp-market-section" id="market">
-        <div className="lp-market-header-row">
-          <div>
-            <div className="lp-market-eyebrow" data-reveal="down" style={delay(0)}>
-              <span className="lp-live-dot" />LIVE ORDERS
-            </div>
-            <h2 className="lp-market-title" data-reveal="up" style={delay(0.1)}>
-              Trade at the Best Price
-            </h2>
-            <p className="lp-market-subtitle" data-reveal="blur" style={delay(0.18)}>
-              Real-time peer-to-peer offers from verified traders worldwide.
-            </p>
-          </div>
-          <div className="lp-market-tabs" data-reveal="right" style={delay(0.1)}>
-            <button
-              className={`lp-market-tab${marketTab === 'buy' ? ' lp-market-tab-active-buy' : ''}`}
-              onClick={() => setMarketTab('buy')}
-            >Buy USDT</button>
-            <button
-              className={`lp-market-tab${marketTab === 'sell' ? ' lp-market-tab-active-sell' : ''}`}
-              onClick={() => setMarketTab('sell')}
-            >Sell USDT</button>
-          </div>
-        </div>
-
-        <div className="lp-market-preview" data-reveal="up" style={delay(0.22)}>
-          <div className="lp-market-row lp-market-header">
-            <span>Trader</span>
-            <span>Price (USD)</span>
-            <span>Limits (USDT)</span>
-            <span>Method</span>
-            <span></span>
-          </div>
-          {(marketTab === 'buy' ? MARKET_BUYS : MARKET_SELLS).map((row) => (
-            <div className="lp-market-row" key={row.name}>
-              <span className="lp-trader-name">
-                <span className="lp-trader-avatar">{row.init}</span>
-                <span>
-                  <span style={{ display: 'block', fontWeight: 600 }}>{row.name}</span>
-                  <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>{row.orders} orders</span>
-                </span>
-              </span>
-              <span className="lp-price">{row.rate} <small>USD</small></span>
-              <span className="lp-limits">{row.limits}</span>
-              <span className="lp-method">{row.method}</span>
-              <button
-                className={`lp-trade-btn ${marketTab === 'buy' ? 'lp-buy' : 'lp-sell'}`}
-                onClick={() => setLocation('/auth')}
-              >
-                {marketTab === 'buy' ? 'Buy' : 'Sell'}
-              </button>
-            </div>
-          ))}
-        </div>
-
-        <div className="lp-market-cta" data-reveal="up" style={delay(0.35)}>
-          <button className="lp-btn-outline" onClick={() => setLocation('/auth')}>
-            View All Offers →
-          </button>
-        </div>
-      </section>
-
       {/* ── CARD SECTION ── */}
       <section className="lp-card-section" id="card">
         <div className="lp-card-section-inner">
