@@ -425,22 +425,29 @@ router.get("/payment-methods", async (req, res) => {
 router.post("/payment-methods", async (req, res) => {
   try {
     const { type, accountName, accountNumber, country } = req.body;
+    const userId = (req as any).userId;
 
-    // Determine country: use provided value, or fall back to user's profile country
-    let resolvedCountry = (country as string | undefined)?.toUpperCase() ?? "ET";
-    if (!country) {
-      const [user] = await db.select({ country: usersTable.country }).from(usersTable)
-        .where(eq(usersTable.id, (req as any).userId));
-      resolvedCountry = user?.country ?? "ET";
-    }
+    // Fetch user once — used for country fallback and name-locking logic below
+    const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
+    const resolvedCountry = (country as string | undefined)?.toUpperCase() ?? user?.country ?? "ET";
 
     const [method] = await db.insert(paymentMethodsTable).values({
-      userId: (req as any).userId,
+      userId,
       country: resolvedCountry,
       type,
       accountName,
       accountNumber,
     }).returning();
+
+    // Lock the name for legacy verified accounts: if the user is KYC-verified but has no
+    // stored name (users.name is null), save the typed accountName into users.name now.
+    // From this point on, /api/auth/me will return it as kycFullName, so future payment
+    // method forms will show the field as read-only automatically.
+    if (user?.kycStatus === "verified" && !(user as any).name && accountName) {
+      await db.update(usersTable)
+        .set({ name: accountName } as any)
+        .where(eq(usersTable.id, userId));
+    }
 
     res.status(201).json({
       id: method.id,
