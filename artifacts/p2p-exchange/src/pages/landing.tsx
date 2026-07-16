@@ -4,11 +4,14 @@ import "./landing.css";
 
 export default function LandingPage() {
   const [, setLocation] = useLocation();
-  const [loaded, setLoaded]       = useState(false);
-  const [mousePos, setMousePos]   = useState({ x: 0.5, y: 0.5 });
-  const [slideIndex, setSlideIndex] = useState(0);
-  const [scrollY, setScrollY]     = useState(0);
-  const [scrollPct, setScrollPct] = useState(0);
+  const [loaded, setLoaded]           = useState(false);
+  const [showLoader, setShowLoader]   = useState(true);
+  const [loaderDone, setLoaderDone]   = useState(false);
+  const [loaderPct, setLoaderPct]     = useState(0);
+  const [mousePos, setMousePos]       = useState({ x: 0.5, y: 0.5 });
+  const [slideIndex, setSlideIndex]   = useState(0);
+  const [scrollY, setScrollY]         = useState(0);
+  const [scrollPct, setScrollPct]     = useState(0);
   const heroRef = useRef<HTMLElement>(null);
 
   const slides = [
@@ -19,16 +22,37 @@ export default function LandingPage() {
     '/slide5.webp',
   ];
 
+  // ── Cinematic loader — counts 0→100 then splits the curtain ──────────
+  useEffect(() => {
+    const DURATION = 1700; // ms for 0→100
+    const start = performance.now();
+
+    function tick(now: number) {
+      const t = Math.min((now - start) / DURATION, 1);
+      // ease-out-expo: fast start, decelerates near 100
+      const eased = t === 1 ? 1 : 1 - Math.pow(2, -10 * t);
+      setLoaderPct(Math.floor(eased * 100));
+
+      if (t < 1) {
+        requestAnimationFrame(tick);
+      } else {
+        // Hold at 100% briefly, then open curtain
+        setTimeout(() => {
+          setLoaderDone(true);          // triggers CSS curtain-split
+          setTimeout(() => {
+            setShowLoader(false);       // unmount overlay
+            setLoaded(true);            // start hero entrance anims
+          }, 750);
+        }, 280);
+      }
+    }
+    requestAnimationFrame(tick);
+  }, []);
+
   // Auto-advance slideshow
   useEffect(() => {
     const t = setInterval(() => setSlideIndex(i => (i + 1) % slides.length), 4000);
     return () => clearInterval(t);
-  }, []);
-
-  // Entrance gate
-  useEffect(() => {
-    const t = setTimeout(() => setLoaded(true), 60);
-    return () => clearTimeout(t);
   }, []);
 
   // Mouse-tracking glow
@@ -56,9 +80,10 @@ export default function LandingPage() {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
-  // ── Bidirectional scroll-reveal ──────────────────────────────────────
-  // Adds lp-visible on enter; removes it when element re-enters the
-  // viewport from below (user scrolled back up), so animations replay.
+  // ── True bidirectional scroll-reveal ─────────────────────────────────
+  // Adds lp-visible when element enters viewport from ANY direction.
+  // Removes lp-visible when element leaves viewport in ANY direction,
+  // so the animation replays both on scroll-down AND scroll-up.
   useEffect(() => {
     if (!loaded) return;
     const observer = new IntersectionObserver(
@@ -66,14 +91,13 @@ export default function LandingPage() {
         entries.forEach((entry) => {
           if (entry.isIntersecting) {
             entry.target.classList.add("lp-visible");
-          } else if (entry.boundingClientRect.top > 0) {
-            // Below viewport → user scrolled up past it → reset for re-play
+          } else {
+            // Exit in either direction → reset so it re-animates on re-entry
             entry.target.classList.remove("lp-visible");
           }
-          // If top < 0 (above viewport, already visited) → leave visible
         });
       },
-      { threshold: 0.10 }
+      { threshold: 0.12, rootMargin: "0px 0px -4% 0px" }
     );
     document.querySelectorAll("[data-reveal]").forEach((el) => observer.observe(el));
     return () => observer.disconnect();
@@ -88,7 +112,41 @@ export default function LandingPage() {
   // Utility: typed inline style helper for CSS custom properties
   const delay = (s: number) => ({ "--delay": `${s}s` } as React.CSSProperties);
 
+  // Decimal percentage display matching the reference video style
+  const pctInt  = loaderPct;
+  const pctFrac = ((loaderPct * 100) % 100).toString().padStart(2, "0");
+
   return (
+    <>
+      {/* ── CINEMATIC LOADER OVERLAY — sibling of lp-root so parent opacity:0 can't hide it ── */}
+      {showLoader && (
+        <div className={`lp-loader${loaderDone ? " lp-loader-done" : ""}`} aria-hidden="true">
+          {/* Split-curtain panels — slide away when done */}
+          <div className="lp-loader-panel lp-loader-panel-top" />
+          <div className="lp-loader-panel lp-loader-panel-bot" />
+
+          {/* Centred content — fades out as curtain splits */}
+          <div className="lp-loader-body">
+            <div className="lp-loader-logo">
+              <span className="lp-loader-diamond">◆</span>
+              <span className="lp-loader-wordmark">
+                xen<span className="lp-loader-accent">drx</span>
+              </span>
+            </div>
+
+            <div className="lp-loader-track">
+              <div className="lp-loader-fill" style={{ width: `${loaderPct}%` }} />
+              <div className="lp-loader-glow-dot" style={{ left: `${loaderPct}%` }} />
+            </div>
+
+            <div className="lp-loader-pct">
+              {pctInt.toString().padStart(2, "0")}.{pctFrac}
+              <span className="lp-loader-pct-sign">%</span>
+            </div>
+          </div>
+        </div>
+      )}
+
     <div className={`lp-root${loaded ? " lp-loaded" : ""}`}>
 
       {/* ── Scroll progress bar ── */}
@@ -347,5 +405,6 @@ export default function LandingPage() {
       </footer>
 
     </div>
+    </>
   );
 }
