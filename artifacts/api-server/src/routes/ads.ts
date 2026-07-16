@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { adsTable, usersTable, ordersTable, walletsTable, paymentMethodsTable } from "@workspace/db";
-import { eq, and, ne, desc, asc, sql, gt } from "drizzle-orm";
+import { eq, and, ne, desc, asc, sql, gt, or } from "drizzle-orm";
 import { notify } from "../lib/notify.js";
 
 const router = Router();
@@ -22,7 +22,7 @@ async function getOrCreateWallet(userId: number) {
 async function formatAd(ad: any) {
   const user = await db.select().from(usersTable).where(eq(usersTable.id, ad.userId)).then(r => r[0]);
   const orders = await db.select().from(ordersTable).where(
-    eq(ordersTable.adId, ad.id)
+    or(eq(ordersTable.buyerId, ad.userId), eq(ordersTable.sellerId, ad.userId))!
   );
   const completed = orders.filter(o => o.status === "completed").length;
   const completionRate = orders.length > 0 ? ((completed / orders.length) * 100).toFixed(1) : "100.0";
