@@ -102,32 +102,6 @@ export default function LandingPage() {
           </a>
         </div>
 
-        <div className="lp-hero-stats">
-          <div className="lp-stat">
-            <span className="lp-stat-num">12,000+</span>
-            <span className="lp-stat-label">Active Users</span>
-          </div>
-          <div className="lp-stat-divider" />
-          <div className="lp-stat">
-            <span className="lp-stat-num">$2.4M+</span>
-            <span className="lp-stat-label">Monthly Volume</span>
-          </div>
-          <div className="lp-stat-divider" />
-          <div className="lp-stat">
-            <span className="lp-stat-num">800+</span>
-            <span className="lp-stat-label">Payment Methods</span>
-          </div>
-          <div className="lp-stat-divider" />
-          <div className="lp-stat">
-            <span className="lp-stat-num">119</span>
-            <span className="lp-stat-label">Countries</span>
-          </div>
-        </div>
-
-        <div className="lp-scroll-hint">
-          <div className="lp-scroll-line" />
-          <span>Scroll</span>
-        </div>
       </section>
 
       {/* ── SECTION 01 — HOW IT WORKS ── */}
