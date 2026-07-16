@@ -193,14 +193,14 @@ export default function LandingPage() {
 
         {/* Parallax text wrapper — drifts up as user scrolls */}
         <div className="lp-hero-parallax" style={{ transform: `translateY(${heroParallax}px)` }}>
-          <div className="lp-hero-label">P2P Crypto Exchange · Ethiopia</div>
+          <div className="lp-hero-label">P2P Crypto Exchange · Global</div>
           <h1 className="lp-hero-headline">
             <span className="lp-hero-line1">TRADING</span>
             <span className="lp-hero-line2">USDT.</span>
           </h1>
           <p className="lp-hero-sub">
-            Buy and sell USDT using Ethiopian Birr — directly peer-to-peer,<br className="lp-br-desktop" />
-            without banks, without borders.
+            Buy and sell USDT directly peer-to-peer —<br className="lp-br-desktop" />
+            no banks, no borders, no limits.
           </p>
           <div className="lp-hero-actions">
             <button className="lp-btn-primary" onClick={() => setLocation("/auth")}>Start Trading</button>
@@ -388,13 +388,6 @@ export default function LandingPage() {
               <a onClick={() => setLocation("/privacy")}>Privacy Policy</a>
               <a onClick={() => setLocation("/refund")}>Refund Policy</a>
               <a onClick={() => setLocation("/contact")}>Contact</a>
-            </div>
-            <div className="lp-footer-col">
-              <div className="lp-footer-col-label">Network</div>
-              <span>Addis Ababa</span>
-              <span>Nairobi</span>
-              <span>Dubai</span>
-              <span>London</span>
             </div>
           </div>
         </div>

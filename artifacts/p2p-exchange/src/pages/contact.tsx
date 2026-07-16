@@ -6,7 +6,7 @@ function ComplianceLayout({ title, children }: { title: string; children: React.
     <div className="min-h-screen bg-background text-foreground sm:bg-black/90">
       <div className="min-h-screen bg-background sm:max-w-[480px] sm:mx-auto sm:border-x sm:border-border">
         <header className="sticky top-0 z-10 p-4 border-b border-border bg-card flex items-center space-x-3">
-          <Link href="/auth">
+          <Link href="/">
             <button className="p-1 rounded-lg hover:bg-secondary/50 transition-colors">
               <ArrowLeft className="w-5 h-5" />
             </button>
