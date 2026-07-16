@@ -150,7 +150,9 @@ export async function sendTelegramMessage(
   if (!activeToken || !telegramId || !bot) return;
   try {
     const targetUrl = url ?? APP_URL ?? "https://xendrx.replit.app";
-    const keyboard = new InlineKeyboard().webApp(
+    // Use a plain URL button — webApp buttons require a BotFather-registered
+    // Mini App domain and silently fail with 400 on unregistered URLs.
+    const keyboard = new InlineKeyboard().url(
       url ? "👁 View" : "🚀 Open Xendrx",
       targetUrl
     );
@@ -160,9 +162,9 @@ export async function sendTelegramMessage(
     });
   } catch (error: any) {
     if (error?.error_code === 403 || error?.error_code === 400) {
-      console.log(`Cannot reach Telegram user ${telegramId}:`, error.description);
+      console.log(`[Bot] Cannot reach Telegram user ${telegramId}: ${(error as any).description ?? error.message}`);
     } else {
-      console.error("Bot sendMessage error:", error);
+      console.error("[Bot] sendMessage error:", error);
     }
   }
 }
