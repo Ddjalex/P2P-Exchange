@@ -62,7 +62,6 @@ export default function LandingPage() {
         </div>
         <div className="lp-nav-links">
           <a href="#how">How It Works</a>
-          <a href="#market">P2P Market</a>
           <a href="#security">Security</a>
         </div>
         <button className="lp-nav-cta" onClick={() => setLocation("/auth")}>
@@ -172,55 +171,9 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── SECTION 02 — LIVE MARKET ── */}
-      <section className="lp-section lp-section-alt" id="market">
-        <div className="lp-section-number lp-reveal">02</div>
-        <div className="lp-section-content">
-          <h2 className="lp-section-title lp-reveal">Live P2P Market</h2>
-          <p className="lp-section-desc lp-reveal">
-            Real orders from real traders. Every ad is backed by a KYC-verified
-            user. Filter by amount, payment method, or price — then trade in
-            seconds.
-          </p>
-          <div className="lp-market-preview lp-reveal">
-            <div className="lp-market-row lp-market-header">
-              <span>Trader</span>
-              <span>Price</span>
-              <span>Limits</span>
-              <span>Method</span>
-              <span />
-            </div>
-            {[
-              { name: "Abebe T.",  price: "158.40", limits: "100 – 50,000 ETB",   method: "CBE",        type: "buy"  },
-              { name: "Selam M.",  price: "157.90", limits: "500 – 100,000 ETB",  method: "TeleBirr",   type: "buy"  },
-              { name: "Dawit K.",  price: "159.20", limits: "200 – 25,000 ETB",   method: "Awash Bank", type: "sell" },
-              { name: "Tigist R.", price: "158.70", limits: "1,000 – 80,000 ETB", method: "Amhara Bank",type: "buy"  },
-            ].map((row, i) => (
-              <div className="lp-market-row" key={i}>
-                <span className="lp-trader-name">
-                  <span className="lp-trader-avatar">{row.name[0]}</span>
-                  {row.name}
-                </span>
-                <span className="lp-price">
-                  {row.price} <small>ETB</small>
-                </span>
-                <span className="lp-limits">{row.limits}</span>
-                <span className="lp-method">{row.method}</span>
-                <button
-                  className={`lp-trade-btn lp-${row.type}`}
-                  onClick={() => setLocation("/auth")}
-                >
-                  {row.type === "buy" ? "Buy" : "Sell"}
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── SECTION 03 — SECURITY ── */}
+      {/* ── SECTION 02 — SECURITY ── */}
       <section className="lp-section" id="security">
-        <div className="lp-section-number lp-reveal">03</div>
+        <div className="lp-section-number lp-reveal">02</div>
         <div className="lp-section-content">
           <h2 className="lp-section-title lp-reveal">Secure by Design</h2>
           <p className="lp-section-desc lp-reveal">
@@ -313,7 +266,6 @@ export default function LandingPage() {
             <div className="lp-footer-col">
               <div className="lp-footer-col-label">Platform</div>
               <a href="#how">How It Works</a>
-              <a href="#market">P2P Market</a>
               <a href="#security">Security</a>
               <a onClick={() => setLocation("/auth")}>Sign In</a>
             </div>
