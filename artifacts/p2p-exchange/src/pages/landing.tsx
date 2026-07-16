@@ -278,28 +278,6 @@ export default function LandingPage() {
             <a href="#how" className="lp-btn-ghost">How it works ↓</a>
           </div>
 
-          {/* ── Hero Stats ── */}
-          <div className="lp-hero-stats">
-            <div className="lp-stat">
-              <span className="lp-stat-num">50K+</span>
-              <span className="lp-stat-label">Verified Traders</span>
-            </div>
-            <div className="lp-stat-divider" />
-            <div className="lp-stat">
-              <span className="lp-stat-num">$2M+</span>
-              <span className="lp-stat-label">Monthly Volume</span>
-            </div>
-            <div className="lp-stat-divider" />
-            <div className="lp-stat">
-              <span className="lp-stat-num">119</span>
-              <span className="lp-stat-label">Countries</span>
-            </div>
-            <div className="lp-stat-divider" />
-            <div className="lp-stat">
-              <span className="lp-stat-num">0%</span>
-              <span className="lp-stat-label">Platform Fee</span>
-            </div>
-          </div>
         </div>
 
         {/* Desktop slide dots */}
