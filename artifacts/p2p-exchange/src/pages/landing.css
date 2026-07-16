@@ -28,6 +28,96 @@
   transform: translateY(0);
 }
 
+/* ── BIDIRECTIONAL DATA-REVEAL SYSTEM ─────────────────────────────────────
+   Each [data-reveal] variant starts hidden and transitions to lp-visible.
+   When the user scrolls back up the JS removes lp-visible → reverses.
+   transition-delay is driven by the --delay CSS custom property set inline.
+   ──────────────────────────────────────────────────────────────────────── */
+
+[data-reveal] {
+  transition-property: opacity, transform, filter, clip-path;
+  transition-duration: 0.85s;
+  transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1); /* spring-ish */
+  transition-delay: var(--delay, 0s);
+  will-change: opacity, transform;
+}
+
+/* ── UP: rises from below ── */
+[data-reveal="up"] {
+  opacity: 0;
+  transform: translateY(56px);
+}
+[data-reveal="up"].lp-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ── DOWN: drops from above ── */
+[data-reveal="down"] {
+  opacity: 0;
+  transform: translateY(-44px);
+}
+[data-reveal="down"].lp-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ── LEFT: slides in from left ── */
+[data-reveal="left"] {
+  opacity: 0;
+  transform: translateX(-72px);
+}
+[data-reveal="left"].lp-visible {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+/* ── RIGHT: slides in from right ── */
+[data-reveal="right"] {
+  opacity: 0;
+  transform: translateX(72px);
+}
+[data-reveal="right"].lp-visible {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+/* ── BLUR: fades in with defocus ── */
+[data-reveal="blur"] {
+  opacity: 0;
+  filter: blur(14px);
+  transform: translateY(24px);
+  transition-duration: 1s;
+}
+[data-reveal="blur"].lp-visible {
+  opacity: 1;
+  filter: blur(0px);
+  transform: translateY(0);
+}
+
+/* ── SCALE: zooms up from slightly small ── */
+[data-reveal="scale"] {
+  opacity: 0;
+  transform: scale(0.80) translateY(24px);
+  transition-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1); /* elastic overshoot */
+}
+[data-reveal="scale"].lp-visible {
+  opacity: 1;
+  transform: scale(1) translateY(0);
+}
+
+/* ── Override: section-number uses no delay (slap it in first) ── */
+.lp-section-number[data-reveal] {
+  transition-delay: 0s !important;
+}
+
+/* ── Stagger on .lp-section-title / .lp-section-desc overrides ── */
+.lp-section-title[data-reveal],
+.lp-section-desc[data-reveal] {
+  /* delay comes from inline --delay; keep the override from old code removed */
+  transition-delay: var(--delay, 0s) !important;
+}
+
 /* ── NAV ── */
 .lp-nav {
   position: fixed;
