@@ -28,7 +28,10 @@ export default function AuthPage() {
   const { login: adminLogin } = useAdminAuth();
   const [, setLocation] = useLocation();
 
-  const [toggled, setToggled] = useState(false);
+  const [toggled, setToggled] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("tab") === "register";
+  });
 
   // Google Sign-In
   const [googleClientId, setGoogleClientId] = useState("");
