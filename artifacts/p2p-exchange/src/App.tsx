@@ -12,10 +12,8 @@ import { NotificationPermissionModal } from "@/components/notification-permissio
 import { InstallAppModal } from "@/components/install-app-modal";
 import { TelegramConnectPopup } from "@/components/telegram-connect-popup";
 
-// Landing page
-import LandingPage from "@/pages/landing";
-
 // Regular pages
+import LandingPage from "@/pages/landing";
 import AuthPage from "@/pages/auth";
 import ForgotPasswordPage from "@/pages/forgot-password";
 import NotFound from "@/pages/not-found";
