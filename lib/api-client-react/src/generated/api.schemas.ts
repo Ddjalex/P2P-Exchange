@@ -458,6 +458,12 @@ export const KycStatusStatus = {
 export interface KycStatus {
   status: KycStatusStatus;
   /** @nullable */
+  fullName?: string | null;
+  /** @nullable */
+  dateOfBirth?: string | null;
+  /** @nullable */
+  nationality?: string | null;
+  /** @nullable */
   rejectionReason?: string | null;
   /** @nullable */
   adminMessage?: string | null;
