@@ -923,29 +923,44 @@
 @media (max-width: 900px) {
   .lp-nav { padding: 16px 24px; }
   .lp-nav-links { display: none; }
-  /* ── Mobile hero: dark bg, text on top, contained image card below ── */
+  /* ── Mobile hero: compact, all content visible in one viewport ── */
   .lp-hero {
-    padding: 90px 20px 32px;
-    min-height: auto;
-    justify-content: flex-start;
+    padding: 86px 18px 28px;
+    min-height: 100svh;
+    justify-content: center;
     align-items: flex-start;
     gap: 0;
+    /* Flex-column so we can use order to place the image card after headline */
+    display: flex;
+    flex-direction: column;
   }
   /* Hide the full-bleed background slideshow + overlay on mobile */
   .lp-slideshow,
   .lp-hero-overlay,
   .lp-slide-dots { display: none; }
 
-  /* Mobile image preview card — shown below text */
+  /* Reorder so image card sits between headline and subtitle */
+  .lp-hero-label       { order: 1; margin-bottom: 10px; }
+  .lp-hero-headline    { order: 2; margin-bottom: 0; }
+  .lp-hero-mobile-preview { order: 3; }
+  .lp-hero-sub         { order: 4; }
+  .lp-hero-actions     { order: 5; margin-bottom: 0; }
+
+  /* Compact headline so everything fits without scrolling */
+  .lp-hero-line1 { font-size: clamp(30px, 9.5vw, 56px); }
+  .lp-hero-line2 { font-size: clamp(40px, 12.5vw, 76px); letter-spacing: -1.5px; }
+
+  /* Mobile image preview card — sandwiched between headline and text */
   .lp-hero-mobile-preview {
     display: block;
     position: relative;
     width: 100%;
-    border-radius: 16px;
+    border-radius: 14px;
     overflow: hidden;
     aspect-ratio: 16 / 9;
-    margin-top: 28px;
-    box-shadow: 0 0 0 1px rgba(0,229,255,0.18), 0 16px 48px rgba(0,0,0,0.6);
+    margin: 14px 0 16px;
+    box-shadow: 0 0 0 1px rgba(0,229,255,0.20), 0 12px 36px rgba(0,0,0,0.65);
+    flex-shrink: 0;
   }
   .lp-mobile-slide {
     position: absolute;
@@ -960,19 +975,21 @@
   .lp-mobile-slide-active { opacity: 1; }
   .lp-mobile-dots {
     position: absolute;
-    bottom: 12px;
+    bottom: 10px;
     left: 50%;
     transform: translateX(-50%);
     display: flex;
-    gap: 7px;
+    gap: 6px;
     z-index: 2;
   }
 
-  .lp-hero-line1 { font-size: clamp(36px, 11vw, 68px); }
-  .lp-hero-line2 { font-size: clamp(48px, 14vw, 90px); letter-spacing: -2px; }
-  .lp-hero-sub { font-size: 14px; max-width: 100%; margin-bottom: 28px; }
+  .lp-hero-sub {
+    font-size: 13px;
+    max-width: 100%;
+    margin-bottom: 20px;
+    line-height: 1.6;
+  }
   .lp-br-desktop { display: none; }
-  .lp-hero-actions { margin-bottom: 0; }
   /* Card section stacks on mobile */
   .lp-card-section { padding: 80px 20px; }
   .lp-card-section-inner {
