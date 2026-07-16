@@ -157,6 +157,9 @@
   pointer-events: none;
 }
 
+/* Mobile image preview: hidden on desktop, shown on mobile */
+.lp-hero-mobile-preview { display: none; }
+
 /* Slide dot indicators — bottom-left */
 .lp-slide-dots {
   position: absolute;
@@ -920,40 +923,56 @@
 @media (max-width: 900px) {
   .lp-nav { padding: 16px 24px; }
   .lp-nav-links { display: none; }
+  /* ── Mobile hero: dark bg, text on top, contained image card below ── */
   .lp-hero {
-    padding: 100px 20px 80px;
-    min-height: 100svh;
-    justify-content: center;
+    padding: 90px 20px 32px;
+    min-height: auto;
+    justify-content: flex-start;
     align-items: flex-start;
+    gap: 0;
   }
-  /* Mobile overlay: nearly opaque in centre-left, image shows as subtle texture */
-  .lp-hero-overlay {
-    background:
-      linear-gradient(135deg,
-        rgba(8,13,24,0.98) 0%,
-        rgba(8,13,24,0.95) 40%,
-        rgba(8,13,24,0.75) 70%,
-        rgba(8,13,24,0.50) 100%
-      ),
-      linear-gradient(to bottom,
-        rgba(8,13,24,0.80) 0%,
-        rgba(8,13,24,0.20) 35%,
-        rgba(8,13,24,0.20) 65%,
-        rgba(8,13,24,0.85) 100%
-      );
+  /* Hide the full-bleed background slideshow + overlay on mobile */
+  .lp-slideshow,
+  .lp-hero-overlay,
+  .lp-slide-dots { display: none; }
+
+  /* Mobile image preview card — shown below text */
+  .lp-hero-mobile-preview {
+    display: block;
+    position: relative;
+    width: 100%;
+    border-radius: 16px;
+    overflow: hidden;
+    aspect-ratio: 16 / 9;
+    margin-top: 28px;
+    box-shadow: 0 0 0 1px rgba(0,229,255,0.18), 0 16px 48px rgba(0,0,0,0.6);
   }
-  /* Show the centre of each image on mobile so the card is always visible */
-  .lp-slide {
-    object-position: 55% center;
+  .lp-mobile-slide {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center center;
     opacity: 0;
-    transition: opacity 1s ease;
+    transition: opacity 0.9s ease;
   }
-  .lp-slide.lp-slide-active { opacity: 0.65; }
-  .lp-hero-line1 { font-size: clamp(38px, 12vw, 72px); }
-  .lp-hero-line2 { font-size: clamp(50px, 15vw, 96px); letter-spacing: -2px; }
-  .lp-slide-dots { bottom: 20px; left: 20px; }
-  .lp-hero-sub { font-size: 14px; max-width: 100%; }
+  .lp-mobile-slide-active { opacity: 1; }
+  .lp-mobile-dots {
+    position: absolute;
+    bottom: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 7px;
+    z-index: 2;
+  }
+
+  .lp-hero-line1 { font-size: clamp(36px, 11vw, 68px); }
+  .lp-hero-line2 { font-size: clamp(48px, 14vw, 90px); letter-spacing: -2px; }
+  .lp-hero-sub { font-size: 14px; max-width: 100%; margin-bottom: 28px; }
   .lp-br-desktop { display: none; }
+  .lp-hero-actions { margin-bottom: 0; }
   /* Card section stacks on mobile */
   .lp-card-section { padding: 80px 20px; }
   .lp-card-section-inner {

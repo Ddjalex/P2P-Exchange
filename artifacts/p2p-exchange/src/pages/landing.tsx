@@ -133,7 +133,7 @@ export default function LandingPage() {
           </a>
         </div>
 
-        {/* Slide indicator dots */}
+        {/* Desktop: slide indicator dots */}
         <div className="lp-slide-dots">
           {slides.map((_, i) => (
             <button
@@ -143,6 +143,31 @@ export default function LandingPage() {
               aria-label={`Slide ${i + 1}`}
             />
           ))}
+        </div>
+
+        {/* Mobile only: contained image card shown below the text */}
+        <div className="lp-hero-mobile-preview">
+          {slides.map((src, i) => (
+            <img
+              key={src}
+              src={src}
+              className={`lp-mobile-slide${i === slideIndex ? ' lp-mobile-slide-active' : ''}`}
+              alt={`Xendrx ${i + 1}`}
+              loading={i === 0 ? 'eager' : 'lazy'}
+              decoding="async"
+            />
+          ))}
+          {/* Mobile dot indicators inside the card */}
+          <div className="lp-mobile-dots">
+            {slides.map((_, i) => (
+              <button
+                key={i}
+                className={`lp-slide-dot${i === slideIndex ? ' lp-slide-dot-active' : ''}`}
+                onClick={() => setSlideIndex(i)}
+                aria-label={`Slide ${i + 1}`}
+              />
+            ))}
+          </div>
         </div>
 
       </section>
