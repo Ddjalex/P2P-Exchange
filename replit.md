@@ -1,81 +1,42 @@
-# Xendrx
+# XenDRX — P2P Crypto Exchange
 
-A Binance-style peer-to-peer cryptocurrency exchange — mobile-first dark-themed React web app where users can buy and sell USDT using Ethiopian birr (ETB) via local payment methods.
-
-## Run & Operate
-
-- App runs via two Replit-managed artifact workflows: `artifacts/p2p-exchange: web` (frontend) and `artifacts/api-server: API Server` (backend). Both start automatically; don't recreate the old manual "Start application"/"API Server" workflows.
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 8080, proxied at `/api`)
-- `pnpm --filter @workspace/p2p-exchange run dev` — run the frontend (port 21832, proxied at `/`)
-- `pnpm run typecheck` — full typecheck across all packages
-- `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- `pnpm --filter @workspace/scripts run cleanup` — remove seeded demo data from Neon
-- Required env: `NEON_DATABASE_URL` — Neon PostgreSQL connection string (stored in Replit Secrets)
+A full-stack peer-to-peer USDT (BEP20/BSC) exchange platform with an admin dashboard, Telegram bot integration, KYC verification, and PWA push notifications.
 
 ## Stack
 
-- pnpm workspaces, Node.js 24, TypeScript 5.9
-- Frontend: React + Vite + Wouter (routing) + TanStack Query + Lucide icons + Poppins font
-- API: Express 5
-- DB: PostgreSQL + Drizzle ORM
-- Validation: Zod (`zod/v4`), `drizzle-zod`
-- API codegen: Orval (from OpenAPI spec)
-- Build: esbuild (CJS bundle)
+- **Frontend** (`artifacts/p2p-exchange`): React + Vite + Tailwind CSS
+- **Backend** (`artifacts/api-server`): Node.js + Express, built with esbuild
+- **Database**: Neon PostgreSQL (via Drizzle ORM)
+- **Blockchain**: BEP20/BSC — per-user HD deposit addresses (BIP-44), hot-wallet sweeps
+- **Auth**: JWT for users (`jsonwebtoken`), HMAC-based JWT for admin
+- **Notifications**: Web Push (VAPID) + Telegram bot (`telegraf`)
 
-## Where things live
+## How to run
 
-- `artifacts/p2p-exchange/src/` — React frontend (pages, layout, auth context)
-- `artifacts/api-server/src/routes/` — Express route handlers (auth, wallet, ads, orders, messages, kyc, etc.)
-- `lib/api-spec/openapi.yaml` — OpenAPI contract (source of truth for all endpoints)
-- `lib/api-client-react/src/generated/` — Generated React Query hooks & Zod schemas (do not edit by hand)
-- `lib/db/src/schema/` — Drizzle ORM table definitions
-- `scripts/src/seed.ts` — Database seeder with demo users, ads, and wallets
+Both workflows start automatically:
+- `artifacts/api-server: API Server` — Express API on port 8080
+- `artifacts/p2p-exchange: web` — Vite dev server (proxies `/api` to port 8080)
 
-## Architecture decisions
+To install dependencies after pulling new changes:
+```
+pnpm install
+```
 
-- **All monetary amounts stored as TEXT** to avoid float precision issues (parseFloat only for arithmetic)
-- **ETB exchange rate and deposit addresses** stored in `system_settings` table, configured via Admin → Settings
-- **Payment methods stored as JSON text** in ads table (array of bank/wallet names), not FK relations
-- **Database is Neon** — `NEON_DATABASE_URL` is required and stored in Replit Secrets; falls back to `DATABASE_URL` if unset
-- **Legacy columns/tables preserved** — the Neon DB predates some schema changes and still has extra columns (`users.name/role/balance/age/sex/avatar_url/referral_code/referred_by`, `orders.customer_name/phone/goal/fiat`) and tables (`fcm_tokens`, `app_config`, `languages`, `password_resets`) not used by current app code. They're declared in `lib/db/src/schema/legacy_*.ts` solely so `drizzle-kit push` doesn't try to drop them — don't remove unless the user explicitly asks to delete that data.
-- **API routes mounted under `/api/`** via the global proxy; frontend uses relative URLs
+## Required secrets
 
-## Product
+| Secret | Description |
+|---|---|
+| `NEON_DATABASE_URL` | Neon PostgreSQL connection string |
+| `BSC_HOT_WALLET_PRIVATE_KEY` | 64-char hex BSC private key (hot wallet + HD seed) |
+| `TELEGRAM_BOT_TOKEN` | From @BotFather on Telegram |
+| `VAPID_PRIVATE_KEY` | VAPID private key for push notifications |
+| `TURNSTILE_SECRET_KEY` | Cloudflare Turnstile server-side secret |
 
-- **Wallet** — USDT balance, ETB equivalent, deposit address (TRC20/ERC20), withdraw
-- **P2P Marketplace** — Buy/Sell ads with filters by amount and payment method
-- **Ad Management** — Post, toggle online/offline, delete ads with a 3-step wizard
-- **Order Flow** — Create orders, mark payment sent, release USDT, cancel with reason
-- **Chat** — Per-order chat thread with system messages
-- **Profile** — Trade stats, verification badges, payment methods, feedback
-- **KYC** — 3-step identity flow: personal info → document upload → liveness check
-- **Admin Panel** — Review and approve/reject KYC submissions
+## Admin panel
+
+Available at `/admin`. Default credentials are set via `ADMIN_EMAIL` and `ADMIN_PASSWORD` env vars (or overridden via the admin UI and stored in the DB).
 
 ## User preferences
 
-- Dark theme: `#1a1a2e` background, `#00d4ff` neon cyan accent
-- Mobile-first (max-width 480px centered on desktop)
-- Poppins font
-- Binance P2P as design reference
-
-## Gotchas
-
-- Do NOT import `zod/v4` in API server route files — esbuild cannot resolve it. Use plain JS validation or import from `zod` directly
-- Run `pnpm --filter @workspace/api-spec run codegen` after any OpenAPI spec changes before editing frontend hooks
-- The `desc` import from drizzle-orm was causing an unused-variable build warning in wallet.ts
-- Legacy DB has extra columns on `push_subscriptions` (p256dh/auth/user_agent/last_used_at) and a `pending_registrations` table not used by current app code; declared in schema (push_subscriptions.ts / legacy_pending_registrations.ts) solely so `drizzle-kit push` doesn't try to drop them
-
-## Setup status (re-import, July 14 2026)
-
-- Re-imported from GitHub; dependencies were reinstalled (`pnpm install`) and the three artifact workflows (`p2p-exchange`, `api-server`, `mockup-sandbox`) were restarted after being auto-recreated.
-- Reconnected to the user's own Neon database via the `NEON_DATABASE_URL` secret — all tables present, no missing-relation errors, deposit monitor loaded 23 real user addresses.
-- Not configured (optional features will be degraded/disabled until set): `BSC_HOT_WALLET_PRIVATE_KEY` (real withdrawals & new deposit-address derivation), `VAPID_PRIVATE_KEY` (push notifications), `TURNSTILE_SECRET_KEY` (bot-protection verification — bypassed outside production), `TELEGRAM_GATEWAY_TOKEN`, `STROWALLET_PUBLIC_KEY`/`STROWALLET_SECRET_KEY` (card issuing), `GOOGLE_CLIENT_ID` (Google sign-in). Telegram bot itself is running using a token already stored in `system_settings`.
-- Known non-fatal issue: public BSC RPC endpoints (bsc-pokt, ankr, publicnode) are currently rate-limiting/rejecting the deposit monitor's `getLogs` calls — deposits still get picked up on retry, but a dedicated RPC key would remove the noise.
-
-## Pointers
-
-- See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details
-- OpenAPI spec: `lib/api-spec/openapi.yaml`
-- DB schema: `lib/db/src/schema/index.ts`
+- Keep the existing monorepo structure under `artifacts/`
+- Do not restructure or migrate the stack
