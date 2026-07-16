@@ -148,23 +148,37 @@ export async function sendTelegramMessage(
   url?: string
 ): Promise<void> {
   if (!activeToken || !telegramId || !bot) return;
-  try {
-    const targetUrl = url ?? APP_URL ?? "https://xendrx.replit.app";
-    // Use a plain URL button — webApp buttons require a BotFather-registered
-    // Mini App domain and silently fail with 400 on unregistered URLs.
-    const keyboard = new InlineKeyboard().url(
-      url ? "👁 View" : "🚀 Open Xendrx",
-      targetUrl
-    );
-    await bot.api.sendMessage(telegramId, text, {
+  const targetUrl = url ?? APP_URL ?? "https://xendrx.replit.app";
+  const label = url ? "👁 View" : "🚀 Open Xendrx";
+
+  // Prefer a webApp button so the link opens inside Telegram as a Mini App.
+  // If the domain isn't registered with BotFather (e.g. in dev), Telegram
+  // returns 400 — fall back to a plain URL button so the message still lands.
+  const tryWithKeyboard = async (keyboard: InlineKeyboard) => {
+    await bot!.api.sendMessage(telegramId, text, {
       parse_mode: "Markdown",
       reply_markup: keyboard,
     });
-  } catch (error: any) {
-    if (error?.error_code === 403 || error?.error_code === 400) {
-      console.log(`[Bot] Cannot reach Telegram user ${telegramId}: ${(error as any).description ?? error.message}`);
+  };
+
+  try {
+    await tryWithKeyboard(new InlineKeyboard().webApp(label, targetUrl));
+  } catch (primary: any) {
+    if (primary?.error_code === 400) {
+      // webApp button rejected (domain not registered) — try plain URL button.
+      try {
+        await tryWithKeyboard(new InlineKeyboard().url(label, targetUrl));
+      } catch (fallback: any) {
+        if (fallback?.error_code === 403 || fallback?.error_code === 400) {
+          console.log(`[Bot] Cannot reach Telegram user ${telegramId}: ${fallback.description ?? fallback.message}`);
+        } else {
+          console.error("[Bot] sendMessage fallback error:", fallback);
+        }
+      }
+    } else if (primary?.error_code === 403) {
+      console.log(`[Bot] Cannot reach Telegram user ${telegramId}: ${primary.description ?? primary.message}`);
     } else {
-      console.error("[Bot] sendMessage error:", error);
+      console.error("[Bot] sendMessage error:", primary);
     }
   }
 }
