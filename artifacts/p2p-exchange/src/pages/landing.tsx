@@ -338,7 +338,9 @@ export default function LandingPage() {
       <section className="lp-market-section" id="market">
         <div className="lp-market-header-row">
           <div>
-            <div className="lp-market-eyebrow" data-reveal="down" style={delay(0)}>◈ &nbsp;Live Market</div>
+            <div className="lp-market-eyebrow" data-reveal="down" style={delay(0)}>
+              <span className="lp-live-dot" />LIVE ORDERS
+            </div>
             <h2 className="lp-market-title" data-reveal="up" style={delay(0.1)}>
               Trade at the Best Price
             </h2>
@@ -502,7 +504,7 @@ export default function LandingPage() {
       <section className="lp-pm-section">
         <div className="lp-pm-inner">
           <div className="lp-pm-header">
-            <div className="lp-market-eyebrow" data-reveal="down" style={delay(0)}>◈ &nbsp;Payment Methods</div>
+            <div className="lp-market-eyebrow" data-reveal="down" style={delay(0)}>◆ &nbsp;Payment Methods</div>
             <h2 className="lp-pm-title" data-reveal="up" style={delay(0.1)}>
               Pay Your Way
             </h2>

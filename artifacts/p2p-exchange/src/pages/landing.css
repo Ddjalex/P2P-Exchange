@@ -1305,6 +1305,24 @@
   margin-bottom: 36px;
   flex-wrap: wrap;
 }
+.lp-live-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #00e5ff;
+  margin-right: 8px;
+  vertical-align: middle;
+  position: relative;
+  top: -1px;
+  box-shadow: 0 0 6px #00e5ff;
+  animation: lp-pulse-dot 1.6s ease-in-out infinite;
+}
+@keyframes lp-pulse-dot {
+  0%, 100% { opacity: 1; box-shadow: 0 0 6px #00e5ff; }
+  50%       { opacity: 0.45; box-shadow: 0 0 12px #00e5ff; }
+}
+
 .lp-market-eyebrow {
   font-size: 10px;
   font-weight: 800;
