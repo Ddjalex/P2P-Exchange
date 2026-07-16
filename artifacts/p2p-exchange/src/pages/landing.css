@@ -433,6 +433,16 @@
   pointer-events: none;
   z-index: 0;
 }
+/* Hero text wrapper — must be positioned + z-index > overlay (z:1) so the
+   transform on this element doesn't push it below the overlay in the
+   stacking order. Without this, the CSS transform creates a stacking
+   context that is painted before positioned children (slideshow/overlay),
+   making all hero text invisible on desktop. */
+.lp-hero-parallax {
+  position: relative;
+  z-index: 4;
+}
+
 /* Only text/interactive content gets stacked above the overlay */
 .lp-hero-label,
 .lp-hero-headline,
