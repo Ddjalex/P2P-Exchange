@@ -86,14 +86,17 @@ function AddPaymentMethodForm({ userCountry, kycName: kycNameProp, onClose, onSa
   // Fetch me directly inside the form so we never depend on the parent
   // having already resolved its queries when the form opens.
   const { data: formMe } = useGetMe();
-  // kycFullName is only set by the server when the user has a verified KYC submission
-  // (or is a legacy pre-KYC account with ID 3/4/5). Treat undefined (still loading) as null.
+  // kycFullName is set by the server when the user has a verified KYC submission or users.name.
   const kycName: string | null = formMe !== undefined ? (formMe.kycFullName ?? null) : null;
   const kycLoaded = formMe !== undefined;
+  // Verified = KYC badge is active. Verified users without a stored name get an editable fallback
+  // (legacy accounts that predate the KYC submissions table). Unverified users are blocked entirely.
+  const isVerified = formMe?.kycStatus === "verified";
 
   const [selectedMethodId, setSelectedMethodId] = useState<string | null>(null);
   const [selectedMethodCountry, setSelectedMethodCountry] = useState(userCountry || "ET");
   const [accountNumber, setAccountNumber] = useState("");
+  const [accountName, setAccountName] = useState(""); // editable fallback for verified legacy accounts
   const [methodSearch, setMethodSearch] = useState("");
 
   // Fetch all 1,760 methods across all countries
@@ -152,12 +155,17 @@ function AddPaymentMethodForm({ userCountry, kycName: kycNameProp, onClose, onSa
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!kycName) {
+    if (!isVerified) {
       toast({ title: "Please complete KYC verification to add a payment method", variant: "destructive" });
       return;
     }
     if (!selectedMethod) {
       toast({ title: "Please select a payment method", variant: "destructive" });
+      return;
+    }
+    const finalName = kycName || accountName.trim();
+    if (!finalName) {
+      toast({ title: "Please enter your account holder name", variant: "destructive" });
       return;
     }
     if (!accountNumber.trim()) {
@@ -168,7 +176,7 @@ function AddPaymentMethodForm({ userCountry, kycName: kycNameProp, onClose, onSa
     addMethod.mutate({
       data: {
         type: selectedMethod.id,
-        accountName: kycName,
+        accountName: finalName,
         accountNumber: accountNumber.trim(),
         country: selectedMethodCountry,
       } as any
@@ -267,7 +275,7 @@ function AddPaymentMethodForm({ userCountry, kycName: kycNameProp, onClose, onSa
           )}
         </div>
 
-        {/* Account name — always read-only, sourced from verified KYC */}
+        {/* Account name */}
         <div className="space-y-2">
           <label className="text-sm font-medium">
             Full Name
@@ -277,21 +285,39 @@ function AddPaymentMethodForm({ userCountry, kycName: kycNameProp, onClose, onSa
               </span>
             )}
           </label>
-          {kycLoaded && !kycName ? (
+
+          {/* Case 1: not yet loaded — show placeholder */}
+          {!kycLoaded && (
+            <input type="text" readOnly value="" placeholder="Loading…"
+              className="w-full p-3 rounded-lg outline-none text-sm border bg-secondary border-border cursor-not-allowed" />
+          )}
+
+          {/* Case 2: loaded, not KYC verified → hard block */}
+          {kycLoaded && !isVerified && (
             <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-sm text-amber-400">
               Please complete KYC verification to add a payment method
             </div>
-          ) : (
-            <input
-              type="text"
-              readOnly
-              value={kycName ?? ""}
-              placeholder={kycLoaded ? "" : "Loading…"}
-              className="w-full p-3 rounded-lg outline-none text-sm border bg-secondary border-border cursor-not-allowed"
-            />
           )}
-          {kycLoaded && kycName && (
-            <p className="text-xs text-muted-foreground">Locked to your KYC-verified name.</p>
+
+          {/* Case 3: verified with a stored name → read-only */}
+          {kycLoaded && isVerified && kycName && (
+            <>
+              <input type="text" readOnly value={kycName}
+                className="w-full p-3 rounded-lg outline-none text-sm border bg-secondary border-border cursor-not-allowed" />
+              <p className="text-xs text-muted-foreground">Locked to your KYC-verified name.</p>
+            </>
+          )}
+
+          {/* Case 4: verified but no stored name (legacy account) → editable */}
+          {kycLoaded && isVerified && !kycName && (
+            <>
+              <input type="text" value={accountName} onChange={e => setAccountName(e.target.value)}
+                placeholder="Enter exact name on account"
+                className="w-full p-3 rounded-lg outline-none text-sm border bg-card border-border focus:border-primary" />
+              <p className="text-xs text-muted-foreground">
+                Must match the name registered with {selectedMethod?.name ?? "the provider"}.
+              </p>
+            </>
           )}
         </div>
 
@@ -311,7 +337,7 @@ function AddPaymentMethodForm({ userCountry, kycName: kycNameProp, onClose, onSa
 
         <button
           type="submit"
-          disabled={addMethod.isPending || !selectedMethod || !kycName}
+          disabled={addMethod.isPending || !selectedMethod || !isVerified}
           className="w-full py-3 mt-2 bg-primary text-primary-foreground rounded-lg font-bold disabled:opacity-50"
         >
           {addMethod.isPending ? "Saving..." : "Save Payment Method"}
