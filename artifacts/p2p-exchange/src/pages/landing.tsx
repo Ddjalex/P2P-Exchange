@@ -18,26 +18,58 @@ const MARKET_SELLS = [
   { init: 'TG', name: 'Tom G.',     orders: 628, rate: '1.045', limits: '500 – 5,000', method: 'MTN Money' },
 ];
 const PAYMENT_METHODS = [
-  { name: 'Wise',           icon: '💳' },
-  { name: 'PayPal',         icon: '🅿️' },
-  { name: 'Revolut',        icon: '🔄' },
-  { name: 'Bank Transfer',  icon: '🏦' },
-  { name: 'M-Pesa',         icon: '📱' },
-  { name: 'MTN Money',      icon: '📲' },
-  { name: 'Airtel Money',   icon: '📡' },
-  { name: 'Skrill',         icon: '💜' },
-  { name: 'Neteller',       icon: '🌐' },
-  { name: 'Payoneer',       icon: '💰' },
-  { name: 'Cash App',       icon: '💵' },
-  { name: 'Zelle',          icon: '⚡' },
-  { name: 'Venmo',          icon: '🅥' },
-  { name: 'SEPA Transfer',  icon: '🇪🇺' },
-  { name: 'JazzCash',       icon: '🎵' },
-  { name: 'EasyPaisa',      icon: '✅' },
-  { name: 'bKash',          icon: '🟠' },
-  { name: 'Nagad',          icon: '🔵' },
-  { name: 'Telebirr',       icon: '📶' },
-  { name: 'OPay',           icon: '🟢' },
+  // ── Global wallets & transfers
+  { name: 'Bank Transfer',        icon: '🏦', tag: 'Universal' },
+  { name: 'Wise',                 icon: '💳', tag: 'Universal' },
+  { name: 'PayPal',               icon: '🔵', tag: 'Universal' },
+  { name: 'Revolut',              icon: '🔄', tag: 'Universal' },
+  { name: 'Skrill',               icon: '💜', tag: 'Universal' },
+  { name: 'Neteller',             icon: '🌐', tag: 'Universal' },
+  { name: 'Western Union',        icon: '🟡', tag: 'Universal' },
+  { name: 'MoneyGram',            icon: '🟠', tag: 'Universal' },
+  { name: 'SEPA Transfer',        icon: '🇪🇺', tag: 'Europe' },
+  { name: 'SWIFT Wire',           icon: '🏛️', tag: 'Universal' },
+  { name: 'USDT (BEP20)',         icon: '🔷', tag: 'Crypto' },
+  { name: 'USDT (TRC20)',         icon: '🔹', tag: 'Crypto' },
+  // ── Americas
+  { name: 'Cash App',             icon: '💵', tag: 'USA' },
+  { name: 'Zelle',                icon: '⚡', tag: 'USA' },
+  { name: 'Venmo',                icon: '🔵', tag: 'USA' },
+  { name: 'Chime',                icon: '💚', tag: 'USA' },
+  { name: 'Interac e-Transfer',   icon: '🍁', tag: 'Canada' },
+  // ── Europe
+  { name: 'BLIK',                 icon: '🇵🇱', tag: 'Europe' },
+  { name: 'Bizum',                icon: '🇪🇸', tag: 'Europe' },
+  { name: 'Satispay',             icon: '🇮🇹', tag: 'Europe' },
+  { name: 'Paysera',              icon: '🟢', tag: 'Europe' },
+  { name: 'Klarna',               icon: '🩷', tag: 'Europe' },
+  // ── Africa mobile money
+  { name: 'M-Pesa',               icon: '📱', tag: 'Africa' },
+  { name: 'MTN Mobile Money',     icon: '🟡', tag: 'Africa' },
+  { name: 'Airtel Money',         icon: '🔴', tag: 'Africa' },
+  { name: 'Orange Money',         icon: '🟠', tag: 'Africa' },
+  { name: 'Wave',                 icon: '🌊', tag: 'Africa' },
+  { name: 'OPay',                 icon: '🟢', tag: 'Africa' },
+  { name: 'Flutterwave',          icon: '🦋', tag: 'Africa' },
+  { name: 'Chipper Cash',         icon: '🐿️', tag: 'Africa' },
+  { name: 'Moov Money',           icon: '➡️', tag: 'Africa' },
+  { name: 'Coris Money',          icon: '🏧', tag: 'Africa' },
+  { name: 'Telebirr',             icon: '📶', tag: 'Africa' },
+  { name: 'CBEBirr',              icon: '🏦', tag: 'Africa' },
+  { name: 'Zaad Service',         icon: '📡', tag: 'Africa' },
+  // ── Asia & Middle East
+  { name: 'bKash',                icon: '🟠', tag: 'Bangladesh' },
+  { name: 'Nagad',                icon: '🔵', tag: 'Bangladesh' },
+  { name: 'JazzCash',             icon: '🎵', tag: 'Pakistan' },
+  { name: 'Easypaisa',            icon: '✅', tag: 'Pakistan' },
+  { name: 'Paytm',                icon: '🇮🇳', tag: 'India' },
+  { name: 'GCash',                icon: '🇵🇭', tag: 'Philippines' },
+  { name: 'GoPay',                icon: '🇮🇩', tag: 'Indonesia' },
+  { name: 'Alipay',               icon: '🔷', tag: 'China' },
+  { name: 'WeChat Pay',           icon: '💬', tag: 'China' },
+  { name: 'KakaoPay',             icon: '🟡', tag: 'Korea' },
+  { name: 'ZainCash',             icon: '🟢', tag: 'Middle East' },
+  { name: 'ZaloPay',              icon: '🔵', tag: 'Vietnam' },
 ];
 
 export default function LandingPage() {
@@ -316,7 +348,7 @@ export default function LandingPage() {
             '🔒 Escrow Protected',
             '0% Platform Fee',
             '🌍 119 Countries',
-            '💳 20+ Payment Methods',
+            '💳 1,300+ Payment Methods',
             '✅ KYC Verified Traders',
             '📱 24/7 Support',
             '🔐 BEP-20 Native',
@@ -324,7 +356,7 @@ export default function LandingPage() {
             '🔒 Escrow Protected',
             '0% Platform Fee',
             '🌍 119 Countries',
-            '💳 20+ Payment Methods',
+            '💳 1,300+ Payment Methods',
             '✅ KYC Verified Traders',
             '📱 24/7 Support',
             '🔐 BEP-20 Native',
@@ -509,14 +541,17 @@ export default function LandingPage() {
               Pay Your Way
             </h2>
             <p className="lp-pm-subtitle" data-reveal="blur" style={delay(0.18)}>
-              Over 20 payment methods across 119 countries — bank transfers, mobile wallets, and more.
+              1,300+ payment methods across 160+ countries — bank transfers, mobile wallets, crypto, and more.
             </p>
           </div>
           <div className="lp-pm-grid" data-reveal="up" style={delay(0.25)}>
             {PAYMENT_METHODS.map((m) => (
               <div className="lp-pm-chip" key={m.name}>
                 <span className="lp-pm-icon">{m.icon}</span>
-                <span className="lp-pm-name">{m.name}</span>
+                <span className="lp-pm-chip-body">
+                  <span className="lp-pm-name">{m.name}</span>
+                  <span className="lp-pm-tag">{m.tag}</span>
+                </span>
               </div>
             ))}
           </div>
