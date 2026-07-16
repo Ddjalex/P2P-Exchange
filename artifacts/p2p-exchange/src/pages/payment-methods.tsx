@@ -79,13 +79,19 @@ interface AddFormProps {
   onSaved: () => void;
 }
 
-function AddPaymentMethodForm({ userCountry, kycName, onClose, onSaved }: AddFormProps) {
+function AddPaymentMethodForm({ userCountry, kycName: kycNameProp, onClose, onSaved }: AddFormProps) {
   const { toast } = useToast();
   const addMethod = useAddPaymentMethod();
 
+  // Fetch KYC data directly inside the form so we never depend on the parent
+  // having already resolved its queries when the form opens.
+  const { data: formMe } = useGetMe();
+  const { data: formKycData } = useGetKycStatus();
+  const kycName = formMe?.kycFullName || (formKycData as any)?.fullName || kycNameProp || "";
+
   const [selectedMethodId, setSelectedMethodId] = useState<string | null>(null);
   const [selectedMethodCountry, setSelectedMethodCountry] = useState(userCountry || "ET");
-  const [accountName, setAccountName] = useState(kycName || "");
+  const [accountName, setAccountName] = useState("");
   const [accountNumber, setAccountNumber] = useState("");
   const [methodSearch, setMethodSearch] = useState("");
 

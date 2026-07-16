@@ -296,7 +296,9 @@ router.get("/me", async (req, res) => {
     if (!user) return res.status(401).json({ error: "User not found" });
     if (user.isSuspended) return res.status(403).json({ error: "Account suspended" });
     const kyc = await db.select().from(kycSubmissionsTable).where(eq(kycSubmissionsTable.userId, user.id)).then(r => r[0]);
-    res.json({ ...formatUser(user), kycFullName: kyc?.fullName ?? null });
+    // kycFullName: prefer KYC submission name, fall back to legacy user.name column
+    const kycFullName = kyc?.fullName ?? (user as any).name ?? null;
+    res.json({ ...formatUser(user), kycFullName });
   } catch (err) {
     req.log.error({ err }, "Failed to get user");
     res.status(500).json({ error: "Internal server error" });
