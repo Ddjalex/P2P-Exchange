@@ -1175,8 +1175,13 @@
     backdrop-filter: blur(16px);
   }
   .lp-nav-links { display: none; }
-  .lp-nav-signin { display: none; }
-  .lp-nav-auth { gap: 0; }
+  .lp-nav-signin {
+    display: inline-flex;
+    padding: 8px 14px;
+    font-size: 12px;
+    letter-spacing: 1px;
+  }
+  .lp-nav-auth { gap: 8px; }
   .lp-nav-cta {
     padding: 9px 18px;
     font-size: 12px;

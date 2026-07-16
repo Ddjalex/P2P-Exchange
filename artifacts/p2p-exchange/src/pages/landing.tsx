@@ -234,7 +234,7 @@ export default function LandingPage() {
           <a href="#security">Security</a>
         </div>
         <div className="lp-nav-auth">
-          <button className="lp-nav-signin" onClick={() => setLocation("/auth")}>Log In</button>
+          <button className="lp-nav-signin" onClick={() => setLocation("/auth")}>Sign In</button>
           <button className="lp-nav-cta" onClick={() => setLocation("/auth?tab=register")}>Sign Up</button>
         </div>
       </nav>
