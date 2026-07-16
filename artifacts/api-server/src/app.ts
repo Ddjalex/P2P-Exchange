@@ -40,7 +40,29 @@ app.use(
     },
   }),
 );
-app.use(cors());
+// Explicit CORS allow-list — wildcard cors() was replaced to prevent
+// unauthorized origins from making credentialed API calls.
+const ALLOWED_ORIGINS = new Set(
+  [
+    "https://xendrx.com",
+    "https://www.xendrx.com",
+    process.env.APP_URL,
+    process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : undefined,
+    // REPLIT_DOMAINS is a comma-separated list of proxied dev domains
+    ...(process.env.REPLIT_DOMAINS ? process.env.REPLIT_DOMAINS.split(",").map((d) => `https://${d.trim()}`) : []),
+  ].filter(Boolean) as string[]
+);
+app.use(
+  cors({
+    credentials: false, // auth is bearer-JWT, not cookies
+    origin(origin, callback) {
+      // Allow server-to-server / curl requests (no Origin header)
+      if (!origin) return callback(null, true);
+      if (ALLOWED_ORIGINS.has(origin)) return callback(null, true);
+      callback(new Error(`Origin ${origin} not allowed by CORS`));
+    },
+  })
+);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
