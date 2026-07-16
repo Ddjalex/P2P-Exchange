@@ -518,7 +518,14 @@ router.post("/login", loginLimiter, async (req, res) => {
       }
       const fullPhone = normalized ?? `${dialCode ?? ""}${identifier}`;
       const allUsers = await db.select().from(usersTable);
-      user = allUsers.find(u => u.phone && (u.phone === fullPhone || u.phone.endsWith(identifier)));
+      const bareIdentifier = String(identifier).replace(/\D/g, "");
+      user = allUsers.find((u) => u.phone === fullPhone);
+      if (!user) {
+        user = allUsers.find((u) => u.phone && u.phone.replace(/\D/g, "") === bareIdentifier);
+      }
+      if (!user) {
+        user = allUsers.find((u) => u.phone && u.phone.replace(/\D/g, "").endsWith(bareIdentifier));
+      }
     } else {
       user = await db.select().from(usersTable)
         .where(eq(usersTable.email, String(identifier).toLowerCase())).then(r => r[0]);
