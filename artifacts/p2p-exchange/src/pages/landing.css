@@ -105,11 +105,84 @@
   position: relative;
   min-height: 100vh;
   display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: flex-start;
-  padding: 140px 80px 80px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 60px;
+  padding: 100px 80px 80px;
   overflow: hidden;
+}
+
+/* ── HERO COLUMNS ── */
+.lp-hero-left {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.lp-hero-right {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 48%;
+  max-width: 580px;
+}
+
+/* ── SLIDESHOW ── */
+.lp-slideshow {
+  position: relative;
+  width: 100%;
+  border-radius: 20px;
+  overflow: hidden;
+  aspect-ratio: 16 / 9;
+  box-shadow:
+    0 0 0 1px rgba(0,229,255,0.12),
+    0 0 60px rgba(0,229,255,0.10),
+    0 32px 80px rgba(0,0,0,0.7);
+}
+
+.lp-slide {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity 0.9s ease;
+  will-change: opacity;
+}
+
+.lp-slide-active {
+  opacity: 1;
+}
+
+.lp-slide-dots {
+  position: absolute;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 7px;
+  z-index: 2;
+}
+
+.lp-slide-dot {
+  height: 6px;
+  width: 6px;
+  border-radius: 3px;
+  border: none;
+  background: rgba(255,255,255,0.35);
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.3s ease, width 0.3s ease;
+}
+
+.lp-slide-dot-active {
+  background: #00e5ff;
+  width: 22px;
 }
 /* Base atmospheric glow — always visible, independent of mouse */
 .lp-hero::before {
@@ -162,14 +235,14 @@
   font-weight: 900;
 }
 .lp-hero-line1 {
-  font-size: clamp(64px, 10vw, 160px);
+  font-size: clamp(44px, 6.5vw, 110px);
   color: rgba(255,255,255,0.15);
   letter-spacing: -2px;
   opacity: 0;
   animation: lp-fadeup 0.9s ease 0.5s forwards;
 }
 .lp-hero-line2 {
-  font-size: clamp(80px, 13vw, 200px);
+  font-size: clamp(56px, 8.5vw, 140px);
   color: #fff;
   letter-spacing: -4px;
   text-shadow: 0 0 80px rgba(0,229,255,0.25);

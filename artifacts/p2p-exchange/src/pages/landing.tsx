@@ -6,7 +6,22 @@ export default function LandingPage() {
   const [, setLocation] = useLocation();
   const [loaded, setLoaded] = useState(false);
   const [mousePos, setMousePos] = useState({ x: 0.5, y: 0.5 });
+  const [slideIndex, setSlideIndex] = useState(0);
   const heroRef = useRef<HTMLElement>(null);
+
+  const slides = [
+    '/slide1.webp',
+    '/slide2.webp',
+    '/slide3.webp',
+    '/slide4.webp',
+    '/slide5.webp',
+  ];
+
+  // Auto-advance slideshow every 4 seconds
+  useEffect(() => {
+    const t = setInterval(() => setSlideIndex(i => (i + 1) % slides.length), 4000);
+    return () => clearInterval(t);
+  }, []);
 
   // Trigger entrance animations
   useEffect(() => {
@@ -81,25 +96,54 @@ export default function LandingPage() {
         {/* Subtle grid overlay */}
         <div className="lp-hero-grid" />
 
-        <div className="lp-hero-label">P2P Crypto Exchange · Ethiopia</div>
+        {/* Left — text content */}
+        <div className="lp-hero-left">
+          <div className="lp-hero-label">P2P Crypto Exchange · Ethiopia</div>
 
-        <h1 className="lp-hero-headline">
-          <span className="lp-hero-line1">TRADING</span>
-          <span className="lp-hero-line2">USDT.</span>
-        </h1>
+          <h1 className="lp-hero-headline">
+            <span className="lp-hero-line1">TRADING</span>
+            <span className="lp-hero-line2">USDT.</span>
+          </h1>
 
-        <p className="lp-hero-sub">
-          Buy and sell USDT using Ethiopian Birr — directly peer-to-peer,
-          <br />without banks, without borders.
-        </p>
+          <p className="lp-hero-sub">
+            Buy and sell USDT using Ethiopian Birr — directly peer-to-peer,
+            <br />without banks, without borders.
+          </p>
 
-        <div className="lp-hero-actions">
-          <button className="lp-btn-primary" onClick={() => setLocation("/auth")}>
-            Start Trading
-          </button>
-          <a href="#how" className="lp-btn-ghost">
-            How it works ↓
-          </a>
+          <div className="lp-hero-actions">
+            <button className="lp-btn-primary" onClick={() => setLocation("/auth")}>
+              Start Trading
+            </button>
+            <a href="#how" className="lp-btn-ghost">
+              How it works ↓
+            </a>
+          </div>
+        </div>
+
+        {/* Right — image slideshow */}
+        <div className="lp-hero-right">
+          <div className="lp-slideshow">
+            {slides.map((src, i) => (
+              <img
+                key={src}
+                src={src}
+                className={`lp-slide${i === slideIndex ? ' lp-slide-active' : ''}`}
+                alt={`Xendrx ${i + 1}`}
+                loading={i === 0 ? 'eager' : 'lazy'}
+                decoding="async"
+              />
+            ))}
+            <div className="lp-slide-dots">
+              {slides.map((_, i) => (
+                <button
+                  key={i}
+                  className={`lp-slide-dot${i === slideIndex ? ' lp-slide-dot-active' : ''}`}
+                  onClick={() => setSlideIndex(i)}
+                  aria-label={`Slide ${i + 1}`}
+                />
+              ))}
+            </div>
+          </div>
         </div>
 
       </section>
