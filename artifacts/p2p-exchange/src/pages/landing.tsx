@@ -4,9 +4,11 @@ import "./landing.css";
 
 export default function LandingPage() {
   const [, setLocation] = useLocation();
-  const [loaded, setLoaded] = useState(false);
-  const [mousePos, setMousePos] = useState({ x: 0.5, y: 0.5 });
+  const [loaded, setLoaded]       = useState(false);
+  const [mousePos, setMousePos]   = useState({ x: 0.5, y: 0.5 });
   const [slideIndex, setSlideIndex] = useState(0);
+  const [scrollY, setScrollY]     = useState(0);
+  const [scrollPct, setScrollPct] = useState(0);
   const heroRef = useRef<HTMLElement>(null);
 
   const slides = [
@@ -17,34 +19,46 @@ export default function LandingPage() {
     '/slide5.webp',
   ];
 
-  // Auto-advance slideshow every 4 seconds
+  // Auto-advance slideshow
   useEffect(() => {
     const t = setInterval(() => setSlideIndex(i => (i + 1) % slides.length), 4000);
     return () => clearInterval(t);
   }, []);
 
-  // Trigger entrance animations
+  // Entrance gate
   useEffect(() => {
     const t = setTimeout(() => setLoaded(true), 60);
     return () => clearTimeout(t);
   }, []);
 
-  // Mouse-tracking parallax glow on hero
+  // Mouse-tracking glow
   useEffect(() => {
-    function handleMouse(e: MouseEvent) {
+    function onMouse(e: MouseEvent) {
       if (!heroRef.current) return;
       const rect = heroRef.current.getBoundingClientRect();
       if (e.clientY > rect.bottom) return;
-      setMousePos({
-        x: e.clientX / window.innerWidth,
-        y: e.clientY / window.innerHeight,
-      });
+      setMousePos({ x: e.clientX / window.innerWidth, y: e.clientY / window.innerHeight });
     }
-    window.addEventListener("mousemove", handleMouse, { passive: true });
-    return () => window.removeEventListener("mousemove", handleMouse);
+    window.addEventListener("mousemove", onMouse, { passive: true });
+    return () => window.removeEventListener("mousemove", onMouse);
   }, []);
 
-  // Intersection-observer scroll reveals
+  // Scroll tracking — progress bar + parallax
+  useEffect(() => {
+    function onScroll() {
+      const sy = window.scrollY;
+      setScrollY(sy);
+      const doc = document.documentElement;
+      const max = doc.scrollHeight - doc.clientHeight;
+      setScrollPct(max > 0 ? (sy / max) * 100 : 0);
+    }
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  // ── Bidirectional scroll-reveal ──────────────────────────────────────
+  // Adds lp-visible on enter; removes it when element re-enters the
+  // viewport from below (user scrolled back up), so animations replay.
   useEffect(() => {
     if (!loaded) return;
     const observer = new IntersectionObserver(
@@ -52,41 +66,51 @@ export default function LandingPage() {
         entries.forEach((entry) => {
           if (entry.isIntersecting) {
             entry.target.classList.add("lp-visible");
+          } else if (entry.boundingClientRect.top > 0) {
+            // Below viewport → user scrolled up past it → reset for re-play
+            entry.target.classList.remove("lp-visible");
           }
+          // If top < 0 (above viewport, already visited) → leave visible
         });
       },
-      { threshold: 0.12 }
+      { threshold: 0.10 }
     );
-    document.querySelectorAll(".lp-reveal").forEach((el) => observer.observe(el));
+    document.querySelectorAll("[data-reveal]").forEach((el) => observer.observe(el));
     return () => observer.disconnect();
   }, [loaded]);
 
   const glowX = mousePos.x * 100;
   const glowY = 55 + mousePos.y * 20;
 
+  // Hero parallax — text drifts up at 25 % of scroll speed
+  const heroParallax = Math.min(scrollY * 0.28, 200);
+
+  // Utility: typed inline style helper for CSS custom properties
+  const delay = (s: number) => ({ "--delay": `${s}s` } as React.CSSProperties);
+
   return (
     <div className={`lp-root${loaded ? " lp-loaded" : ""}`}>
+
+      {/* ── Scroll progress bar ── */}
+      <div className="lp-progress" style={{ width: `${scrollPct}%` }} />
 
       {/* ── NAV ── */}
       <nav className="lp-nav">
         <div className="lp-nav-logo">
           <span className="lp-logo-mark">◆</span>
-          <span className="lp-logo-text">
-            xen<span className="lp-cyan">drx</span>
-          </span>
+          <span className="lp-logo-text">xen<span className="lp-cyan">drx</span></span>
         </div>
         <div className="lp-nav-links">
           <a href="#how">How It Works</a>
           <a href="#security">Security</a>
         </div>
-        <button className="lp-nav-cta" onClick={() => setLocation("/auth")}>
-          Launch App
-        </button>
+        <button className="lp-nav-cta" onClick={() => setLocation("/auth")}>Launch App</button>
       </nav>
 
       {/* ── HERO ── */}
       <section className="lp-hero" ref={heroRef}>
-        {/* ── Full-bleed background slideshow ── */}
+
+        {/* Full-bleed background slideshow */}
         <div className="lp-slideshow">
           {slides.map((src, i) => (
             <img
@@ -100,10 +124,8 @@ export default function LandingPage() {
           ))}
         </div>
 
-        {/* Dark gradient overlay — left opaque → right transparent */}
         <div className="lp-hero-overlay" />
 
-        {/* Mouse-tracking glow on top */}
         <div
           className="lp-hero-glow"
           style={{
@@ -111,29 +133,24 @@ export default function LandingPage() {
           }}
         />
 
-        {/* Text content */}
-        <div className="lp-hero-label">P2P Crypto Exchange · Ethiopia</div>
-
-        <h1 className="lp-hero-headline">
-          <span className="lp-hero-line1">TRADING</span>
-          <span className="lp-hero-line2">USDT.</span>
-        </h1>
-
-        <p className="lp-hero-sub">
-          Buy and sell USDT using Ethiopian Birr — directly peer-to-peer,<br className="lp-br-desktop" />
-          without banks, without borders.
-        </p>
-
-        <div className="lp-hero-actions">
-          <button className="lp-btn-primary" onClick={() => setLocation("/auth")}>
-            Start Trading
-          </button>
-          <a href="#how" className="lp-btn-ghost">
-            How it works ↓
-          </a>
+        {/* Parallax text wrapper — drifts up as user scrolls */}
+        <div className="lp-hero-parallax" style={{ transform: `translateY(${heroParallax}px)` }}>
+          <div className="lp-hero-label">P2P Crypto Exchange · Ethiopia</div>
+          <h1 className="lp-hero-headline">
+            <span className="lp-hero-line1">TRADING</span>
+            <span className="lp-hero-line2">USDT.</span>
+          </h1>
+          <p className="lp-hero-sub">
+            Buy and sell USDT using Ethiopian Birr — directly peer-to-peer,<br className="lp-br-desktop" />
+            without banks, without borders.
+          </p>
+          <div className="lp-hero-actions">
+            <button className="lp-btn-primary" onClick={() => setLocation("/auth")}>Start Trading</button>
+            <a href="#how" className="lp-btn-ghost">How it works ↓</a>
+          </div>
         </div>
 
-        {/* Desktop: slide indicator dots */}
+        {/* Desktop slide dots */}
         <div className="lp-slide-dots">
           {slides.map((_, i) => (
             <button
@@ -145,7 +162,7 @@ export default function LandingPage() {
           ))}
         </div>
 
-        {/* Mobile only: contained image card shown below the text */}
+        {/* Mobile: contained image card */}
         <div className="lp-hero-mobile-preview">
           {slides.map((src, i) => (
             <img
@@ -157,7 +174,6 @@ export default function LandingPage() {
               decoding="async"
             />
           ))}
-          {/* Mobile dot indicators inside the card */}
           <div className="lp-mobile-dots">
             {slides.map((_, i) => (
               <button
@@ -176,34 +192,32 @@ export default function LandingPage() {
       <section className="lp-card-section" id="card">
         <div className="lp-card-section-inner">
 
-          {/* Animated card visual */}
-          <div className="lp-card-visual lp-reveal">
+          {/* Card visual — slides in from left */}
+          <div className="lp-card-visual" data-reveal="left">
             <div className="lp-card-orbit" />
             <div className="lp-card-orbit lp-card-orbit-2" />
             <div className="lp-card-glow-base" />
             <img src="/slide4.webp" alt="Xendrx Card" className="lp-card-img" loading="lazy" decoding="async" />
           </div>
 
-          {/* Content */}
+          {/* Content — staggered from right */}
           <div className="lp-card-content">
-            <div className="lp-card-eyebrow lp-reveal">◈ &nbsp;Card System</div>
-            <h2 className="lp-card-title lp-reveal">
-              Pay anywhere.<br />
-              <span className="lp-cyan">Instantly.</span>
+            <div className="lp-card-eyebrow" data-reveal="right" style={delay(0)}>◈ &nbsp;Card System</div>
+            <h2 className="lp-card-title" data-reveal="right" style={delay(0.12)}>
+              Pay anywhere.<br /><span className="lp-cyan">Instantly.</span>
             </h2>
-            <p className="lp-card-desc lp-reveal">
+            <p className="lp-card-desc" data-reveal="blur" style={delay(0.22)}>
               Your USDT balance, spendable everywhere. Get a virtual Xendrx Visa card
-              in seconds — accepted at 50 million+ merchants in 119 countries.
-              No bank required.
+              in seconds — accepted at 50 million+ merchants in 119 countries. No bank required.
             </p>
-            <div className="lp-card-features lp-reveal">
+            <div className="lp-card-features">
               {[
-                { icon: '⚡', label: 'Instant Setup',   sub: 'Virtual card live in under a minute' },
-                { icon: '🌍', label: 'Global Reach',    sub: '119 countries · 50M+ merchants'      },
-                { icon: '◈',  label: 'Crypto-Backed',   sub: 'Spend your USDT balance directly'     },
-                { icon: '◻',  label: 'Visa Network',    sub: 'Accepted everywhere Visa works'       },
-              ].map(f => (
-                <div className="lp-card-feature" key={f.label}>
+                { icon: '⚡', label: 'Instant Setup',  sub: 'Virtual card live in under a minute' },
+                { icon: '🌍', label: 'Global Reach',   sub: '119 countries · 50M+ merchants'      },
+                { icon: '◈',  label: 'Crypto-Backed',  sub: 'Spend your USDT balance directly'     },
+                { icon: '◻',  label: 'Visa Network',   sub: 'Accepted everywhere Visa works'       },
+              ].map((f, i) => (
+                <div className="lp-card-feature" key={f.label} data-reveal="up" style={delay(0.32 + i * 0.08)}>
                   <div className="lp-card-feature-icon">{f.icon}</div>
                   <div>
                     <div className="lp-card-feature-label">{f.label}</div>
@@ -212,7 +226,7 @@ export default function LandingPage() {
                 </div>
               ))}
             </div>
-            <button className="lp-btn-card-cta lp-reveal" onClick={() => setLocation('/auth')}>
+            <button className="lp-btn-card-cta" data-reveal="up" style={delay(0.55)} onClick={() => setLocation('/auth')}>
               Create Your Card &nbsp;→
             </button>
           </div>
@@ -221,40 +235,31 @@ export default function LandingPage() {
 
       {/* ── SECTION 01 — HOW IT WORKS ── */}
       <section className="lp-section" id="how">
-        <div className="lp-section-number lp-reveal">01</div>
+        <div className="lp-section-number" data-reveal="left" style={delay(0)}>01</div>
         <div className="lp-section-content">
-          <h2 className="lp-section-title lp-reveal">How It Works</h2>
-          <p className="lp-section-desc lp-reveal">
+          <h2 className="lp-section-title" data-reveal="up" style={delay(0.1)}>How It Works</h2>
+          <p className="lp-section-desc" data-reveal="blur" style={delay(0.2)}>
             Peer-to-peer trading means you trade directly with other users — no
             intermediaries, no bank delays. We hold the USDT in escrow and
             release it the moment payment is confirmed.
           </p>
-          <div className="lp-steps lp-reveal">
-            <div className="lp-step">
+          <div className="lp-steps">
+            <div className="lp-step" data-reveal="up" style={delay(0.1)}>
               <div className="lp-step-icon">01</div>
               <h3>Post an Ad</h3>
-              <p>
-                List your buy or sell offer with your price, preferred payment
-                methods, and trade limits.
-              </p>
+              <p>List your buy or sell offer with your price, preferred payment methods, and trade limits.</p>
             </div>
-            <div className="lp-step-arrow">→</div>
-            <div className="lp-step">
+            <div className="lp-step-arrow" data-reveal="scale" style={delay(0.28)}>→</div>
+            <div className="lp-step" data-reveal="up" style={delay(0.26)}>
               <div className="lp-step-icon">02</div>
               <h3>Match & Chat</h3>
-              <p>
-                Browse live orders, pick your counterparty, and confirm the
-                details via encrypted in-app chat.
-              </p>
+              <p>Browse live orders, pick your counterparty, and confirm details via encrypted in-app chat.</p>
             </div>
-            <div className="lp-step-arrow">→</div>
-            <div className="lp-step">
+            <div className="lp-step-arrow" data-reveal="scale" style={delay(0.46)}>→</div>
+            <div className="lp-step" data-reveal="up" style={delay(0.42)}>
               <div className="lp-step-icon">03</div>
               <h3>Release & Done</h3>
-              <p>
-                USDT is locked in escrow. Once payment lands, funds are released
-                to the buyer instantly.
-              </p>
+              <p>USDT is locked in escrow. Once payment lands, funds are released to the buyer instantly.</p>
             </div>
           </div>
         </div>
@@ -262,76 +267,43 @@ export default function LandingPage() {
 
       {/* ── SECTION 02 — SECURITY ── */}
       <section className="lp-section" id="security">
-        <div className="lp-section-number lp-reveal">02</div>
+        <div className="lp-section-number" data-reveal="left" style={delay(0)}>02</div>
         <div className="lp-section-content">
-          <h2 className="lp-section-title lp-reveal">Secure by Design</h2>
-          <p className="lp-section-desc lp-reveal">
+          <h2 className="lp-section-title" data-reveal="up" style={delay(0.1)}>Secure by Design</h2>
+          <p className="lp-section-desc" data-reveal="blur" style={delay(0.2)}>
             Every trade is protected by on-chain escrow. Every trader is
             identity-verified. No single point of custody — ever.
           </p>
-          <div className="lp-features lp-reveal">
-            <div className="lp-feature">
-              <div className="lp-feature-icon">⬡</div>
-              <h3>Escrow Protection</h3>
-              <p>
-                USDT is locked on-chain until both parties confirm. No
-                counterparty trust required.
-              </p>
-            </div>
-            <div className="lp-feature">
-              <div className="lp-feature-icon">⊛</div>
-              <h3>KYC Verified</h3>
-              <p>
-                Every trader completes identity verification before their first
-                trade — zero anonymous actors.
-              </p>
-            </div>
-            <div className="lp-feature">
-              <div className="lp-feature-icon">◈</div>
-              <h3>BEP-20 Native</h3>
-              <p>
-                USDT on Binance Smart Chain — fast settlement, minimal fees, and
-                battle-tested infrastructure.
-              </p>
-            </div>
-            <div className="lp-feature">
-              <div className="lp-feature-icon">⟁</div>
-              <h3>Dispute Resolution</h3>
-              <p>
-                Admin-mediated disputes protect both sides in every edge case —
-                no trade left unresolved.
-              </p>
-            </div>
+          <div className="lp-features">
+            {[
+              { icon: '⬡', title: 'Escrow Protection', body: 'USDT is locked on-chain until both parties confirm. No counterparty trust required.' },
+              { icon: '⊛', title: 'KYC Verified',       body: 'Every trader completes identity verification before their first trade — zero anonymous actors.' },
+              { icon: '◈', title: 'BEP-20 Native',      body: 'USDT on Binance Smart Chain — fast settlement, minimal fees, and battle-tested infrastructure.' },
+              { icon: '⟁', title: 'Dispute Resolution', body: 'Admin-mediated disputes protect both sides in every edge case — no trade left unresolved.' },
+            ].map((f, i) => (
+              <div className="lp-feature" key={f.title} data-reveal="scale" style={delay(0.1 + i * 0.1)}>
+                <div className="lp-feature-icon">{f.icon}</div>
+                <h3>{f.title}</h3>
+                <p>{f.body}</p>
+              </div>
+            ))}
           </div>
         </div>
       </section>
 
       {/* ── CTA ── */}
-      <section className="lp-cta-section lp-reveal">
+      <section className="lp-cta-section">
         <div className="lp-cta-glow" />
-        <div className="lp-cta-label">Get Started Today</div>
-        <h2 className="lp-cta-headline">
-          Start Trading
-          <br />
-          in Minutes.
+        <div className="lp-cta-label"   data-reveal="down"  style={delay(0)}>Get Started Today</div>
+        <h2 className="lp-cta-headline" data-reveal="up"    style={delay(0.12)}>
+          Start Trading<br />in Minutes.
         </h2>
-        <p className="lp-cta-sub">
-          Create your account, complete KYC, and make your first trade — all
-          within the day.
+        <p className="lp-cta-sub"       data-reveal="blur"  style={delay(0.24)}>
+          Create your account, complete KYC, and make your first trade — all within the day.
         </p>
-        <div className="lp-cta-actions">
-          <button
-            className="lp-btn-primary lp-btn-large"
-            onClick={() => setLocation("/auth")}
-          >
-            Create Account
-          </button>
-          <button
-            className="lp-btn-outline"
-            onClick={() => setLocation("/auth")}
-          >
-            Sign In
-          </button>
+        <div className="lp-cta-actions" data-reveal="up"    style={delay(0.36)}>
+          <button className="lp-btn-primary lp-btn-large" onClick={() => setLocation("/auth")}>Create Account</button>
+          <button className="lp-btn-outline"              onClick={() => setLocation("/auth")}>Sign In</button>
         </div>
       </section>
 
@@ -341,15 +313,9 @@ export default function LandingPage() {
           <div className="lp-footer-brand">
             <div className="lp-footer-logo">
               <span className="lp-logo-mark">◆</span>
-              <span className="lp-logo-text">
-                xen<span className="lp-cyan">drx</span>
-              </span>
+              <span className="lp-logo-text">xen<span className="lp-cyan">drx</span></span>
             </div>
-            <p>
-              Architecting peer-to-peer crypto trade
-              <br />
-              for the Horn of Africa.
-            </p>
+            <p>Architecting peer-to-peer crypto trade<br />for the Horn of Africa.</p>
           </div>
           <div className="lp-footer-cols">
             <div className="lp-footer-col">
