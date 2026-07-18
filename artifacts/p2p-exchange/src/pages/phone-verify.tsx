@@ -81,7 +81,7 @@ export default function PhoneVerifyPage() {
         setCode(data.devCode);
         toast({ title: "Dev mode: code auto-filled", description: `OTP: ${data.devCode}` });
       } else if (data.method === 'telegram') {
-        toast({ title: "Code sent via Telegram", description: "Open the Telegram app to view your code." });
+        toast({ title: "Check your Telegram app", description: "We've sent your verification code via Telegram. It may take a few seconds to arrive." });
       } else {
         toast({ title: `Verification code sent to ${fullPhone}` });
       }
@@ -154,11 +154,20 @@ export default function PhoneVerifyPage() {
           <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
             <Phone className="w-8 h-8 text-primary" />
           </div>
-          <p className="text-sm text-muted-foreground text-center">
-            {step === "phone"
-              ? "Add your phone number to enable SMS notifications."
-              : `Enter the 6-digit code sent to ${fullPhone}`}
-          </p>
+          {step === "code" && otpMethod === "telegram" ? (
+            <div className="w-full rounded-xl border border-blue-500/30 bg-blue-500/10 px-4 py-3 text-center space-y-1">
+              <p className="text-sm font-semibold text-white">📨 Check your Telegram app</p>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                We've sent your verification code via Telegram. Open the Telegram app and look for a message from <span className="text-white font-medium">Telegram</span> — it may take a few seconds to arrive.
+              </p>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground text-center">
+              {step === "phone"
+                ? "Add your phone number to enable SMS notifications."
+                : `Enter the 6-digit code sent to ${fullPhone}`}
+            </p>
+          )}
         </div>
 
         {step === "phone" ? (

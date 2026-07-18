@@ -791,7 +791,7 @@ export default function AuthPage() {
                   onClick={doSendCode}
                   disabled={otpLoading || (regType === "email" && !regNationality) || (regType === "phone" && (regPhone.length === 0 || !regPhoneValid)) || (!!TURNSTILE_SITE_KEY && !regTurnstileToken && !regTurnstileError)}
                 >
-                  {otpLoading ? "Sending code…" : (regType === "phone" ? "📱 Send SMS Code" : "✉️ Send Email Code")}
+                  {otpLoading ? "Sending code…" : (regType === "phone" ? "📱 Send Verification Code" : "✉️ Send Email Code")}
                 </button>
                 {regErr && <div className="server-err">{regErr}</div>}
               </div>
@@ -826,15 +826,22 @@ export default function AuthPage() {
           ) : (
             <>
               <h2 className="slide-element">Verify</h2>
-              <p className="slide-element" style={{ fontSize: 12, color: "rgba(255,255,255,.5)", marginBottom: 8 }}>
-                {otpMethod === 'telegram'
-                  ? `📨 We sent a code to your Telegram. Open the Telegram app to view it.`
-                  : otpMethod === 'sms'
-                  ? `📱 Code sent via SMS to ${regC.dial} ${regPhone}`
-                  : otpMethod === 'email'
-                  ? `📧 Code sent to ${regEmail}`
-                  : regType === "phone" ? `Code sent to ${regC.dial} ${regPhone}` : `Code sent to ${regEmail}`}
-              </p>
+              {otpMethod === 'telegram' ? (
+                <div className="slide-element" style={{ background: "rgba(0,136,204,0.12)", border: "1px solid rgba(0,136,204,0.35)", borderRadius: 10, padding: "10px 14px", marginBottom: 8 }}>
+                  <p style={{ fontSize: 13, color: "#fff", margin: 0, fontWeight: 600 }}>📨 Check your Telegram app</p>
+                  <p style={{ fontSize: 12, color: "rgba(255,255,255,.65)", margin: "4px 0 0" }}>
+                    We've sent your verification code via Telegram. Open the Telegram app and look for a message from <strong style={{ color: "#fff" }}>Telegram</strong> — it may take a few seconds to arrive.
+                  </p>
+                </div>
+              ) : (
+                <p className="slide-element" style={{ fontSize: 12, color: "rgba(255,255,255,.5)", marginBottom: 8 }}>
+                  {otpMethod === 'sms'
+                    ? `📱 Code sent via SMS to ${regC.dial} ${regPhone}`
+                    : otpMethod === 'email'
+                    ? `📧 Code sent to ${regEmail}`
+                    : regType === "phone" ? `Code sent to ${regC.dial} ${regPhone}` : `Code sent to ${regEmail}`}
+                </p>
+              )}
 
               {devCodeActive && (
                 <div className="slide-element" style={{ background: "rgba(255,193,7,0.12)", border: "1px solid rgba(255,193,7,0.4)", borderRadius: 8, padding: "8px 12px", marginBottom: 4, fontSize: 12, color: "#ffc107" }}>
