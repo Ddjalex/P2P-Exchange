@@ -43,17 +43,14 @@ const BSC_BLOCK_NUMBER_ENDPOINTS = [
   "https://bsc-dataseed4.binance.org",
 ];
 
-// These endpoints support eth_getLogs with no API key.
-// nodies/ankr/publicnode allow ≤250 blocks — MAX_BLOCKS_PER_QUERY is 50.
+// Binance dataseed currently rejects eth_getLogs publicly (-32005), even for
+// a one-block range, so keep it in the block-number rotation only. Nodies
+// accepts the monitor's multi-address filter at 150 blocks; the other
+// providers stay at a conservative 50-block fallback size.
 const BSC_GETLOGS_ENDPOINTS = [
-  "https://bsc-dataseed.binance.org",
-  "https://bsc-dataseed1.binance.org",
-  "https://bsc-dataseed2.binance.org",
-  "https://bsc-dataseed3.binance.org",
-  "https://bsc-dataseed4.binance.org",
-  "https://bsc-pokt.nodies.app",
-  "https://rpc.ankr.com/bsc",
-  "https://bsc.publicnode.com",
+  { url: "https://bsc-pokt.nodies.app", maxBlocks: 150 },
+  { url: "https://rpc.ankr.com/bsc", maxBlocks: 50 },
+  { url: "https://bsc.publicnode.com", maxBlocks: 50 },
 ];
 
 const BSC_NETWORK = ethers.Network.from(56); // BNB Smart Chain, avoids eth_chainId probe
@@ -66,8 +63,10 @@ const TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a
 
 // On first run look back ~15 min worth of blocks (~20 blocks/min on BSC)
 const INITIAL_LOOKBACK_BLOCKS = 300;
-// Hard limit per getLogs query — 1rpc.io free tier allows max 50 blocks.
-const MAX_BLOCKS_PER_QUERY = 50;
+// Keep catch-up requests comfortably below the verified 250-block Nodies plan
+// limit. The endpoint-specific fallback sizes below prevent a provider that
+// rejects a larger range from stopping catch-up scanning.
+const MAX_BLOCKS_PER_QUERY = 150;
 
 let monitorInterval: ReturnType<typeof setInterval> | null = null;
 let isRunning = false;
@@ -97,6 +96,57 @@ async function withFallback<T>(
     }
   }
   throw lastErr ?? new Error("All BSC RPC endpoints failed");
+}
+
+async function getLogsOnEndpoint(
+  endpoint: (typeof BSC_GETLOGS_ENDPOINTS)[number],
+  fromBlock: number,
+  toBlock: number,
+  topic2: string | string[],
+): Promise<ethers.Log[]> {
+  const provider = makeProvider(endpoint.url);
+  const logs: ethers.Log[] = [];
+  const chunkSize = Math.min(MAX_BLOCKS_PER_QUERY, endpoint.maxBlocks);
+
+  for (let chunkStart = fromBlock; chunkStart <= toBlock; chunkStart += chunkSize) {
+    const chunkEnd = Math.min(chunkStart + chunkSize - 1, toBlock);
+    try {
+      logs.push(...await provider.getLogs({
+        fromBlock: chunkStart,
+        toBlock: chunkEnd,
+        address: USDT_CONTRACT,
+        topics: [TRANSFER_TOPIC, null, topic2],
+      }));
+    } catch (err: any) {
+      console.warn(
+        `[Deposit] RPC getLogs failed on ${endpoint.url} for ${chunkStart}–${chunkEnd}: ` +
+        `${err?.message ?? err}`,
+      );
+      throw err;
+    }
+  }
+
+  return logs;
+}
+
+/**
+ * Try the largest verified range first, then retry the complete range with a
+ * smaller provider-specific chunk size if that endpoint rejects or times out.
+ */
+async function getLogsWithFallback(
+  fromBlock: number,
+  toBlock: number,
+  topic2: string | string[],
+): Promise<ethers.Log[]> {
+  let lastErr: unknown;
+  for (const endpoint of BSC_GETLOGS_ENDPOINTS) {
+    try {
+      return await getLogsOnEndpoint(endpoint, fromBlock, toBlock, topic2);
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw lastErr ?? new Error("All BSC eth_getLogs endpoints failed");
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -437,9 +487,9 @@ async function poll() {
 
     const processedHashes = await getProcessedTxHashes();
 
-    // Iterate through all pending 50-block chunks.
+    // Iterate through all pending 150-block chunks.
     // On steady-state: one chunk (~20 new blocks per 60s).
-    // On first start: up to ceil(300/50) = 6 chunks.
+    // On first start: up to ceil(300/150) = 2 chunks.
     while (chunkStart <= currentBlock) {
       const chunkEnd = Math.min(chunkStart + MAX_BLOCKS_PER_QUERY - 1, currentBlock);
 
@@ -452,14 +502,7 @@ async function poll() {
       try {
         // topics[2] is a single string or array — ethers handles OR matching for arrays
         const topic2 = paddedTopics.length === 1 ? paddedTopics[0] : paddedTopics;
-        logs = await withFallback(BSC_GETLOGS_ENDPOINTS, (p) =>
-          p.getLogs({
-            fromBlock: chunkStart,
-            toBlock:   chunkEnd,
-            address: USDT_CONTRACT,
-            topics: [TRANSFER_TOPIC, null, topic2],
-          }),
-        );
+        logs = await getLogsWithFallback(chunkStart, chunkEnd, topic2);
       } catch (err) {
         logger.error({ err, chunkStart, chunkEnd }, "[Deposit] provider.getLogs() failed — stopping catch-up at this chunk");
         lastProcessedBlock = chunkStart - 1;
