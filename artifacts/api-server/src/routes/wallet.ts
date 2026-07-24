@@ -138,115 +138,12 @@ router.get("/deposit-address", async (req, res) => {
   }
 });
 
-// POST /api/wallet/deposit/verify — user submits BEP20 TX hash; backend verifies on-chain and credits instantly
-router.post("/deposit/verify", async (req, res) => {
-  try {
-    const { txHash } = req.body;
-    const userId = (req as any).userId;
-
-    if (!txHash || typeof txHash !== "string" || txHash.trim().length < 10) {
-      return res.status(400).json({ error: "A valid transaction hash is required." });
-    }
-
-    const cleanHash = txHash.trim();
-
-    if (!/^0x[0-9a-fA-F]{64}$/.test(cleanHash)) {
-      return res.status(400).json({ error: "Invalid BEP20 transaction hash format. It must start with 0x and be 66 characters long." });
-    }
-
-    // Check if this TX has already been credited
-    const [existingTx, existingVerif] = await Promise.all([
-      db.select().from(transactionsTable).where(
-        and(eq(transactionsTable.txid, cleanHash), eq(transactionsTable.type, "deposit"))
-      ),
-      db.select().from(depositVerificationsTable).where(
-        eq(depositVerificationsTable.txid, cleanHash)
-      ),
-    ]);
-
-    if (existingTx.length > 0 && existingTx[0].status === "completed") {
-      return res.status(409).json({ error: "This transaction has already been credited to a wallet." });
-    }
-    if (existingVerif.length > 0 && existingVerif[0].status === "completed") {
-      return res.status(409).json({ error: "This transaction has already been processed." });
-    }
-
-    // Get the BSC hot wallet address
-    const businessAddress = await getSetting("bscAddress");
-    if (!businessAddress) {
-      return res.status(503).json({ error: "BEP20 deposit address not configured. Please contact support." });
-    }
-
-    // Verify transaction on BSC
-    const txDetails = await getBscUsdtTx(cleanHash).catch(() => null);
-
-    if (!txDetails) {
-      return res.status(422).json({
-        error: "Transaction not found on BSC. Make sure the TX hash is correct and uses the BEP20 (BSC) network.",
-      });
-    }
-    if (!txDetails.confirmed) {
-      return res.status(422).json({
-        error: "Transaction is not confirmed yet. Please wait a minute and try again.",
-      });
-    }
-
-    // Verify the USDT was sent TO our business address
-    if (txDetails.to.toLowerCase() !== businessAddress.toLowerCase()) {
-      return res.status(422).json({
-        error: "This transaction was not sent to our deposit address. Make sure you are using the BEP20 (BSC) network.",
-      });
-    }
-
-    const amount = parseFloat(txDetails.amount);
-    if (isNaN(amount) || amount <= 0) {
-      return res.status(422).json({ error: "Invalid amount in transaction." });
-    }
-
-    // Credit the user's wallet
-    const wallet = await getOrCreateWallet(userId);
-    const newBalance = (parseFloat(wallet.availableBalance) + amount).toFixed(6);
-
-    await db.update(walletsTable)
-      .set({ availableBalance: newBalance, updatedAt: new Date() })
-      .where(eq(walletsTable.id, wallet.id));
-
-    // Record in transactions
-    await db.insert(transactionsTable).values({
-      userId,
-      type: "deposit",
-      amount: txDetails.amount,
-      network: "BEP20",
-      status: "completed",
-      txid: cleanHash,
-      address: txDetails.from,
-    });
-
-    // Record in deposit_verifications for admin audit trail
-    await db.insert(depositVerificationsTable).values({
-      userId,
-      txid: cleanHash,
-      amount: txDetails.amount,
-      fromAddress: txDetails.from,
-      toAddress: businessAddress,
-      network: "BEP20",
-      status: "completed",
-      source: "user_verify",
-      adminNote: `Auto-credited via user TX hash verification. ${txDetails.amount} USDT from ${txDetails.from}`,
-    }).onConflictDoNothing();
-
-    req.log.info({ userId, txHash: cleanHash, amount: txDetails.amount }, "BEP20 deposit verified and credited");
-
-    res.json({
-      success: true,
-      amount: txDetails.amount,
-      network: "BEP20",
-      message: `${parseFloat(txDetails.amount).toFixed(2)} USDT has been added to your wallet!`,
-    });
-  } catch (err) {
-    req.log.error({ err }, "Deposit verify error");
-    res.status(500).json({ error: "Internal server error" });
-  }
+// POST /api/wallet/deposit/verify — removed; deposits are now detected automatically
+// by the on-chain monitor (deposit-monitor.ts) which watches per-user HD addresses.
+router.post("/deposit/verify", (_req, res) => {
+  res.status(410).json({
+    error: "Manual deposit verification is no longer supported. Deposits to your address are detected automatically within ~1 minute.",
+  });
 });
 
 // POST /api/wallet/withdraw — BEP20 blockchain withdrawal

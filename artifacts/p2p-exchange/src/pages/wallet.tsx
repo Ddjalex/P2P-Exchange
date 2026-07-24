@@ -19,18 +19,13 @@ function getToken() { return localStorage.getItem(TOKEN_KEY); }
 
 // ─── Deposit Modal ───────────────────────────────────────────────────────────
 
-function DepositModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
+function DepositModal({ onClose, onSuccess: _onSuccess }: { onClose: () => void; onSuccess: () => void }) {
   const network = "BEP20";
   const [address, setAddress] = useState("");
   const [minDeposit, setMinDeposit] = useState("1");
   const [addrLoading, setAddrLoading] = useState(false);
   const [addrError, setAddrError] = useState("");
   const [copied, setCopied] = useState(false);
-
-  const [txHash, setTxHash] = useState("");
-  const [verifying, setVerifying] = useState(false);
-  const [verifyError, setVerifyError] = useState("");
-  const [verified, setVerified] = useState<{ amount: string; message: string } | null>(null);
 
   const { toast } = useToast();
 
@@ -63,37 +58,7 @@ function DepositModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleTxHashChange = (val: string) => {
-    setTxHash(val);
-    setVerifyError("");
-  };
-
-  const handleVerify = async () => {
-    setVerifyError("");
-    if (!txHash.trim() || txHash.trim().length < 10) {
-      setVerifyError("Paste the full transaction hash from your exchange.");
-      return;
-    }
-    setVerifying(true);
-    try {
-      const res = await fetch("/api/wallet/deposit/verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
-        body: JSON.stringify({ txHash: txHash.trim(), network }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Verification failed");
-      setVerified({ amount: data.amount, message: data.message });
-      onSuccess();
-    } catch (e: any) {
-      setVerifyError(e.message);
-    } finally {
-      setVerifying(false);
-    }
-  };
-
   const networkLabel = "BEP20 (BSC)";
-  const networkExplorer = "bscscan.com";
 
   return createPortal(
     <div className="fixed inset-0 z-[100] flex items-end justify-center" onClick={onClose}>
@@ -121,12 +86,9 @@ function DepositModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
             </div>
           </div>
 
-          {/* Step 1: Show deposit address */}
+          {/* Deposit address */}
           <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <span className="w-5 h-5 rounded-full bg-primary text-black text-xs font-bold flex items-center justify-center flex-shrink-0">1</span>
-              <label className="text-sm font-medium">Send USDT ({networkLabel}) to this address</label>
-            </div>
+            <label className="text-sm font-medium">Send USDT ({networkLabel}) to this address</label>
 
             {addrLoading ? (
               <div className="flex items-center justify-center h-16 bg-secondary rounded-xl">
@@ -158,54 +120,14 @@ function DepositModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
                 <li>Use the <strong>BNB Smart Chain (BSC)</strong> network only</li>
               </ul>
             </div>
-          </div>
 
-          {/* Step 2: Paste TX hash and verify */}
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <span className="w-5 h-5 rounded-full bg-primary text-black text-xs font-bold flex items-center justify-center flex-shrink-0">2</span>
-              <label className="text-sm font-medium">After sending, paste the transaction hash</label>
+            {/* Automatic detection notice */}
+            <div className="bg-primary/5 border border-primary/20 rounded-xl p-3">
+              <p className="text-xs text-muted-foreground">
+                <span className="font-semibold text-primary">Deposits are detected automatically.</span>{" "}
+                After sending, your balance will update within ~1 minute — no manual action required.
+              </p>
             </div>
-
-            {verified ? (
-              <div className="bg-success/10 border border-success/20 rounded-xl p-4 text-center space-y-1">
-                <p className="text-lg font-bold text-success">✓ Deposit Verified!</p>
-                <p className="text-sm text-foreground font-semibold">{parseFloat(verified.amount).toFixed(2)} USDT credited to your wallet</p>
-                <p className="text-xs text-muted-foreground">{verified.message}</p>
-              </div>
-            ) : (
-              <>
-                <div className="relative">
-                  <input
-                    value={txHash}
-                    onChange={e => handleTxHashChange(e.target.value)}
-                    placeholder="Paste TX hash — network auto-detected"
-                    className="w-full px-3 py-3 bg-secondary border border-border rounded-xl text-sm font-mono outline-none focus:border-primary transition-colors placeholder:text-muted-foreground/60"
-                  />
-                  {txHash && !/^0x[0-9a-fA-F]{64}$/.test(txHash.trim()) && txHash.trim().length >= 10 && (
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-warning">
-                      ?
-                    </span>
-                  )}
-                </div>
-
-                {verifyError && (
-                  <div className="flex items-start gap-2 p-3 bg-destructive/10 border border-destructive/20 rounded-xl">
-                    <AlertCircle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
-                    <p className="text-xs text-destructive">{verifyError}</p>
-                  </div>
-                )}
-
-                <button
-                  onClick={handleVerify}
-                  disabled={verifying || !txHash.trim()}
-                  className="w-full py-3 bg-primary text-black font-bold rounded-xl text-sm disabled:opacity-50 flex items-center justify-center gap-2 transition-opacity"
-                >
-                  {verifying ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-                  {verifying ? "Verifying..." : "Verify"}
-                </button>
-              </>
-            )}
           </div>
         </div>
       </div>

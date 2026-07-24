@@ -1,9 +1,9 @@
-import { Router } from "express";
+import { Router, type NextFunction, type Request, type Response } from "express";
 import { db } from "@workspace/db";
 import { kycSubmissionsTable, usersTable, addressVerificationsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { notify } from "../lib/notify.js";
-import multer from "multer";
+import multer, { MulterError } from "multer";
 import path from "node:path";
 import { mkdirSync } from "node:fs";
 import { randomBytes } from "node:crypto";
@@ -31,13 +31,32 @@ const upload = multer({
   },
 });
 
-router.post("/upload", upload.single("file"), (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ error: "No file uploaded" });
-  }
-  const url = `/uploads/kyc/${req.file.filename}`;
-  res.json({ url });
-});
+router.post(
+  "/upload",
+  (req: Request, res: Response, next: NextFunction) => {
+    upload.single("file")(req, res, (err) => {
+      if (err) {
+        if (err instanceof MulterError) {
+          if (err.code === "LIMIT_FILE_SIZE") {
+            return res.status(413).json({ error: "File too large — maximum size is 10 MB." });
+          }
+          return res.status(400).json({ error: `Upload error: ${err.message}` });
+        }
+        // fileFilter rejection or any other error
+        const message = err instanceof Error ? err.message : "Upload failed";
+        return res.status(400).json({ error: message });
+      }
+      next();
+    });
+  },
+  (req: Request, res: Response) => {
+    if (!req.file) {
+      return res.status(400).json({ error: "No file uploaded" });
+    }
+    const url = `/uploads/kyc/${req.file.filename}`;
+    res.json({ url });
+  },
+);
 
 router.get("/status", async (req, res) => {
   try {
