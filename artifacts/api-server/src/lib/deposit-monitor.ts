@@ -46,6 +46,11 @@ const BSC_BLOCK_NUMBER_ENDPOINTS = [
 // These endpoints support eth_getLogs with no API key.
 // nodies/ankr/publicnode allow ≤250 blocks — MAX_BLOCKS_PER_QUERY is 50.
 const BSC_GETLOGS_ENDPOINTS = [
+  "https://bsc-dataseed.binance.org",
+  "https://bsc-dataseed1.binance.org",
+  "https://bsc-dataseed2.binance.org",
+  "https://bsc-dataseed3.binance.org",
+  "https://bsc-dataseed4.binance.org",
   "https://bsc-pokt.nodies.app",
   "https://rpc.ankr.com/bsc",
   "https://bsc.publicnode.com",
