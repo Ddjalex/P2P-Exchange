@@ -926,17 +926,66 @@ router.post("/terminate", userAuth, async (req: any, res) => {
 
           const wresp = await fetch(wurl.toString(), { method: "POST" });
           const wraw = await wresp.json();
-          console.log("[Card] Terminate withdraw response:", JSON.stringify(wraw));
 
-          if (wraw.success) {
+          // Always log full raw response — essential for diagnosing shape mismatches
+          console.log(`[Card] Terminate withdraw — HTTP ${wresp.status} — raw: ${JSON.stringify(wraw)}`);
+
+          // StroWallet's success indicator isn't always a strict boolean.
+          // Check every known variant: boolean true, numeric 1, status string.
+          const isExplicitSuccess =
+            wraw.success === true  ||
+            wraw.success == true   ||   // catches numeric 1
+            wraw.status === "success" ||
+            wraw.status === true;
+
+          // Explicit failure signals — StroWallet setting success: false or an error field
+          const hasExplicitError =
+            wraw.success === false ||
+            (typeof wraw.error === "string" && wraw.error.length > 0);
+
+          if (wresp.ok) {
+            // HTTP 200 — credit the user regardless of the body's success field,
+            // since we are terminating the card and they are entitled to the balance.
+            // Flag ambiguous / explicit-failure cases for admin verification.
+            const needsVerification = !isExplicitSuccess;
+            const note = needsVerification
+              ? `Card termination — balance returned [NEEDS_VERIFICATION: StroWallet response was ${hasExplicitError ? "explicit failure" : "ambiguous"} on HTTP 200 — verify against StroWallet dashboard. Raw: ${JSON.stringify(wraw)}]`
+              : "Card termination — balance returned";
+
             const wallet = await getOrCreateWallet(userId);
             const newWalletBal = (parseFloat(wallet.availableBalance) + cardBalance).toFixed(6);
-            await db.update(walletsTable).set({ availableBalance: newWalletBal, updatedAt: new Date() }).where(eq(walletsTable.userId, userId));
-            await db.insert(transactionsTable).values({ userId, type: "deposit", amount: cardBalance.toFixed(2), status: "completed", note: "Card termination — balance returned" });
-            console.log("[Card] Terminate — refunded $" + cardBalance.toFixed(2) + " to platform wallet");
+            await db.update(walletsTable)
+              .set({ availableBalance: newWalletBal, updatedAt: new Date() })
+              .where(eq(walletsTable.userId, userId));
+            await db.insert(transactionsTable).values({
+              userId,
+              type: "deposit",
+              amount: cardBalance.toFixed(2),
+              status: "completed",
+              note,
+            });
+
+            if (needsVerification) {
+              console.warn(
+                `[Card] Terminate — credited $${cardBalance.toFixed(2)} to user ${userId} but ` +
+                `StroWallet response was ${hasExplicitError ? "an explicit failure" : "ambiguous"} ` +
+                `(HTTP ${wresp.status}). Admin should verify against StroWallet dashboard. ` +
+                `Raw: ${JSON.stringify(wraw)}`
+              );
+            } else {
+              console.log(`[Card] Terminate — refunded $${cardBalance.toFixed(2)} to platform wallet`);
+            }
+          } else {
+            // HTTP error (4xx/5xx) — StroWallet may not have processed the withdrawal at all;
+            // do not credit silently. Log clearly so admin can investigate.
+            console.warn(
+              `[Card] Terminate balance withdraw failed — HTTP ${wresp.status}. ` +
+              `$${cardBalance.toFixed(2)} NOT credited to user ${userId}. ` +
+              `Raw: ${JSON.stringify(wraw)}`
+            );
           }
         } catch (e) {
-          console.warn("[Card] Terminate balance withdraw failed (non-fatal):", e);
+          console.warn("[Card] Terminate balance withdraw network error (non-fatal):", e);
         }
       }
     }
