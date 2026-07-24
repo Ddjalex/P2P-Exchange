@@ -600,7 +600,7 @@ async function poll() {
 
 // ── Balance Sweep ──────────────────────────────────────────────────────────────
 
-const BALANCE_SWEEP_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
+const BALANCE_SWEEP_INTERVAL_MS = 10 * 1000; // 10 seconds
 let balanceSweepInterval: ReturnType<typeof setInterval> | null = null;
 let isSweepRunning = false;
 
