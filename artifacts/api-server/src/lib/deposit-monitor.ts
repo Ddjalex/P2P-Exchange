@@ -67,10 +67,13 @@ const INITIAL_LOOKBACK_BLOCKS = 300;
 // limit. The endpoint-specific fallback sizes below prevent a provider that
 // rejects a larger range from stopping catch-up scanning.
 const MAX_BLOCKS_PER_QUERY = 150;
+const LAST_PROCESSED_BLOCK_SETTING = "bscDepositLastProcessedBlock";
 
 let monitorInterval: ReturnType<typeof setInterval> | null = null;
 let isRunning = false;
 let lastProcessedBlock = 0;
+let checkpointLoaded = false;
+let hasPersistedCheckpoint = false;
 
 // ── Provider helpers ──────────────────────────────────────────────────────────
 
@@ -157,6 +160,38 @@ async function getSetting(key: string): Promise<string> {
     .from(systemSettingsTable)
     .where(eq(systemSettingsTable.key, key));
   return rows[0]?.value?.trim() ?? "";
+}
+
+async function saveLastProcessedBlock(blockNumber: number): Promise<void> {
+  await db
+    .insert(systemSettingsTable)
+    .values({
+      key: LAST_PROCESSED_BLOCK_SETTING,
+      value: String(blockNumber),
+      updatedAt: new Date(),
+    })
+    .onConflictDoUpdate({
+      target: systemSettingsTable.key,
+      set: {
+        value: String(blockNumber),
+        updatedAt: new Date(),
+      },
+    });
+}
+
+async function loadLastProcessedBlock(): Promise<number | null> {
+  const saved = await getSetting(LAST_PROCESSED_BLOCK_SETTING);
+  if (!saved) return null;
+
+  const parsed = Number(saved);
+  if (!Number.isSafeInteger(parsed) || parsed < 0) {
+    logger.warn(
+      { setting: LAST_PROCESSED_BLOCK_SETTING, value: saved },
+      "[Deposit] Ignoring invalid persisted block checkpoint",
+    );
+    return null;
+  }
+  return parsed;
 }
 
 function padAddress(addr: string): string {
@@ -443,6 +478,20 @@ async function poll() {
   if (isRunning) return;
   isRunning = true;
   try {
+    if (!checkpointLoaded) {
+      const savedCheckpoint = await loadLastProcessedBlock();
+      if (savedCheckpoint === null) {
+        console.log(
+          `[Deposit] No persisted block checkpoint — using ${INITIAL_LOOKBACK_BLOCKS}-block initial lookback`,
+        );
+      } else {
+        lastProcessedBlock = savedCheckpoint;
+        hasPersistedCheckpoint = true;
+        console.log(`[Deposit] Resuming from persisted block ${savedCheckpoint}`);
+      }
+      checkpointLoaded = true;
+    }
+
     // Load per-user deposit addresses from DB
     const userAddressMap = await loadUserDepositAddresses();
     const hasUserAddresses = userAddressMap.size > 0;
@@ -476,12 +525,20 @@ async function poll() {
       return;
     }
 
-    let chunkStart = lastProcessedBlock > 0
-      ? lastProcessedBlock + 1
-      : Math.max(0, currentBlock - INITIAL_LOOKBACK_BLOCKS);
+    if (!hasPersistedCheckpoint) {
+      // Hold the first-ever lookback start stable across retries in this
+      // process. The database checkpoint is still only created after a whole
+      // chunk succeeds, so a restart without one gets a fresh lookback.
+      lastProcessedBlock = Math.max(0, currentBlock - INITIAL_LOOKBACK_BLOCKS) - 1;
+      hasPersistedCheckpoint = true;
+    }
+
+    let chunkStart = lastProcessedBlock + 1;
 
     if (chunkStart > currentBlock) {
       lastProcessedBlock = currentBlock;
+      await saveLastProcessedBlock(currentBlock);
+      hasPersistedCheckpoint = true;
       return;
     }
 
@@ -505,11 +562,8 @@ async function poll() {
         logs = await getLogsWithFallback(chunkStart, chunkEnd, topic2);
       } catch (err) {
         logger.error({ err, chunkStart, chunkEnd }, "[Deposit] provider.getLogs() failed — stopping catch-up at this chunk");
-        lastProcessedBlock = chunkStart - 1;
         return;
       }
-
-      lastProcessedBlock = chunkEnd;
 
       if (logs.length === 0) {
         console.log(`[Deposit] No USDT transfers in blocks ${chunkStart}–${chunkEnd}`);
@@ -589,6 +643,12 @@ async function poll() {
         }
       }
 
+      // Do not move the checkpoint until every event in this chunk has been
+      // handled successfully. If crediting or persisting fails, the previous
+      // checkpoint remains in place and this range is retried on the next poll.
+      await saveLastProcessedBlock(chunkEnd);
+      lastProcessedBlock = chunkEnd;
+      hasPersistedCheckpoint = true;
       chunkStart = chunkEnd + 1;
     }
   } catch (err) {
