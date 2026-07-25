@@ -3,6 +3,8 @@ import { AppLayout } from "@/components/layout";
 import { PasswordConfirmModal } from "@/components/password-confirm-modal";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
+import { getGetWalletQueryKey, useGetWallet } from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Gamepad2, RefreshCw, TrendingUp, Info, ChevronDown, ChevronUp, Loader2, Trophy, X, Zap } from "lucide-react";
 import { useLocation } from "wouter";
 
@@ -183,7 +185,9 @@ function TopUpModal({
   const { toast } = useToast();
 
   const minAmount = type === "topup" ? parseFloat(settings.minTopup) : 0.01;
-  const maxAmountAllowed = type === "topup" ? parseFloat(settings.maxTopup) : maxAmount;
+  const maxAmountAllowed = type === "topup"
+    ? Math.min(parseFloat(settings.maxTopup), maxAmount)
+    : maxAmount;
   const parsedAmount = parseFloat(amount);
   const isValid = !isNaN(parsedAmount) && parsedAmount >= minAmount && parsedAmount <= maxAmountAllowed;
 
@@ -247,7 +251,12 @@ function TopUpModal({
             className="w-full bg-secondary border border-border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-purple-500"
           />
           {type === "withdraw" && (
-            <p className="text-xs text-muted-foreground mt-1">Available: {maxAmount.toFixed(2)} USDT</p>
+            <p className="text-xs text-muted-foreground mt-1">Keno balance: {maxAmount.toFixed(2)} USDT</p>
+          )}
+          {type === "topup" && (
+            <p className="text-xs text-muted-foreground mt-1">
+              Available in main wallet: {maxAmount.toFixed(2)} USDT
+            </p>
           )}
         </div>
 
@@ -379,6 +388,8 @@ function ResultOverlay({
 export default function KenoPage() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const { data: mainWallet } = useGetWallet();
+  const queryClient = useQueryClient();
 
   const [mode, setMode] = useState<"demo" | "real" | null>(null);
   const [wallet, setWallet] = useState<KenoWallet | null>(null);
@@ -758,11 +769,12 @@ export default function KenoPage() {
       {showTopUp && wallet && (
         <TopUpModal
           type="topup"
-          maxAmount={parseFloat(wallet.realBalance)}
+          maxAmount={parseFloat(mainWallet?.availableBalance ?? "0")}
           settings={wallet.settings}
           onClose={() => setShowTopUp(false)}
           onSuccess={(bal) => {
             setWallet(prev => prev ? { ...prev, realBalance: bal } : prev);
+            queryClient.invalidateQueries({ queryKey: getGetWalletQueryKey() });
             setShowTopUp(false);
           }}
         />
@@ -776,6 +788,7 @@ export default function KenoPage() {
           onClose={() => setShowWithdraw(false)}
           onSuccess={(bal) => {
             setWallet(prev => prev ? { ...prev, realBalance: bal } : prev);
+            queryClient.invalidateQueries({ queryKey: getGetWalletQueryKey() });
             setShowWithdraw(false);
             loadWallet();
           }}
