@@ -401,6 +401,8 @@ export default function KenoPage() {
   const [playing, setPlaying] = useState(false);
   const [animating, setAnimating] = useState(false);
   const [revealedNums, setRevealedNums] = useState<number[]>([]);
+  const [activeDrawNumber, setActiveDrawNumber] = useState<number | null>(null);
+  const [drawProgress, setDrawProgress] = useState(0);
 
   const [result, setResult] = useState<{ drawn: number[]; picks: number[]; hitCount: number; multiplier: number; payout: number; betAmount: number } | null>(null);
   const [showTopUp, setShowTopUp] = useState(false);
@@ -478,6 +480,8 @@ export default function KenoPage() {
     if (!canPlay || !mode) return;
     setPlaying(true);
     setRevealedNums([]);
+    setActiveDrawNumber(null);
+    setDrawProgress(0);
 
     try {
       const res = await apiFetch("/api/games/keno/play", {
@@ -491,18 +495,21 @@ export default function KenoPage() {
         return;
       }
 
-      // Animate the draw reveal
+      // Animate the draw reveal as a paced 20-ball sequence.
       setAnimating(true);
       setPlaying(false);
       const drawn: number[] = data.drawn;
 
-      // Reveal numbers one by one
       for (let i = 0; i < drawn.length; i++) {
-        await new Promise(r => setTimeout(r, 80));
+        setActiveDrawNumber(drawn[i]);
+        await new Promise(r => setTimeout(r, 560));
         setRevealedNums(prev => [...prev, drawn[i]]);
+        setDrawProgress(i + 1);
+        await new Promise(r => setTimeout(r, 110));
       }
 
       await new Promise(r => setTimeout(r, 400));
+      setActiveDrawNumber(null);
       setAnimating(false);
 
       setResult({
@@ -526,6 +533,8 @@ export default function KenoPage() {
       toast({ description: "Network error", variant: "destructive" });
       setPlaying(false);
       setAnimating(false);
+      setActiveDrawNumber(null);
+      setDrawProgress(0);
     }
   }
 
@@ -644,13 +653,31 @@ export default function KenoPage() {
               <div className="relative flex min-h-[112px] items-center justify-between overflow-hidden px-5 py-5 sm:px-8">
                 <div className="pointer-events-none absolute -right-8 -top-20 h-64 w-64 rounded-full border-[18px] border-emerald-400/5" />
                 <div className="pointer-events-none absolute -right-20 top-10 h-40 w-40 rounded-full border-[14px] border-cyan-300/5" />
-                <div>
+                {animating && activeDrawNumber !== null && (
+                  <div
+                    className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center"
+                    role="status"
+                    aria-live="polite"
+                    aria-label={`Number ${activeDrawNumber} of ${drawProgress} drawn`}
+                  >
+                    <div className="keno-draw-orbit absolute h-28 w-28 rounded-full border border-cyan-300/20" />
+                    <div className="keno-draw-orbit keno-draw-orbit-delayed absolute h-20 w-20 rounded-full border border-emerald-300/20" />
+                    <div className={`keno-draw-ball relative flex h-16 w-16 items-center justify-center rounded-full border-2 text-2xl font-black ${selectedNums.includes(activeDrawNumber) ? "border-emerald-200 bg-emerald-400 text-[#10221c] shadow-emerald-400/60" : "border-cyan-200 bg-[#1d5960] text-white shadow-cyan-400/60"}`}>
+                      {activeDrawNumber}
+                      {selectedNums.includes(activeDrawNumber) && <Check className="absolute -right-1 -top-1 h-4 w-4 rounded-full bg-emerald-200 p-0.5 text-[#10221c]" />}
+                    </div>
+                    <div className="absolute top-2 text-[9px] font-black uppercase tracking-[0.28em] text-cyan-200/80">
+                      Draw {drawProgress + 1} / 20
+                    </div>
+                  </div>
+                )}
+                <div className="relative z-20">
                   <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-300">{animating ? "Drawing numbers" : "Next game ready"}</p>
                   <h2 className="text-xl font-black text-white sm:text-2xl">Choose up to 10 numbers</h2>
                   <p className="mt-1 text-sm font-semibold text-cyan-300">From 1 to 80 · {selectedNums.length} selected</p>
                 </div>
-                <div className="hidden text-right sm:block">
-                  <p className="font-mono text-3xl font-black tracking-widest text-orange-400">{animating ? "00:00" : "READY"}</p>
+                <div className="relative z-20 hidden text-right sm:block">
+                  <p className="font-mono text-3xl font-black tracking-widest text-orange-400">{animating ? `${drawProgress}/20` : "READY"}</p>
                   <p className="text-[10px] uppercase tracking-widest text-slate-500">Game status</p>
                 </div>
                 <button type="button" data-testid="button-open-paytable" onClick={() => setShowPaytable(true)} className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-full bg-cyan-300/10 text-cyan-300 hover:bg-cyan-300/20" aria-label="Open payout information">
@@ -665,13 +692,14 @@ export default function KenoPage() {
                   const isSelected = selectedNums.includes(n);
                   const isDrawn = revealedNums.includes(n);
                   const isHit = isSelected && isDrawn;
+                  const isActive = activeDrawNumber === n;
                   return (
                     <button
                       key={n}
                       type="button"
                       data-testid={`button-keno-number-${n}`}
                       onClick={() => toggleNumber(n)}
-                      className={`relative aspect-square rounded-md text-xs font-bold transition-all sm:rounded-lg sm:text-sm ${isHit ? "scale-105 bg-emerald-400 text-[#10221c] shadow-lg shadow-emerald-400/20" : isSelected ? "border-2 border-cyan-300 bg-cyan-300/20 text-cyan-200" : isDrawn ? "bg-[#303b3d] text-slate-600" : "bg-[#2a3436] text-slate-400 hover:bg-[#344143] hover:text-white"} ${animating ? "cursor-not-allowed" : ""}`}
+                      className={`relative aspect-square rounded-md text-xs font-bold transition-all sm:rounded-lg sm:text-sm ${isHit ? "scale-105 bg-emerald-400 text-[#10221c] shadow-lg shadow-emerald-400/20" : isSelected ? "border-2 border-cyan-300 bg-cyan-300/20 text-cyan-200" : isDrawn ? "bg-[#303b3d] text-slate-600" : "bg-[#2a3436] text-slate-400 hover:bg-[#344143] hover:text-white"} ${isActive ? "keno-number-reveal" : ""} ${animating ? "cursor-not-allowed" : ""}`}
                     >
                       {isHit && <Check className="absolute right-1 top-1 h-2.5 w-2.5" />}
                       {n}
