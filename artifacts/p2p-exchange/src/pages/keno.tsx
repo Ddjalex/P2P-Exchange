@@ -410,9 +410,12 @@ export default function KenoPage() {
   const [showPaytable, setShowPaytable] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [resettingDemo, setResettingDemo] = useState(false);
+  const [countdown, setCountdown] = useState(30);
 
   const walletRef = useRef(wallet);
   walletRef.current = wallet;
+  // stable ref so the countdown interval can call the latest handlePlay
+  const handlePlayRef = useRef<() => void>(() => {});
 
   // Load wallet + paytable
   async function loadWallet() {
@@ -443,6 +446,34 @@ export default function KenoPage() {
       loadHistory();
     }
   }, [mode]);
+
+  // ── Betting countdown timer ────────────────────────────────────────────────
+  // Ticks 30→0 during the betting phase. Pauses while drawing/playing.
+  // Resets to 30 when the drawing phase ends.
+  useEffect(() => {
+    if (!mode) return;
+
+    // Enter/re-enter betting phase: reset to 30
+    if (!animating && !playing) {
+      setCountdown(30);
+    }
+
+    // Pause the ticker while a round is in-flight
+    if (animating || playing) return;
+
+    const id = setInterval(() => {
+      setCountdown(prev => {
+        if (prev <= 1) {
+          // Time's up — attempt to play (no-op if canPlay is false)
+          setTimeout(() => handlePlayRef.current?.(), 0);
+          return 30;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(id);
+  }, [mode, animating, playing]);
 
   function toggleNumber(n: number) {
     if (animating || playing) return;
@@ -482,6 +513,7 @@ export default function KenoPage() {
     setRevealedNums([]);
     setActiveDrawNumber(null);
     setDrawProgress(0);
+    setCountdown(30); // reset display while in-flight
 
     try {
       const res = await apiFetch("/api/games/keno/play", {
@@ -537,6 +569,9 @@ export default function KenoPage() {
       setDrawProgress(0);
     }
   }
+
+  // Keep the ref current every render so the interval can call the latest closure
+  handlePlayRef.current = handlePlay;
 
   async function resetDemo() {
     setResettingDemo(true);
@@ -650,6 +685,21 @@ export default function KenoPage() {
 
           <main className="min-w-0">
             <div className="mb-3 overflow-hidden rounded-xl border border-white/10 bg-[#273335]">
+              {/* ── Countdown bar ───────────────────────────────────────── */}
+              {!animating && !playing && (
+                <div className="relative h-1 w-full overflow-hidden bg-white/5">
+                  <div
+                    className={`h-full transition-all duration-1000 ease-linear ${
+                      countdown <= 5
+                        ? "bg-red-500"
+                        : countdown <= 10
+                        ? "bg-orange-400"
+                        : "bg-emerald-400"
+                    }`}
+                    style={{ width: `${(countdown / 30) * 100}%` }}
+                  />
+                </div>
+              )}
               <div className="relative flex min-h-[112px] items-center justify-between overflow-hidden px-5 py-5 sm:px-8">
                 <div className="pointer-events-none absolute -right-8 -top-20 h-64 w-64 rounded-full border-[18px] border-emerald-400/5" />
                 <div className="pointer-events-none absolute -right-20 top-10 h-40 w-40 rounded-full border-[14px] border-cyan-300/5" />
@@ -667,19 +717,62 @@ export default function KenoPage() {
                       {selectedNums.includes(activeDrawNumber) && <Check className="absolute -right-1 -top-1 h-4 w-4 rounded-full bg-emerald-200 p-0.5 text-[#10221c]" />}
                     </div>
                     <div className="absolute top-2 text-[9px] font-black uppercase tracking-[0.28em] text-cyan-200/80">
-                      Draw {drawProgress + 1} / 20
+                      Draw {drawProgress} / 20
                     </div>
                   </div>
                 )}
                 <div className="relative z-20">
-                  <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-300">{animating ? "Drawing numbers" : "Next game ready"}</p>
+                  <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-300">
+                    {animating ? "Drawing numbers" : playing ? "Placing bet…" : "Betting open — place your numbers!"}
+                  </p>
                   <h2 className="text-xl font-black text-white sm:text-2xl">Choose up to 10 numbers</h2>
                   <p className="mt-1 text-sm font-semibold text-cyan-300">From 1 to 80 · {selectedNums.length} selected</p>
                 </div>
-                <div className="relative z-20 hidden text-right sm:block">
-                  <p className="font-mono text-3xl font-black tracking-widest text-orange-400">{animating ? `${drawProgress}/20` : "READY"}</p>
-                  <p className="text-[10px] uppercase tracking-widest text-slate-500">Game status</p>
+
+                {/* ── Countdown ring / draw progress ──────────────────── */}
+                <div className="relative z-20 flex flex-col items-center gap-1">
+                  {animating ? (
+                    /* Draw progress ring */
+                    <div className="relative flex h-16 w-16 items-center justify-center">
+                      <svg className="absolute inset-0 -rotate-90" viewBox="0 0 64 64">
+                        <circle cx="32" cy="32" r="28" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="4" />
+                        <circle
+                          cx="32" cy="32" r="28" fill="none"
+                          stroke="#22d3ee"
+                          strokeWidth="4"
+                          strokeDasharray={`${2 * Math.PI * 28}`}
+                          strokeDashoffset={`${2 * Math.PI * 28 * (1 - drawProgress / 20)}`}
+                          strokeLinecap="round"
+                          className="transition-all duration-200"
+                        />
+                      </svg>
+                      <span className="font-mono text-lg font-black text-white">{drawProgress}<span className="text-[10px] text-slate-400">/20</span></span>
+                    </div>
+                  ) : (
+                    /* Betting countdown ring */
+                    <div className="relative flex h-16 w-16 items-center justify-center">
+                      <svg className="absolute inset-0 -rotate-90" viewBox="0 0 64 64">
+                        <circle cx="32" cy="32" r="28" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="4" />
+                        <circle
+                          cx="32" cy="32" r="28" fill="none"
+                          stroke={countdown <= 5 ? "#ef4444" : countdown <= 10 ? "#fb923c" : "#34d399"}
+                          strokeWidth="4"
+                          strokeDasharray={`${2 * Math.PI * 28}`}
+                          strokeDashoffset={`${2 * Math.PI * 28 * (1 - countdown / 30)}`}
+                          strokeLinecap="round"
+                          className="transition-all duration-1000 ease-linear"
+                        />
+                      </svg>
+                      <span className={`font-mono text-2xl font-black ${countdown <= 5 ? "text-red-400" : countdown <= 10 ? "text-orange-400" : "text-emerald-300"}`}>
+                        {playing ? <Loader2 className="h-5 w-5 animate-spin text-slate-400" /> : countdown}
+                      </span>
+                    </div>
+                  )}
+                  <p className="text-[9px] font-bold uppercase tracking-widest text-slate-500">
+                    {animating ? "Drawing" : playing ? "Wait…" : "Seconds left"}
+                  </p>
                 </div>
+
                 <button type="button" data-testid="button-open-paytable" onClick={() => setShowPaytable(true)} className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-full bg-cyan-300/10 text-cyan-300 hover:bg-cyan-300/20" aria-label="Open payout information">
                   <CircleHelp className="h-4 w-4" />
                 </button>
