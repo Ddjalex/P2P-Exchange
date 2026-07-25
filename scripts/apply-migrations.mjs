@@ -23,8 +23,8 @@ if (!connectionString) {
   process.exit(1);
 }
 
-// Duplicate object / duplicate table / duplicate constraint error codes
-const IDEMPOTENT_CODES = new Set(['42710', '42P07', '42P16']);
+// Duplicate object / duplicate table / duplicate column / duplicate constraint error codes
+const IDEMPOTENT_CODES = new Set(['42701', '42710', '42P07', '42P16']);
 
 const client = new Client({ connectionString, ssl: { rejectUnauthorized: false } });
 await client.connect();
