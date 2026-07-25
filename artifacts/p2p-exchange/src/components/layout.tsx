@@ -1,6 +1,6 @@
 import React from "react";
 import { Link, useLocation } from "wouter";
-import { Users, Clock, Megaphone, MessageSquare, User } from "lucide-react";
+import { Users, Clock, Megaphone, MessageSquare, User, Gamepad2 } from "lucide-react";
 import { useBadges } from "@/hooks/use-badges";
 import { Badge } from "@/components/badge";
 import { NotificationBlockedBanner } from "@/components/notification-blocked-banner";
@@ -12,7 +12,7 @@ export function BottomNav() {
   const navItems = [
     { href: "/p2p",     icon: Users,          label: "P2P",    badge: 0 },
     { href: "/orders",  icon: Clock,          label: "Orders", badge: orderCount },
-    { href: "/ads",     icon: Megaphone,      label: "Ads",    badge: 0 },
+    { href: "/games",   icon: Gamepad2,       label: "Games",  badge: 0 },
     { href: "/chat",    icon: MessageSquare,  label: "Chat",   badge: chatCount },
     { href: "/profile", icon: User,           label: "Profile",badge: 0 },
   ];

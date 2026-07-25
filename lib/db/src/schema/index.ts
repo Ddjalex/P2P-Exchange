@@ -33,3 +33,4 @@ export * from "./legacy_app_config";
 export * from "./legacy_languages";
 export * from "./legacy_password_resets";
 export * from "./legacy_pending_registrations";
+export * from "./keno";

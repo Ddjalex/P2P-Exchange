@@ -21,6 +21,7 @@ import feesRouter from "./fees";
 import pushRouter from "./push";
 import configRouter from "./config";
 import webhookCardsRouter from "./webhook-cards";
+import { kenoRouter, kenoAdminRouter } from "./keno";
 
 const router: IRouter = Router();
 
@@ -45,7 +46,9 @@ router.use("/card", cardRouter);
 router.use("/cards", nfcCardsRouter);
 router.use("/push", userAuth, checkAccountStatus, pushRouter);
 
+router.use("/games/keno", userAuth, checkAccountStatus, kenoRouter);
 router.use("/webhooks", webhookCardsRouter);
 router.use("/admin", adminRouter);
+router.use("/admin/games", kenoAdminRouter);
 
 export default router;

@@ -41,6 +41,7 @@ import ContactPage from "@/pages/contact";
 import RefundPage from "@/pages/refund";
 import SharedAdPage from "@/pages/shared-ad";
 import CardPage from "@/pages/card";
+import KenoPage from "@/pages/keno";
 import TransferHistoryPage from "@/pages/transfer-history";
 import WalletUsdtPage from "@/pages/wallet-usdt";
 import AddressVerifyPage from "@/pages/address-verify";
@@ -72,6 +73,7 @@ import AdminBroadcastPage from "@/pages/admin-broadcast";
 import AdminEmailPage from "@/pages/admin-email-page";
 import AdminCardsPage from "@/pages/admin-cards-page";
 import AdminSecurityPage from "@/pages/admin-security-page";
+import AdminGamesPage from "@/pages/admin-games";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -203,6 +205,7 @@ function Router() {
       <Route path="/about"><ProtectedRoute component={AboutPage} /></Route>
       <Route path="/kyc"><ProtectedRoute component={KycPage} /></Route>
       <Route path="/card"><ProtectedRoute component={CardPage} /></Route>
+      <Route path="/games"><ProtectedRoute component={KenoPage} /></Route>
       <Route path="/settings/address-verify"><ProtectedRoute component={AddressVerifyPage} /></Route>
       <Route path="/settings/address"><ProtectedRoute component={AddressStatusPage} /></Route>
       <Route path="/settings/email-verify"><ProtectedRoute component={EmailVerifyPage} /></Route>
@@ -235,6 +238,7 @@ function Router() {
       <Route path="/admin/broadcast" component={AdminBroadcastPage} />
       <Route path="/admin/email" component={AdminEmailPage} />
       <Route path="/admin/cards" component={AdminCardsPage} />
+      <Route path="/admin/games" component={AdminGamesPage} />
 
       <Route component={NotFound} />
     </Switch>
