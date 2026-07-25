@@ -5,7 +5,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { getGetWalletQueryKey, useGetWallet } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Gamepad2, RefreshCw, TrendingUp, Info, ChevronDown, ChevronUp, Loader2, Trophy, X, Zap } from "lucide-react";
+import { ArrowLeft, Gamepad2, RefreshCw, TrendingUp, Info, ChevronDown, ChevronUp, Loader2, Trophy, X, Zap, Menu, CircleHelp, Minus, Plus, BarChart3, Crown, Check } from "lucide-react";
 import { useLocation } from "wouter";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -548,213 +548,200 @@ export default function KenoPage() {
   const rtp = selectedNums.length > 0 ? calcRtp(selectedNums.length, paytable) : null;
 
   return (
-    <AppLayout>
-      <div className="flex flex-col min-h-screen pb-4">
-        {/* Header */}
-        <div className="px-4 pt-4 pb-2 flex items-center justify-between">
+    <AppLayout showNav={false} wide>
+      <div className="min-h-screen bg-[#121719] text-slate-100">
+        <header className="flex h-16 items-center justify-between border-b border-white/10 bg-[#171c1d] px-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-3">
             <button
+              type="button"
+              data-testid="button-exit-keno"
               onClick={() => { setMode(null); setSelectedNums([]); setRevealedNums([]); setResult(null); }}
-              className="w-8 h-8 rounded-lg bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground"
+              className="flex h-9 w-9 items-center justify-center rounded-lg bg-white/5 text-slate-400 transition hover:bg-white/10 hover:text-white"
+              aria-label="Exit Keno"
             >
-              <X className="w-4 h-4" />
+              <ArrowLeft className="h-4 w-4" />
             </button>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="font-bold text-base">Keno</h1>
-                {mode === "demo" && (
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-400 uppercase tracking-wide">Demo</span>
-                )}
+                <span className="text-lg font-black tracking-[0.22em] text-white">FAST<span className="text-emerald-400">KENO</span></span>
+                {mode === "demo" && <span className="rounded-full bg-cyan-400/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-cyan-300">Demo</span>}
               </div>
+              <p className="hidden text-[10px] uppercase tracking-[0.18em] text-slate-500 sm:block">Pick your numbers · play your way</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            {/* Balance pill */}
-            <div className="bg-secondary rounded-xl px-3 py-1.5 flex items-center gap-2">
-              <span className="text-xs text-muted-foreground">{mode === "demo" ? "Demo" : "USDT"}</span>
-              <span className="font-bold text-sm text-foreground">
-                {balance.toFixed(2)}
-              </span>
+          <div className="flex items-center gap-2 sm:gap-4">
+            <div className="hidden text-right sm:block">
+              <p className="text-[10px] uppercase tracking-wider text-slate-500">Player</p>
+              <p className="text-xs font-semibold text-slate-300">ID: {user?.id ?? "Guest"}</p>
             </div>
-
+            <div className="rounded-full border border-emerald-400/40 bg-emerald-400/10 px-3 py-1.5 text-xs font-bold text-emerald-300">
+              {balance.toFixed(2)} <span className="text-[10px] font-medium text-emerald-400/70">{mode === "demo" ? "DEMO" : "USDT"}</span>
+            </div>
             {mode === "real" && (
-              <button
-                onClick={() => setShowTopUp(true)}
-                className="text-xs font-semibold px-3 py-1.5 rounded-xl bg-purple-600/20 text-purple-400 hover:bg-purple-600/30 transition-colors"
-              >
-                Top Up
+              <button type="button" data-testid="button-topup-keno" onClick={() => setShowTopUp(true)} className="hidden rounded-lg bg-emerald-500 px-3 py-2 text-xs font-bold text-[#10221c] transition hover:bg-emerald-400 sm:block">
+                Top up
               </button>
             )}
             {mode === "demo" && balance < 1 && (
-              <button
-                onClick={resetDemo}
-                disabled={resettingDemo}
-                className="text-xs font-semibold px-3 py-1.5 rounded-xl bg-purple-600/20 text-purple-400 hover:bg-purple-600/30 transition-colors disabled:opacity-50"
-              >
-                {resettingDemo ? <Loader2 className="w-3 h-3 animate-spin" /> : "Reset"}
+              <button type="button" data-testid="button-reset-demo" onClick={resetDemo} disabled={resettingDemo} className="rounded-lg bg-cyan-400 px-3 py-2 text-xs font-bold text-[#10221c] disabled:opacity-50">
+                {resettingDemo ? <Loader2 className="h-3 w-3 animate-spin" /> : "Reset"}
               </button>
             )}
-          </div>
-        </div>
-
-        {/* Wallet bar (Real mode — withdraw) */}
-        {mode === "real" && (
-          <div className="mx-4 mb-3 rounded-xl bg-secondary/60 border border-border px-4 py-2 flex items-center justify-between">
-            <span className="text-xs text-muted-foreground">Keno wallet: <span className="text-foreground font-semibold">{parseFloat(wallet?.realBalance ?? "0").toFixed(2)} USDT</span></span>
-            <button
-              onClick={() => setShowWithdraw(true)}
-              className="text-xs text-purple-400 hover:text-purple-300 font-semibold"
-            >
-              Withdraw →
+            <button type="button" data-testid="button-toggle-keno-history" onClick={() => setShowHistory(s => !s)} className="flex h-9 w-9 items-center justify-center rounded-lg bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white lg:hidden" aria-label="Toggle game history">
+              <Menu className="h-4 w-4" />
             </button>
           </div>
-        )}
+        </header>
 
-        {/* Number grid */}
-        <div className="px-4 mb-3">
-          <div className="grid grid-cols-10 gap-1">
-            {Array.from({ length: 80 }, (_, i) => i + 1).map(n => {
-              const isSelected = selectedNums.includes(n);
-              const isDrawn = revealedNums.includes(n);
-              const isHit = isSelected && isDrawn;
-
-              return (
-                <button
-                  key={n}
-                  onClick={() => toggleNumber(n)}
-                  className={`aspect-square rounded-lg text-[11px] font-bold flex items-center justify-center transition-all select-none
-                    ${isHit
-                      ? "bg-purple-600 text-white scale-105 shadow-lg shadow-purple-500/30"
-                      : isSelected
-                        ? "bg-purple-500/30 border-2 border-purple-500 text-purple-300"
-                        : isDrawn
-                          ? "bg-muted text-muted-foreground/50"
-                          : "bg-secondary text-muted-foreground hover:bg-secondary/80 hover:text-foreground"
-                    }
-                    ${animating ? "cursor-not-allowed" : ""}
-                  `}
-                >
-                  {n}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Selection info */}
-          <div className="flex items-center justify-between mt-2">
-            <p className="text-xs text-muted-foreground">
-              {selectedNums.length === 0
-                ? "Tap numbers to pick (1–10)"
-                : `${selectedNums.length} selected`}
-              {rtp !== null && (
-                <span className="ml-2 text-purple-400">· RTP {(rtp * 100).toFixed(0)}%</span>
-              )}
-            </p>
-            <div className="flex items-center gap-2">
-              {selectedNums.length > 0 && (
-                <button
-                  onClick={() => setShowPaytable(true)}
-                  className="text-xs text-muted-foreground hover:text-purple-400 flex items-center gap-1"
-                >
-                  <Info className="w-3 h-3" /> Payouts
-                </button>
-              )}
-              {selectedNums.length > 0 && (
-                <button onClick={clearSelections} className="text-xs text-muted-foreground hover:text-destructive">Clear</button>
-              )}
+        <div className="mx-auto grid max-w-[1440px] gap-3 p-3 sm:p-5 lg:grid-cols-[235px_minmax(0,1fr)_280px] lg:gap-4 lg:p-6">
+          <aside className={`${showHistory ? "block" : "hidden"} rounded-xl border border-white/10 bg-[#1b2324] lg:block`}>
+            <div className="border-b border-white/10 px-4 py-3">
+              <div className="flex items-center gap-4 text-xs font-bold uppercase tracking-wider">
+                <button type="button" data-testid="button-game-tab" className="border-b-2 border-emerald-400 pb-2 text-emerald-300">Game</button>
+                <button type="button" data-testid="button-history-tab" onClick={() => setShowHistory(true)} className="pb-2 text-slate-500 hover:text-slate-200">History</button>
+              </div>
+              <div className="mt-4 flex items-center justify-between text-[10px] text-slate-500">
+                <span>My tickets</span>
+                <span>{history.length} rounds</span>
+              </div>
             </div>
-          </div>
-        </div>
-
-        {/* Bet amount + play */}
-        <div className="px-4 space-y-3">
-          {/* Quick bet amounts */}
-          <div className="grid grid-cols-5 gap-1.5">
-            {["0.10", "0.50", "1.00", "5.00", "10.00"].map(v => (
-              <button
-                key={v}
-                onClick={() => setBetAmount(v)}
-                className={`py-1.5 rounded-lg text-xs font-semibold border transition-all ${
-                  betAmount === v
-                    ? "bg-purple-600 border-purple-600 text-white"
-                    : "border-border text-muted-foreground hover:border-purple-500/50"
-                }`}
-              >
-                {v}
-              </button>
-            ))}
-          </div>
-
-          <div className="flex gap-2">
-            <div className="flex-1 relative">
-              <input
-                type="number"
-                value={betAmount}
-                onChange={e => setBetAmount(e.target.value)}
-                min={settings?.minBet ?? "0.10"}
-                max={settings?.maxBet ?? "100"}
-                step="0.10"
-                className="w-full bg-secondary border border-border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-purple-500"
-                placeholder="Bet amount"
-              />
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">USDT</span>
-            </div>
-
-            <button
-              onClick={handlePlay}
-              disabled={!canPlay}
-              className="flex-1 py-3 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-sm flex items-center justify-center gap-2 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              {playing || animating
-                ? <><Loader2 className="w-4 h-4 animate-spin" /> {animating ? "Drawing..." : "..."}</>
-                : <><Zap className="w-4 h-4" /> Play</>
-              }
-            </button>
-          </div>
-
-          {settings && (
-            <p className="text-[10px] text-muted-foreground text-center">
-              Bet {settings.minBet}–{settings.maxBet} USDT · Pick 1–10 numbers
-            </p>
-          )}
-        </div>
-
-        {/* History */}
-        <div className="px-4 mt-4">
-          <button
-            onClick={() => setShowHistory(s => !s)}
-            className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground w-full py-2"
-          >
-            <TrendingUp className="w-3.5 h-3.5" />
-            Recent rounds
-            {showHistory ? <ChevronUp className="w-3.5 h-3.5 ml-auto" /> : <ChevronDown className="w-3.5 h-3.5 ml-auto" />}
-          </button>
-
-          {showHistory && (
-            <div className="space-y-2 mt-1">
+            <div className="max-h-[calc(100vh-180px)] space-y-2 overflow-y-auto p-2">
               {history.length === 0 && (
-                <p className="text-xs text-muted-foreground text-center py-4">No rounds yet</p>
+                <div className="rounded-lg border border-dashed border-white/10 px-3 py-8 text-center text-xs text-slate-500">Your tickets will appear here after a draw.</div>
               )}
-              {history.map(r => (
-                <div key={r.id} className="flex items-center justify-between rounded-xl bg-secondary/60 px-3 py-2.5">
-                  <div>
-                    <p className="text-xs font-semibold">
-                      {r.hitCount}/{r.picks.length} hits · {parseFloat(r.multiplier).toFixed(2)}×
-                    </p>
-                    <p className="text-[10px] text-muted-foreground">
-                      Bet {parseFloat(r.betAmount).toFixed(2)} · {new Date(r.createdAt).toLocaleTimeString()}
-                    </p>
+              {history.map((round, index) => (
+                <div key={round.id} data-testid={`card-keno-ticket-${round.id}`} className="rounded-lg border border-white/5 bg-[#222c2d] p-2.5">
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="text-xs font-bold text-emerald-300">Ticket {history.length - index}</span>
+                    <span className={`text-[10px] font-bold ${parseFloat(round.payoutAmount) > 0 ? "text-emerald-300" : "text-slate-500"}`}>
+                      {parseFloat(round.payoutAmount) > 0 ? `+${parseFloat(round.payoutAmount).toFixed(2)}` : "No win"}
+                    </span>
                   </div>
-                  <div className={`text-right ${parseFloat(r.payoutAmount) > 0 ? "text-purple-400" : "text-muted-foreground"}`}>
-                    <p className="text-sm font-bold">
-                      {parseFloat(r.payoutAmount) > 0 ? `+${parseFloat(r.payoutAmount).toFixed(2)}` : "—"}
-                    </p>
+                  <div className="flex flex-wrap gap-1">
+                    {round.picks.map(pick => (
+                      <span key={pick} className={`flex h-6 min-w-6 items-center justify-center rounded bg-[#334043] px-1 text-[10px] font-bold ${round.drawnNumbers.includes(pick) ? "bg-emerald-500 text-[#10221c]" : "text-slate-300"}`}>{pick}</span>
+                    ))}
+                  </div>
+                  <div className="mt-2 flex items-center justify-between border-t border-white/5 pt-2 text-[10px] text-slate-500">
+                    <span>Bet {parseFloat(round.betAmount).toFixed(2)}</span>
+                    <span>{round.hitCount}/{round.picks.length} hits</span>
                   </div>
                 </div>
               ))}
             </div>
-          )}
+            {mode === "real" && (
+              <div className="border-t border-white/10 p-3">
+                <button type="button" data-testid="button-withdraw-keno" onClick={() => setShowWithdraw(true)} className="w-full rounded-lg border border-white/10 px-3 py-2 text-xs font-bold text-slate-300 transition hover:border-emerald-400/50 hover:text-emerald-300">
+                  Withdraw to main wallet
+                </button>
+              </div>
+            )}
+          </aside>
+
+          <main className="min-w-0">
+            <div className="mb-3 overflow-hidden rounded-xl border border-white/10 bg-[#273335]">
+              <div className="relative flex min-h-[112px] items-center justify-between overflow-hidden px-5 py-5 sm:px-8">
+                <div className="pointer-events-none absolute -right-8 -top-20 h-64 w-64 rounded-full border-[18px] border-emerald-400/5" />
+                <div className="pointer-events-none absolute -right-20 top-10 h-40 w-40 rounded-full border-[14px] border-cyan-300/5" />
+                <div>
+                  <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-300">{animating ? "Drawing numbers" : "Next game ready"}</p>
+                  <h2 className="text-xl font-black text-white sm:text-2xl">Choose up to 10 numbers</h2>
+                  <p className="mt-1 text-sm font-semibold text-cyan-300">From 1 to 80 · {selectedNums.length} selected</p>
+                </div>
+                <div className="hidden text-right sm:block">
+                  <p className="font-mono text-3xl font-black tracking-widest text-orange-400">{animating ? "00:00" : "READY"}</p>
+                  <p className="text-[10px] uppercase tracking-widest text-slate-500">Game status</p>
+                </div>
+                <button type="button" data-testid="button-open-paytable" onClick={() => setShowPaytable(true)} className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-full bg-cyan-300/10 text-cyan-300 hover:bg-cyan-300/20" aria-label="Open payout information">
+                  <CircleHelp className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-white/10 bg-[#1b2324] p-2 sm:p-3">
+              <div className="grid grid-cols-10 gap-1 sm:gap-1.5">
+                {Array.from({ length: 80 }, (_, i) => i + 1).map(n => {
+                  const isSelected = selectedNums.includes(n);
+                  const isDrawn = revealedNums.includes(n);
+                  const isHit = isSelected && isDrawn;
+                  return (
+                    <button
+                      key={n}
+                      type="button"
+                      data-testid={`button-keno-number-${n}`}
+                      onClick={() => toggleNumber(n)}
+                      className={`relative aspect-square rounded-md text-xs font-bold transition-all sm:rounded-lg sm:text-sm ${isHit ? "scale-105 bg-emerald-400 text-[#10221c] shadow-lg shadow-emerald-400/20" : isSelected ? "border-2 border-cyan-300 bg-cyan-300/20 text-cyan-200" : isDrawn ? "bg-[#303b3d] text-slate-600" : "bg-[#2a3436] text-slate-400 hover:bg-[#344143] hover:text-white"} ${animating ? "cursor-not-allowed" : ""}`}
+                    >
+                      {isHit && <Check className="absolute right-1 top-1 h-2.5 w-2.5" />}
+                      {n}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-white/10 pt-3">
+                <div className="flex items-center gap-2 text-xs text-slate-500">
+                  <span className="font-bold text-slate-200">{selectedNums.length}/10</span> numbers selected
+                  {rtp !== null && <span className="text-emerald-300">· RTP {(rtp * 100).toFixed(0)}%</span>}
+                </div>
+                <div className="flex items-center gap-3">
+                  <button type="button" data-testid="button-clear-keno-selection" onClick={clearSelections} disabled={selectedNums.length === 0} className="text-xs font-bold text-slate-500 hover:text-white disabled:opacity-30">Clear</button>
+                  <button type="button" data-testid="button-show-payouts" onClick={() => setShowPaytable(true)} className="flex items-center gap-1 text-xs font-bold text-cyan-300 hover:text-cyan-200"><Info className="h-3 w-3" /> Payouts</button>
+                </div>
+              </div>
+
+              <div className="mt-3 grid grid-cols-[1fr_auto_auto_auto] gap-2">
+                <div className="flex items-center rounded-lg border border-white/10 bg-[#263133]">
+                  <button type="button" data-testid="button-decrease-bet" onClick={() => setBetAmount(Math.max(0.1, bet - 0.1).toFixed(2))} className="flex h-11 w-10 items-center justify-center text-slate-400 hover:text-white"><Minus className="h-4 w-4" /></button>
+                  <label className="flex flex-1 items-center justify-center gap-1 text-sm font-black text-white">
+                    <input type="number" data-testid="input-keno-bet" value={betAmount} onChange={e => setBetAmount(e.target.value)} min={settings?.minBet ?? "0.10"} max={settings?.maxBet ?? "100"} step="0.10" className="w-16 bg-transparent text-center outline-none" aria-label="Bet amount" />
+                    <span className="text-[10px] font-bold text-slate-500">USDT</span>
+                  </label>
+                  <button type="button" data-testid="button-increase-bet" onClick={() => setBetAmount((bet + 0.1).toFixed(2))} className="flex h-11 w-10 items-center justify-center text-slate-400 hover:text-white"><Plus className="h-4 w-4" /></button>
+                </div>
+                <button type="button" data-testid="button-double-bet" onClick={() => setBetAmount((bet * 2).toFixed(2))} className="rounded-lg border border-emerald-400/20 bg-emerald-400/10 px-3 text-xs font-black text-emerald-300 hover:bg-emerald-400/20">X2</button>
+                <button type="button" data-testid="button-max-bet" onClick={() => setBetAmount(settings?.maxBet ?? "100.00")} className="rounded-lg border border-emerald-400/20 bg-emerald-400/10 px-3 text-xs font-black text-emerald-300 hover:bg-emerald-400/20">MAX</button>
+                <button type="button" data-testid="button-play-keno" onClick={handlePlay} disabled={!canPlay} className="min-w-[92px] rounded-lg bg-gradient-to-r from-emerald-500 to-emerald-400 px-4 text-sm font-black uppercase tracking-wider text-[#10221c] shadow-lg shadow-emerald-500/10 transition hover:from-emerald-400 hover:to-cyan-300 disabled:cursor-not-allowed disabled:opacity-35">
+                  {playing || animating ? <Loader2 className="mx-auto h-5 w-5 animate-spin" /> : "Bet"}
+                </button>
+              </div>
+              <div className="mt-2 flex items-center justify-between px-1 text-[10px] text-slate-500">
+                <span>{settings ? `${settings.minBet}–${settings.maxBet} USDT per round` : "Select 1–10 numbers to play"}</span>
+                <span>Balance {balance.toFixed(2)}</span>
+              </div>
+            </div>
+          </main>
+
+          <aside className="hidden rounded-xl border border-white/10 bg-[#1b2324] lg:block">
+            <div className="border-b border-white/10 px-4 py-3">
+              <div className="flex items-center gap-4 text-xs font-bold uppercase tracking-wider">
+                <span className="flex items-center gap-1 border-b-2 border-emerald-400 pb-2 text-emerald-300"><Check className="h-3 w-3" /> Results</span>
+                <button type="button" data-testid="button-statistics" className="flex items-center gap-1 pb-2 text-slate-500 hover:text-slate-200"><BarChart3 className="h-3 w-3" /> Stats</button>
+                <button type="button" data-testid="button-leaders" className="flex items-center gap-1 pb-2 text-slate-500 hover:text-slate-200"><Crown className="h-3 w-3" /> Leaders</button>
+              </div>
+              <div className="mt-4 grid grid-cols-[1fr_auto] text-[10px] text-slate-500">
+                <span>Draw ID</span><span>Combination</span>
+              </div>
+            </div>
+            <div className="max-h-[calc(100vh-180px)] overflow-y-auto p-2">
+              {history.length === 0 && <p className="px-3 py-8 text-center text-xs text-slate-500">Results will show here.</p>}
+              {history.map(round => (
+                <div key={round.id} data-testid={`row-keno-result-${round.id}`} className="mb-1 rounded-lg bg-[#273335] p-2">
+                  <div className="flex items-center justify-between text-[10px]">
+                    <span className="flex items-center gap-1 font-semibold text-emerald-300"><Check className="h-3 w-3" /> #{round.id}</span>
+                    <span className="text-slate-500">{new Date(round.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                  </div>
+                  <div className="mt-1 grid grid-cols-5 gap-1">
+                    {round.drawnNumbers.slice(0, 10).map(number => (
+                      <span key={number} className={`rounded bg-[#344144] py-0.5 text-center text-[9px] font-bold ${round.picks.includes(number) ? "bg-emerald-500/80 text-[#10221c]" : "text-slate-400"}`}>{number}</span>
+                    ))}
+                  </div>
+                  <div className="mt-1 text-right text-[10px] font-bold text-slate-500">{round.hitCount} hits · {parseFloat(round.multiplier).toFixed(2)}×</div>
+                </div>
+              ))}
+            </div>
+          </aside>
         </div>
       </div>
 

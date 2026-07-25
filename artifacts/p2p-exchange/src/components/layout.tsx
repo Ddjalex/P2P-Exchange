@@ -47,13 +47,15 @@ export function BottomNav() {
 export function AppLayout({
   children,
   showNav = true,
+  wide = false,
 }: {
   children: React.ReactNode;
   showNav?: boolean;
+  wide?: boolean;
 }) {
   return (
     <div className="min-h-screen bg-background text-foreground sm:bg-black/90">
-      <div className="min-h-screen bg-background sm:max-w-[480px] sm:mx-auto sm:border-x sm:border-border relative pb-[64px]">
+      <div className={`min-h-screen bg-background sm:mx-auto sm:border-x sm:border-border relative ${wide ? "sm:max-w-[1440px] pb-0" : "sm:max-w-[480px] pb-[64px]"}`}>
         <NotificationBlockedBanner />
         {children}
         {showNav && <BottomNav />}
