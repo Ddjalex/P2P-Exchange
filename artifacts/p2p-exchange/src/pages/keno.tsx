@@ -563,7 +563,7 @@ export default function KenoPage() {
             </button>
             <div>
               <div className="flex items-center gap-2">
-                <span className="text-lg font-black tracking-[0.22em] text-white">FAST<span className="text-emerald-400">KENO</span></span>
+                <span className="text-lg font-black tracking-[0.22em] text-white">XENDRX<span className="text-emerald-400">KENO</span></span>
                 {mode === "demo" && <span className="rounded-full bg-cyan-400/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-cyan-300">Demo</span>}
               </div>
               <p className="hidden text-[10px] uppercase tracking-[0.18em] text-slate-500 sm:block">Pick your numbers · play your way</p>
