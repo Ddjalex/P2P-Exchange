@@ -341,6 +341,7 @@ export default function CardPage() {
           <button onClick={() => setLocation("/wallet")} className="text-muted-foreground font-medium">Wallet</button>
           <button onClick={() => setLocation("/p2p")} className="text-muted-foreground font-medium">P2P</button>
           <button className="text-white font-bold">Card</button>
+          <button onClick={() => setLocation("/games")} className="text-muted-foreground font-medium">Game</button>
         </div>
       </header>
 

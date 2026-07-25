@@ -102,6 +102,7 @@ export default function P2PPage() {
           <button onClick={() => setLocation("/wallet")} className="text-muted-foreground font-medium">Wallet</button>
           <button className="text-white font-bold">P2P</button>
           <button onClick={() => setLocation("/card")} className="text-muted-foreground font-medium">Card</button>
+          <button onClick={() => setLocation("/games")} className="text-muted-foreground font-medium">Game</button>
         </div>
         <div className="flex items-center space-x-3">
           {/* Currency selector */}
