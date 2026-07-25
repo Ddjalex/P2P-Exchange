@@ -32,7 +32,7 @@ import { emitToUser } from "./sse.js";
 import { derivePrivateKey } from "./bsc-hd.js";
 import { getBnbBalance, getBscUsdtBalance, sendBnb, sendUsdtBsc } from "./bsc.js";
 
-const POLL_INTERVAL_MS = 60_000;
+const POLL_INTERVAL_MS = 10_000; // poll every 10s for near-instant deposit detection
 
 // bsc-dataseed nodes used for getBlockNumber() only — don't support eth_getLogs.
 const BSC_BLOCK_NUMBER_ENDPOINTS = [
@@ -41,17 +41,34 @@ const BSC_BLOCK_NUMBER_ENDPOINTS = [
   "https://bsc-dataseed2.binance.org",
   "https://bsc-dataseed3.binance.org",
   "https://bsc-dataseed4.binance.org",
+  "https://bsc-dataseed1.defibit.io",
+  "https://bsc-dataseed2.defibit.io",
+  "https://bsc-dataseed1.ninicoin.io",
+  "https://bsc-dataseed2.ninicoin.io",
 ];
 
-// Binance dataseed currently rejects eth_getLogs publicly (-32005), even for
-// a one-block range, so keep it in the block-number rotation only. Nodies
-// accepts the monitor's multi-address filter at 150 blocks; the other
-// providers stay at a conservative 50-block fallback size.
-const BSC_GETLOGS_ENDPOINTS = [
-  { url: "https://bsc-pokt.nodies.app", maxBlocks: 150 },
-  { url: "https://rpc.ankr.com/bsc", maxBlocks: 50 },
-  { url: "https://bsc.publicnode.com", maxBlocks: 50 },
-];
+// Build the getLogs endpoint list. BSC_RPC_URL (if set) is tried first so the
+// user can plug in any working RPC (Ankr free-tier key, QuickNode, etc.).
+// Public fallbacks follow in order of reliability.
+function buildGetLogsEndpoints() {
+  const custom = process.env["BSC_RPC_URL"];
+  const list: { url: string; maxBlocks: number }[] = [];
+  if (custom) list.push({ url: custom, maxBlocks: 150 });
+  list.push(
+    { url: "https://bsc-pokt.nodies.app", maxBlocks: 150 },
+    { url: "https://rpc.ankr.com/bsc", maxBlocks: 50 },
+    { url: "https://bsc.publicnode.com", maxBlocks: 50 },
+    { url: "https://binance.llamarpc.com", maxBlocks: 50 },
+    { url: "https://bsc-dataseed1.defibit.io", maxBlocks: 50 },
+    { url: "https://bsc-dataseed2.defibit.io", maxBlocks: 50 },
+    { url: "https://bsc-dataseed1.ninicoin.io", maxBlocks: 50 },
+    { url: "https://bsc-dataseed2.ninicoin.io", maxBlocks: 50 },
+    { url: "https://bsc-rpc.publicnode.com", maxBlocks: 50 },
+  );
+  return list;
+}
+
+const BSC_GETLOGS_ENDPOINTS = buildGetLogsEndpoints();
 
 const BSC_NETWORK = ethers.Network.from(56); // BNB Smart Chain, avoids eth_chainId probe
 
@@ -61,12 +78,17 @@ const USDT_DECIMALS = 18;
 // Transfer(address indexed from, address indexed to, uint256 value)
 const TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
 
-// On first run look back ~15 min worth of blocks (~20 blocks/min on BSC)
-const INITIAL_LOOKBACK_BLOCKS = 300;
-// Keep catch-up requests comfortably below the verified 250-block Nodies plan
-// limit. The endpoint-specific fallback sizes below prevent a provider that
-// rejects a larger range from stopping catch-up scanning.
-const MAX_BLOCKS_PER_QUERY = 150;
+// On first run look back 2 minutes of blocks (~3 blocks/min × 3s block time → ~40 blocks)
+const INITIAL_LOOKBACK_BLOCKS = 40;
+// Scan at most 5 blocks per getLogs call — matches the 10s poll interval
+// (BSC produces ~3-4 blocks per 10s) and keeps responses tiny enough to work
+// on any free public endpoint. Large ranges trigger -32005 "limit exceeded"
+// on defibit/ninicoin even without an address filter.
+const MAX_BLOCKS_PER_QUERY = 5;
+// If the persisted checkpoint is more than this many blocks behind the chain tip,
+// skip ahead to INITIAL_LOOKBACK_BLOCKS from the tip instead of trying to catch
+// up through hundreds of blocks with broken free endpoints.
+const MAX_CATCHUP_BLOCKS = 40;
 const LAST_PROCESSED_BLOCK_SETTING = "bscDepositLastProcessedBlock";
 
 let monitorInterval: ReturnType<typeof setInterval> | null = null;
@@ -105,7 +127,6 @@ async function getLogsOnEndpoint(
   endpoint: (typeof BSC_GETLOGS_ENDPOINTS)[number],
   fromBlock: number,
   toBlock: number,
-  topic2: string | string[],
 ): Promise<ethers.Log[]> {
   const provider = makeProvider(endpoint.url);
   const logs: ethers.Log[] = [];
@@ -114,11 +135,14 @@ async function getLogsOnEndpoint(
   for (let chunkStart = fromBlock; chunkStart <= toBlock; chunkStart += chunkSize) {
     const chunkEnd = Math.min(chunkStart + chunkSize - 1, toBlock);
     try {
+      // Filter by Transfer topic only — no topics[2] address list.
+      // Free public endpoints reject large OR-address filters (-32005 limit exceeded).
+      // We filter to our deposit addresses locally after fetching.
       logs.push(...await provider.getLogs({
         fromBlock: chunkStart,
         toBlock: chunkEnd,
         address: USDT_CONTRACT,
-        topics: [TRANSFER_TOPIC, null, topic2],
+        topics: [TRANSFER_TOPIC],
       }));
     } catch (err: any) {
       console.warn(
@@ -133,18 +157,19 @@ async function getLogsOnEndpoint(
 }
 
 /**
- * Try the largest verified range first, then retry the complete range with a
- * smaller provider-specific chunk size if that endpoint rejects or times out.
+ * Try endpoints in order. No topics[2] address filter is sent to the RPC —
+ * we fetch all USDT Transfer events in the block range and match locally.
+ * This avoids -32005 "limit exceeded" errors from free providers that reject
+ * large OR-address topic arrays.
  */
 async function getLogsWithFallback(
   fromBlock: number,
   toBlock: number,
-  topic2: string | string[],
 ): Promise<ethers.Log[]> {
   let lastErr: unknown;
   for (const endpoint of BSC_GETLOGS_ENDPOINTS) {
     try {
-      return await getLogsOnEndpoint(endpoint, fromBlock, toBlock, topic2);
+      return await getLogsOnEndpoint(endpoint, fromBlock, toBlock);
     } catch (err) {
       lastErr = err;
     }
@@ -514,8 +539,8 @@ async function poll() {
       console.log(`[Deposit] Watching legacy hot wallet: ${legacyHotWallet}`);
     }
 
-    // Pad all watch addresses for topic[2] OR filtering
-    const paddedTopics = watchAddresses.map(padAddress);
+    // Build a Set of lowercase addresses for fast local matching
+    const watchSet = new Set(watchAddresses.map((a) => a.toLowerCase()));
 
     let currentBlock: number;
     try {
@@ -526,11 +551,20 @@ async function poll() {
     }
 
     if (!hasPersistedCheckpoint) {
-      // Hold the first-ever lookback start stable across retries in this
-      // process. The database checkpoint is still only created after a whole
-      // chunk succeeds, so a restart without one gets a fresh lookback.
+      // No DB checkpoint yet — look back a couple of minutes from the chain tip.
       lastProcessedBlock = Math.max(0, currentBlock - INITIAL_LOOKBACK_BLOCKS) - 1;
       hasPersistedCheckpoint = true;
+    } else if (currentBlock - lastProcessedBlock > MAX_CATCHUP_BLOCKS) {
+      // The checkpoint is stale (server was down, RPC was broken, etc.).
+      // Skip ahead rather than trying to replay hundreds of blocks through
+      // free endpoints that reject large ranges — skipped deposits can be
+      // credited manually via the admin panel.
+      const skipped = currentBlock - lastProcessedBlock - MAX_CATCHUP_BLOCKS;
+      console.warn(
+        `[Deposit] Checkpoint is ${currentBlock - lastProcessedBlock} blocks behind. ` +
+        `Skipping ${skipped} stale blocks — check admin panel for any missed deposits.`,
+      );
+      lastProcessedBlock = currentBlock - MAX_CATCHUP_BLOCKS - 1;
     }
 
     let chunkStart = lastProcessedBlock + 1;
@@ -557,9 +591,9 @@ async function poll() {
 
       let logs: ethers.Log[];
       try {
-        // topics[2] is a single string or array — ethers handles OR matching for arrays
-        const topic2 = paddedTopics.length === 1 ? paddedTopics[0] : paddedTopics;
-        logs = await getLogsWithFallback(chunkStart, chunkEnd, topic2);
+        // No topics[2] filter — fetch all USDT Transfer events and match locally.
+        // Free public BSC endpoints reject large OR-address topic arrays (-32005).
+        logs = await getLogsWithFallback(chunkStart, chunkEnd);
       } catch (err) {
         logger.error({ err, chunkStart, chunkEnd }, "[Deposit] provider.getLogs() failed — stopping catch-up at this chunk");
         return;
@@ -589,9 +623,10 @@ async function poll() {
           const toLower = parsed.to.toLowerCase();
 
           if (hasUserAddresses) {
-            // Per-user mode: look up which user owns this deposit address and auto-credit
+            // Per-user mode: check if this transfer's recipient is one of our deposit addresses
+            if (!watchSet.has(toLower)) continue; // most transfers are to other addresses — skip
             const walletInfo = userAddressMap.get(toLower);
-            if (!walletInfo) continue; // shouldn't happen given topics filter, but be safe
+            if (!walletInfo) continue;
 
             console.log(
               `[Deposit] Auto-crediting user ${walletInfo.userId}: ${parsed.amount} USDT ` +
@@ -726,7 +761,7 @@ export async function sweepAllStuckFunds(): Promise<{ swept: number; failed: num
 
 export function startDepositMonitor() {
   if (monitorInterval) return;
-  logger.info("Starting BEP20 deposit monitor — per-user HD addresses via ethers.js getLogs (60s interval)");
+  logger.info("Starting BEP20 deposit monitor — per-user HD addresses via ethers.js getLogs (10s interval)");
   poll();
   monitorInterval = setInterval(poll, POLL_INTERVAL_MS);
 
