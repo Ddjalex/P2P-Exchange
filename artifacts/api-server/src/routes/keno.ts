@@ -309,10 +309,10 @@ kenoRouter.post("/topup", async (req, res) => {
     // Atomic: debit main wallet, credit keno wallet, log both
     const result = await db.transaction(async (tx) => {
       // Lock main wallet row
-      const [mainWallet] = await tx.execute(
+      const mainWalletResult = await tx.execute(
         sql`SELECT * FROM wallets WHERE user_id = ${userId} AND asset = 'USDT' FOR UPDATE`
       ) as any;
-      const mainWalletRow = (mainWallet as any).rows?.[0] ?? mainWallet?.[0];
+      const mainWalletRow = mainWalletResult.rows?.[0];
       if (!mainWalletRow) return { error: "Main wallet not found" };
 
       const avail = parseFloat(mainWalletRow.available_balance);
@@ -321,17 +321,16 @@ kenoRouter.post("/topup", async (req, res) => {
       const newMainBalance = (avail - amt).toFixed(2);
 
       // Lock / create keno wallet row
-      const [kenoLock] = await tx.execute(
+      await tx.execute(
         sql`INSERT INTO keno_wallets (user_id, real_balance, demo_balance, updated_at)
             VALUES (${userId}, 0, 10000, NOW())
             ON CONFLICT (user_id) DO NOTHING`
-      ) as any;
-      void kenoLock;
+      );
 
-      const [kenoRow] = await tx.execute(
+      const kenoResult = await tx.execute(
         sql`SELECT * FROM keno_wallets WHERE user_id = ${userId} FOR UPDATE`
       ) as any;
-      const kenoWalletRow = (kenoRow as any).rows?.[0] ?? kenoRow?.[0];
+      const kenoWalletRow = kenoResult.rows?.[0];
       const kenoReal = parseFloat(kenoWalletRow?.real_balance ?? "0");
       const newKenoBalance = (kenoReal + amt).toFixed(2);
 
@@ -395,10 +394,10 @@ kenoRouter.post("/withdraw", async (req, res) => {
 
     const result = await db.transaction(async (tx) => {
       // Lock keno wallet
-      const [kenoRow] = await tx.execute(
+      const kenoResult = await tx.execute(
         sql`SELECT * FROM keno_wallets WHERE user_id = ${userId} FOR UPDATE`
       ) as any;
-      const kenoWalletRow = (kenoRow as any).rows?.[0] ?? kenoRow?.[0];
+      const kenoWalletRow = kenoResult.rows?.[0];
       if (!kenoWalletRow) return { error: "Keno wallet not found" };
 
       const kenoReal = parseFloat(kenoWalletRow.real_balance);
@@ -407,10 +406,10 @@ kenoRouter.post("/withdraw", async (req, res) => {
       const newKenoBalance = (kenoReal - amt).toFixed(2);
 
       // Lock main wallet
-      const [mainRow] = await tx.execute(
+      const mainResult = await tx.execute(
         sql`SELECT * FROM wallets WHERE user_id = ${userId} AND asset = 'USDT' FOR UPDATE`
       ) as any;
-      const mainWalletRow = (mainRow as any).rows?.[0] ?? mainRow?.[0];
+      const mainWalletRow = mainResult.rows?.[0];
       if (!mainWalletRow) return { error: "Main wallet not found" };
 
       const mainAvail = parseFloat(mainWalletRow.available_balance);
@@ -531,10 +530,10 @@ kenoRouter.post("/play", async (req, res) => {
             ON CONFLICT (user_id) DO NOTHING`
       );
 
-      const [lockRow] = await tx.execute(
+      const lockResult = await tx.execute(
         sql`SELECT * FROM keno_wallets WHERE user_id = ${userId} FOR UPDATE`
       ) as any;
-      const walletRow = (lockRow as any).rows?.[0] ?? lockRow?.[0];
+      const walletRow = lockResult.rows?.[0];
 
       const balField = mode === "real" ? "real_balance" : "demo_balance";
       const currentBalance = parseFloat(walletRow?.[balField] ?? "0");

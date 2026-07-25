@@ -14,3 +14,4 @@
 - [Neon legacy schema push](neon-legacy-schema-push.md) — real Neon DB has legacy columns/tables; never `push --force` (auto-drops data), add legacy_*.ts schema files instead
 - [Phone validation via libphonenumber-js](phone-validation-libphonenumber.md) — country-aware `isValidPhoneNumber(number, isoCountry)`; normalize to E.164 both client and server for defense in depth
 - [Google Sign-In (P2P exchange)](google-oauth-p2p.md) — ID-token flow needs only GOOGLE_CLIENT_ID; "origin not allowed" errors are a Google Cloud Console config issue, not a code bug
+- [Drizzle execute results](drizzle-execute-results.md) — node-postgres execute returns a QueryResult object; read rows from `.rows`, never destructure it as an iterable
