@@ -414,8 +414,10 @@ export default function KenoPage() {
 
   const walletRef = useRef(wallet);
   walletRef.current = wallet;
-  // stable ref so the countdown interval can call the latest handlePlay
+  // stable refs so the countdown interval can read the latest values without
+  // being recreated on every render
   const handlePlayRef = useRef<() => void>(() => {});
+  const canPlayRef = useRef(false);
 
   // Load wallet + paytable
   async function loadWallet() {
@@ -464,9 +466,14 @@ export default function KenoPage() {
     const id = setInterval(() => {
       setCountdown(prev => {
         if (prev <= 1) {
-          // Time's up — attempt to play (no-op if canPlay is false)
-          setTimeout(() => handlePlayRef.current?.(), 0);
-          return 30;
+          if (canPlayRef.current) {
+            // Bet is ready — fire it and hold display at 0 until draw begins
+            setTimeout(() => handlePlayRef.current?.(), 0);
+            return 0;
+          } else {
+            // Nothing to bet — skip this round and restart immediately
+            return 30;
+          }
         }
         return prev - 1;
       });
@@ -513,7 +520,6 @@ export default function KenoPage() {
     setRevealedNums([]);
     setActiveDrawNumber(null);
     setDrawProgress(0);
-    setCountdown(30); // reset display while in-flight
 
     try {
       const res = await apiFetch("/api/games/keno/play", {
@@ -570,8 +576,9 @@ export default function KenoPage() {
     }
   }
 
-  // Keep the ref current every render so the interval can call the latest closure
+  // Keep refs current every render so the interval reads the latest values
   handlePlayRef.current = handlePlay;
+  canPlayRef.current = canPlay;
 
   async function resetDemo() {
     setResettingDemo(true);
