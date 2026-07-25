@@ -3,7 +3,8 @@ import { AppLayout } from "@/components/layout";
 import { PasswordConfirmModal } from "@/components/password-confirm-modal";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
-import { Gamepad2, RefreshCw, TrendingUp, Info, ChevronDown, ChevronUp, Loader2, Trophy, X, Zap } from "lucide-react";
+import { ArrowLeft, Gamepad2, RefreshCw, TrendingUp, Info, ChevronDown, ChevronUp, Loader2, Trophy, X, Zap } from "lucide-react";
+import { useLocation } from "wouter";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -86,8 +87,20 @@ function calcRtp(picks: number, paytable: PaytableEntry[]): number {
 // ─── Mode selector ────────────────────────────────────────────────────────────
 
 function ModeSelector({ onSelect }: { onSelect: (mode: "demo" | "real") => void }) {
+  const [, setLocation] = useLocation();
+
   return (
-    <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6">
+    <div className="relative min-h-screen bg-background flex flex-col items-center justify-center p-6">
+      <button
+        type="button"
+        onClick={() => setLocation("/wallet")}
+        className="absolute top-5 left-5 inline-flex items-center gap-2 rounded-xl border border-border bg-card/80 px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+        aria-label="Back to wallet"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        Wallet
+      </button>
+
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="text-center mb-8">
