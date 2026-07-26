@@ -13,7 +13,7 @@
  */
 
 import { Router } from "express";
-import { randomInt, createHmac, timingSafeEqual } from "crypto";
+import { randomInt, createHmac, timingSafeEqual, randomBytes, createHash } from "crypto";
 import bcrypt from "bcryptjs";
 import { db } from "@workspace/db";
 import {
@@ -22,6 +22,7 @@ import {
   kenoPaytableTable,
   kenoRoundsTable,
   kenoSettingsTable,
+  kenoBatchesTable,
   walletsTable,
   transactionsTable,
   usersTable,

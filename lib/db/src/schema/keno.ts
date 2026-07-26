@@ -31,11 +31,36 @@ export const kenoPaytableTable = pgTable("keno_paytable", {
   multiplier: numeric("multiplier", { precision: 10, scale: 4 }).notNull().default("0"),
 }, (t) => [unique("keno_paytable_picks_hits").on(t.picks, t.hits)]);
 
-// ─── Individual game rounds ───────────────────────────────────────────────────
+// ─── Multi-ticket Batch ───────────────────────────────────────────────────────
+// One row per user submission (1–10 tickets sharing a single draw).
+// For instant-play batches: drawnNumbers + entropyData are set at creation.
+// For multiplayer batches:  roundId links to the shared round_id; both
+//   drawnNumbers and entropyData are populated at settlement time.
+//
+// status lifecycle:  pending → settled  (normal)
+//                    pending → refunded (error recovery)
+export const kenoBatchesTable = pgTable("keno_batches", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull(),
+  mode: text("mode").notNull(),                      // "demo" | "real"
+  drawnNumbers: jsonb("drawn_numbers").$type<number[]>(),
+  entropyData: text("entropy_data"),                 // SHA-256(raw_nonce) for provability
+  totalStaked: numeric("total_staked", { precision: 14, scale: 2 }).notNull(),
+  totalPayout: numeric("total_payout", { precision: 14, scale: 2 }).notNull().default("0.00"),
+  ticketCount: integer("ticket_count").notNull(),
+  status: text("status").notNull().default("pending"), // pending | settled | refunded
+  roundId: integer("round_id"),                      // null=instant; set=multiplayer shared round
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  settledAt: timestamp("settled_at"),
+});
+
+// ─── Individual game rounds (tickets) ────────────────────────────────────────
+// batchId links to keno_batches; null for legacy single-ticket records.
 export const kenoRoundsTable = pgTable("keno_rounds", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull(),
   mode: text("mode").notNull(),
+  batchId: integer("batch_id"),                      // FK → keno_batches (null = legacy)
   picks: jsonb("picks").$type<number[]>().notNull(),
   drawnNumbers: jsonb("drawn_numbers").$type<number[]>().notNull(),
   betAmount: numeric("bet_amount", { precision: 12, scale: 2 }).notNull(),
@@ -52,7 +77,8 @@ export const kenoSettingsTable = pgTable("keno_settings", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
-export type KenoWallet = typeof kenoWalletsTable.$inferSelect;
-export type KenoTransaction = typeof kenoTransactionsTable.$inferSelect;
+export type KenoWallet        = typeof kenoWalletsTable.$inferSelect;
+export type KenoTransaction   = typeof kenoTransactionsTable.$inferSelect;
 export type KenoPaytableEntry = typeof kenoPaytableTable.$inferSelect;
-export type KenoRound = typeof kenoRoundsTable.$inferSelect;
+export type KenoRound         = typeof kenoRoundsTable.$inferSelect;
+export type KenoBatch         = typeof kenoBatchesTable.$inferSelect;
