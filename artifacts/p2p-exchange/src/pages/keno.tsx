@@ -339,27 +339,30 @@ function KenoBallTray({
   activeNumber: number | null;
   totalExpected: number;
 }) {
-  // Fill up to 20 slots (two rows of 10)
+  // Only the most-recently-added ball gets the slide-in animation.
+  // Stable index keys ensure React never remounts settled balls, so
+  // the CSS animation never replays on them.
+  const newestIdx = drawnNumbers.length - 1;
   const slots = Array.from({ length: totalExpected }, (_, i) => drawnNumbers[i] ?? null);
   const row1 = slots.slice(0, 10);
   const row2 = slots.slice(10, 20);
 
-  function Ball({ num, idx }: { num: number | null; idx: number }) {
+  function Ball({ num, globalIdx }: { num: number | null; globalIdx: number }) {
     if (num === null) {
       return (
         <div className="h-7 w-7 flex-shrink-0 rounded-full border border-white/10 bg-white/5 sm:h-8 sm:w-8" />
       );
     }
+    const isNewest = globalIdx === newestIdx;
     const isActive = num === activeNumber;
     return (
       <div
-        key={`ball-${idx}`}
-        className={`keno-ball-drop relative flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-black sm:h-8 sm:w-8 sm:text-xs ${
-          isActive
+        className={`relative flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-black sm:h-8 sm:w-8 sm:text-xs
+          ${isNewest ? "keno-ball-drop" : ""}
+          ${isActive
             ? "bg-yellow-400 text-gray-900 shadow-lg shadow-yellow-400/60 scale-110"
             : "bg-gradient-to-b from-gray-200 to-gray-400 text-gray-900 shadow-md shadow-black/40"
-        }`}
-        style={{ animationDelay: `${idx * 30}ms` }}
+          }`}
       >
         {num}
         {/* Shine gloss */}
@@ -371,10 +374,10 @@ function KenoBallTray({
   return (
     <div className="mt-3 space-y-1.5 px-1">
       <div className="flex items-center gap-1 sm:gap-1.5">
-        {row1.map((num, i) => <Ball key={i} num={num} idx={i} />)}
+        {row1.map((num, i) => <Ball key={i} num={num} globalIdx={i} />)}
       </div>
       <div className="flex items-center gap-1 sm:gap-1.5">
-        {row2.map((num, i) => <Ball key={i + 10} num={num} idx={i + 10} />)}
+        {row2.map((num, i) => <Ball key={i + 10} num={num} globalIdx={i + 10} />)}
       </div>
     </div>
   );
@@ -575,12 +578,16 @@ export default function KenoPage() {
 
       for (let i = 0; i < drawn.length; i++) {
         if (cancelled) return;
-        setActiveDrawNumber(drawn[i]);
-        await new Promise<void>(r => setTimeout(r, 560));
-        if (cancelled) return;
+        // Show in tray immediately (gold) + flash the grid cell at the same time
         setRevealedNums(prev => [...prev, drawn[i]]);
+        setActiveDrawNumber(drawn[i]);
         setDrawProgress(i + 1);
-        await new Promise<void>(r => setTimeout(r, 110));
+        // Keep it gold/active for 420ms then settle to gray
+        await new Promise<void>(r => setTimeout(r, 420));
+        if (cancelled) return;
+        setActiveDrawNumber(null);
+        // 80ms gap before next ball
+        await new Promise<void>(r => setTimeout(r, 80));
       }
 
       if (cancelled) return;
