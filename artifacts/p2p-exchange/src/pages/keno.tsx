@@ -92,70 +92,81 @@ function ModeSelector({ onSelect }: { onSelect: (mode: "demo" | "real") => void 
   const [, setLocation] = useLocation();
 
   return (
-    <div className="relative min-h-screen bg-background flex flex-col items-center justify-center p-6">
+    <div className="relative min-h-screen bg-[#0e1117] flex flex-col items-center justify-center px-4 py-8">
+      {/* Back button */}
       <button
         type="button"
         onClick={() => setLocation("/wallet")}
-        className="absolute top-5 left-5 inline-flex items-center gap-2 rounded-xl border border-border bg-card/80 px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+        className="absolute top-4 left-4 inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-medium text-slate-300 transition hover:bg-white/10 hover:text-white"
         aria-label="Back to wallet"
       >
         <ArrowLeft className="h-4 w-4" />
         Wallet
       </button>
 
-      <div className="w-full max-w-sm">
-        {/* Logo */}
-        <div className="text-center mb-8">
-          <div className="w-20 h-20 rounded-3xl bg-purple-600/20 border-2 border-purple-500/40 flex items-center justify-center mx-auto mb-4">
-            <Gamepad2 className="w-10 h-10 text-purple-400" />
-          </div>
-          <h1 className="text-2xl font-bold text-foreground">Keno</h1>
-          <p className="text-sm text-muted-foreground mt-1">Pick your numbers, beat the draw</p>
+      <div className="w-full max-w-[360px] flex flex-col items-center gap-5">
+        {/* Hero image */}
+        <div className="w-full rounded-2xl overflow-hidden shadow-2xl shadow-purple-900/40 border border-white/10">
+          <img
+            src="/src/assets/keno-balls.jpg"
+            alt="Keno"
+            className="w-full object-cover"
+            style={{ maxHeight: 220 }}
+          />
         </div>
 
-        <div className="space-y-3">
+        {/* Title */}
+        <div className="text-center">
+          <h1 className="text-2xl font-extrabold text-white tracking-tight">Keno</h1>
+          <p className="text-sm text-slate-400 mt-0.5">Pick your numbers, beat the draw</p>
+        </div>
+
+        {/* Mode cards */}
+        <div className="w-full space-y-3">
           {/* Demo mode */}
           <button
+            type="button"
             onClick={() => onSelect("demo")}
-            className="w-full rounded-2xl border-2 border-purple-500/30 bg-purple-500/5 hover:bg-purple-500/10 hover:border-purple-500/50 transition-all p-5 text-left group"
+            className="w-full rounded-2xl border-2 border-purple-500/40 bg-purple-500/10 hover:bg-purple-500/15 hover:border-purple-400/60 transition-all p-4 text-left"
           >
             <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl bg-purple-500/20 flex items-center justify-center flex-shrink-0">
-                <Zap className="w-6 h-6 text-purple-400" />
+              <div className="w-11 h-11 rounded-xl bg-purple-500/25 flex items-center justify-center flex-shrink-0">
+                <Zap className="w-5 h-5 text-purple-400" />
               </div>
-              <div className="flex-1">
+              <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="font-bold text-foreground">Demo Mode</span>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-400 uppercase tracking-wide">Free</span>
+                  <span className="font-bold text-white">Demo Mode</span>
+                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-purple-400/20 text-purple-300 uppercase tracking-wider">Free</span>
                 </div>
-                <p className="text-xs text-muted-foreground mt-0.5">Play with virtual credits — no real money involved</p>
-                <p className="text-xs text-purple-400 mt-1">10,000 demo credits to start</p>
+                <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">Play with virtual credits — no real money involved</p>
+                <p className="text-xs text-purple-400 font-semibold mt-1">10,000 demo credits to start</p>
               </div>
             </div>
           </button>
 
           {/* Real mode */}
           <button
+            type="button"
             onClick={() => onSelect("real")}
-            className="w-full rounded-2xl border-2 border-amber-500/30 bg-amber-500/5 hover:bg-amber-500/10 hover:border-amber-500/50 transition-all p-5 text-left group"
+            className="w-full rounded-2xl border-2 border-amber-500/40 bg-amber-500/8 hover:bg-amber-500/12 hover:border-amber-400/60 transition-all p-4 text-left"
           >
             <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl bg-amber-500/20 flex items-center justify-center flex-shrink-0">
-                <Trophy className="w-6 h-6 text-amber-400" />
+              <div className="w-11 h-11 rounded-xl bg-amber-500/20 flex items-center justify-center flex-shrink-0">
+                <Trophy className="w-5 h-5 text-amber-400" />
               </div>
-              <div className="flex-1">
+              <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="font-bold text-foreground">Real Mode</span>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 uppercase tracking-wide">USDT</span>
+                  <span className="font-bold text-white">Real Mode</span>
+                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-amber-400/20 text-amber-300 uppercase tracking-wider">USDT</span>
                 </div>
-                <p className="text-xs text-muted-foreground mt-0.5">Play with real USDT from your Keno wallet</p>
-                <p className="text-xs text-amber-400 mt-1">Top up from your main wallet anytime</p>
+                <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">Play with real USDT from your Keno wallet</p>
+                <p className="text-xs text-amber-400 font-semibold mt-1">Top up from your main wallet anytime</p>
               </div>
             </div>
           </button>
         </div>
 
-        <p className="text-center text-xs text-muted-foreground mt-6">
+        <p className="text-center text-[11px] text-slate-600 mt-1">
           Games are for entertainment. Play responsibly.
         </p>
       </div>
