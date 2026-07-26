@@ -244,6 +244,143 @@ function drawKeno(): number[] {
   return pool.slice(0, 20).sort((a, b) => a - b);
 }
 
+// ─── Multiplayer Round Manager ────────────────────────────────────────────────
+//
+// One shared game round for ALL players.
+// Cycle: 30 s betting → draw → 14.5 s drawing phase → repeat.
+// Balance is debited immediately when bet is placed; payout is credited at
+// settlement (when betting closes and numbers are drawn).
+
+const BETTING_MS = 30_000;  // 30-second betting window
+const DRAWING_MS = 14_500;  // 20 balls × ~720 ms client animation
+
+interface PendingBet {
+  userId:                number;
+  picks:                 number[];
+  betAmount:             string;
+  mode:                  "demo" | "real";
+  balanceAfterDeduction: number;
+}
+
+interface SettledResult {
+  picks:      number[];
+  betAmount:  string;
+  mode:       "demo" | "real";
+  hitCount:   number;
+  multiplier: number;
+  payout:     number;
+  newBalance: number;
+}
+
+interface GameRound {
+  roundId:       number;
+  phase:         "betting" | "drawing";
+  bettingEndsAt: number;          // epoch ms
+  drawingEndsAt: number | null;
+  drawnNumbers:  number[] | null;
+  bets:          Map<string, PendingBet>;    // `${userId}:${mode}`
+  results:       Map<string, SettledResult>; // `${userId}:${mode}`
+}
+
+let _roundCounter = 1;
+
+function makeRound(): GameRound {
+  return {
+    roundId:       _roundCounter++,
+    phase:         "betting",
+    bettingEndsAt: Date.now() + BETTING_MS,
+    drawingEndsAt: null,
+    drawnNumbers:  null,
+    bets:          new Map(),
+    results:       new Map(),
+  };
+}
+
+let activeRound: GameRound = makeRound();
+
+async function advanceRound() {
+  if (activeRound.phase !== "betting") return;
+
+  const drawn = drawKeno();
+  activeRound.phase         = "drawing";
+  activeRound.drawnNumbers  = drawn;
+  activeRound.drawingEndsAt = Date.now() + DRAWING_MS;
+
+  // Settle every pending bet concurrently
+  const bets = Array.from(activeRound.bets.values());
+  await Promise.allSettled(bets.map(bet => settleBet(bet, drawn)));
+
+  // Start next betting round after the drawing window closes
+  setTimeout(() => {
+    activeRound = makeRound();
+    setTimeout(advanceRound, BETTING_MS);
+  }, DRAWING_MS);
+}
+
+async function settleBet(bet: PendingBet, drawn: number[]): Promise<void> {
+  const { userId, picks, betAmount, mode } = bet;
+  const betAmt   = parseFloat(betAmount);
+  const hitCount = picks.filter(n => drawn.includes(n)).length;
+
+  const ptRow = await db
+    .select({ multiplier: kenoPaytableTable.multiplier })
+    .from(kenoPaytableTable)
+    .where(and(eq(kenoPaytableTable.picks, picks.length), eq(kenoPaytableTable.hits, hitCount)))
+    .then(r => r[0]);
+
+  const multiplier = parseFloat(ptRow?.multiplier ?? "0");
+  const payout     = parseFloat((betAmt * multiplier).toFixed(2));
+
+  // Credit payout and capture the final balance atomically
+  const settleRes = await db.transaction(async tx => {
+    const lock = await tx.execute(
+      sql`SELECT * FROM keno_wallets WHERE user_id = ${userId} FOR UPDATE`
+    ) as any;
+    const row = lock.rows?.[0];
+    if (!row) return { error: "wallet missing" } as const;
+
+    const field  = mode === "real" ? "real_balance" : "demo_balance";
+    const cur    = parseFloat(row[field] ?? "0");
+    const newBal = parseFloat((cur + payout).toFixed(2));
+
+    if (payout > 0) {
+      if (mode === "real") {
+        await tx.update(kenoWalletsTable)
+          .set({ realBalance: String(newBal), updatedAt: new Date() })
+          .where(eq(kenoWalletsTable.userId, userId));
+      } else {
+        await tx.update(kenoWalletsTable)
+          .set({ demoBalance: String(newBal), updatedAt: new Date() })
+          .where(eq(kenoWalletsTable.userId, userId));
+      }
+    }
+
+    await tx.insert(kenoRoundsTable).values({
+      userId, mode, picks, drawnNumbers: drawn,
+      betAmount, hitCount,
+      multiplier: multiplier.toFixed(4),
+      payoutAmount: payout.toFixed(2),
+    });
+
+    await tx.insert(kenoTransactionsTable).values({
+      userId, type: "bet", amount: betAmount, mode,
+      balanceAfter: String(newBal),
+    });
+
+    return { newBalance: newBal };
+  });
+
+  if ("error" in settleRes) return;
+
+  activeRound.results.set(`${userId}:${mode}`, {
+    picks, betAmount, mode, hitCount, multiplier, payout,
+    newBalance: settleRes.newBalance,
+  });
+}
+
+// Kick off the first round immediately on server start
+setTimeout(advanceRound, BETTING_MS);
+
 // ─── ─────────────────────────────────────────────────────────────────────────
 // PLAYER ROUTES
 // ─────────────────────────────────────────────────────────────────────────────
@@ -472,6 +609,152 @@ kenoRouter.post("/demo/reset", async (req, res) => {
     res.json({ success: true, demoBalance: "10000.00" });
   } catch (err) {
     req.log?.error({ err }, "keno/demo/reset error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// GET /api/games/keno/state  — current shared round state (multiplayer)
+kenoRouter.get("/state", (req, res) => {
+  try {
+    const userId = (req as any).userId;
+    const now    = Date.now();
+    const round  = activeRound;
+
+    const secondsLeft = round.phase === "betting"
+      ? Math.max(0, Math.ceil((round.bettingEndsAt - now) / 1000))
+      : 0;
+
+    const betKeyDemo = `${userId}:demo`;
+    const betKeyReal = `${userId}:real`;
+    const myBet    = round.bets.get(betKeyDemo) ?? round.bets.get(betKeyReal);
+    const myResult = round.results.get(betKeyDemo) ?? round.results.get(betKeyReal);
+
+    res.json({
+      roundId:      round.roundId,
+      phase:        round.phase,
+      secondsLeft,
+      totalBets:    round.bets.size,
+      drawnNumbers: round.drawnNumbers,
+      myBet: myBet ? {
+        picks:     myBet.picks,
+        betAmount: myBet.betAmount,
+        mode:      myBet.mode,
+        ...(myResult ? {
+          hitCount:   myResult.hitCount,
+          multiplier: myResult.multiplier,
+          payout:     myResult.payout,
+          newBalance: myResult.newBalance,
+        } : {}),
+      } : null,
+    });
+  } catch (err) {
+    req.log?.error({ err }, "keno/state error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// POST /api/games/keno/bet  — place a bet for the current shared round
+kenoRouter.post("/bet", async (req, res) => {
+  try {
+    await ensureSeeded();
+    const userId = (req as any).userId;
+    const { picks, betAmount, mode } = req.body;
+
+    if (activeRound.phase !== "betting")
+      return res.status(400).json({ error: "Betting is closed — wait for the next round" });
+
+    if (!Array.isArray(picks) || picks.length < 1 || picks.length > 10)
+      return res.status(400).json({ error: "Select 1–10 numbers" });
+    if (picks.some((n: any) => !Number.isInteger(n) || n < 1 || n > 80))
+      return res.status(400).json({ error: "Numbers must be integers 1–80" });
+    if (new Set(picks).size !== picks.length)
+      return res.status(400).json({ error: "Duplicate numbers not allowed" });
+    if (!["demo", "real"].includes(mode))
+      return res.status(400).json({ error: "Invalid mode" });
+
+    const bet = parseFloat(betAmount);
+    if (isNaN(bet) || bet <= 0) return res.status(400).json({ error: "Invalid bet amount" });
+
+    const betKey = `${userId}:${mode}`;
+    if (activeRound.bets.has(betKey))
+      return res.status(400).json({ error: "You already placed a bet this round" });
+
+    const [minBet, maxBet, gameEnabled] = await Promise.all([
+      getSetting("min_bet", "0.10").then(parseFloat),
+      getSetting("max_bet", "100.00").then(parseFloat),
+      getSetting("game_enabled", "true"),
+    ]);
+    if (gameEnabled !== "true") return res.status(403).json({ error: "Keno is temporarily disabled" });
+    if (bet < minBet) return res.status(400).json({ error: `Minimum bet is ${minBet} USDT` });
+    if (bet > maxBet) return res.status(400).json({ error: `Maximum bet is ${maxBet} USDT` });
+
+    // Deduct balance immediately (atomic)
+    const deductRes = await db.transaction(async tx => {
+      await tx.execute(
+        sql`INSERT INTO keno_wallets (user_id, real_balance, demo_balance, updated_at)
+            VALUES (${userId}, 0, 10000, NOW())
+            ON CONFLICT (user_id) DO NOTHING`
+      );
+      const lock = await tx.execute(
+        sql`SELECT * FROM keno_wallets WHERE user_id = ${userId} FOR UPDATE`
+      ) as any;
+      const row = lock.rows?.[0];
+      const field = mode === "real" ? "real_balance" : "demo_balance";
+      const cur   = parseFloat(row?.[field] ?? "0");
+      if (cur < bet) return { error: "Insufficient balance" } as const;
+      const after = parseFloat((cur - bet).toFixed(2));
+      if (mode === "real") {
+        await tx.update(kenoWalletsTable)
+          .set({ realBalance: String(after), updatedAt: new Date() })
+          .where(eq(kenoWalletsTable.userId, userId));
+      } else {
+        await tx.update(kenoWalletsTable)
+          .set({ demoBalance: String(after), updatedAt: new Date() })
+          .where(eq(kenoWalletsTable.userId, userId));
+      }
+      return { balanceAfterDeduction: after };
+    });
+
+    if ("error" in deductRes) return res.status(400).json({ error: deductRes.error });
+
+    // Race: betting might have just closed during the DB transaction — refund and reject
+    if (activeRound.phase !== "betting") {
+      db.transaction(async tx => {
+        const lock = await tx.execute(
+          sql`SELECT * FROM keno_wallets WHERE user_id = ${userId} FOR UPDATE`
+        ) as any;
+        const row   = lock.rows?.[0];
+        const field = mode === "real" ? "real_balance" : "demo_balance";
+        const cur   = parseFloat(row?.[field] ?? "0");
+        const refunded = parseFloat((cur + bet).toFixed(2));
+        if (mode === "real") {
+          await tx.update(kenoWalletsTable)
+            .set({ realBalance: String(refunded), updatedAt: new Date() })
+            .where(eq(kenoWalletsTable.userId, userId));
+        } else {
+          await tx.update(kenoWalletsTable)
+            .set({ demoBalance: String(refunded), updatedAt: new Date() })
+            .where(eq(kenoWalletsTable.userId, userId));
+        }
+      }).catch(e => console.error("[Keno] refund failed", e));
+      return res.status(400).json({ error: "Betting just closed — your balance was refunded" });
+    }
+
+    activeRound.bets.set(betKey, {
+      userId, picks, betAmount: bet.toFixed(2), mode,
+      balanceAfterDeduction: deductRes.balanceAfterDeduction,
+    });
+
+    res.json({
+      success:               true,
+      roundId:               activeRound.roundId,
+      picks,
+      betAmount:             bet.toFixed(2),
+      mode,
+      balanceAfterDeduction: deductRes.balanceAfterDeduction,
+    });
+  } catch (err) {
+    req.log?.error({ err }, "keno/bet error");
     res.status(500).json({ error: "Internal server error" });
   }
 });

@@ -398,7 +398,6 @@ export default function KenoPage() {
 
   const [selectedNums, setSelectedNums] = useState<number[]>([]);
   const [betAmount, setBetAmount] = useState("1.00");
-  const [playing, setPlaying] = useState(false);
   const [animating, setAnimating] = useState(false);
   const [revealedNums, setRevealedNums] = useState<number[]>([]);
   const [activeDrawNumber, setActiveDrawNumber] = useState<number | null>(null);
@@ -410,14 +409,25 @@ export default function KenoPage() {
   const [showPaytable, setShowPaytable] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [resettingDemo, setResettingDemo] = useState(false);
+
+  // ── Multiplayer round state ───────────────────────────────────────────────
+  const [roundState, setRoundState] = useState<{
+    roundId: number;
+    phase: "betting" | "drawing";
+    secondsLeft: number;
+    totalBets: number;
+    drawnNumbers: number[] | null;
+    myBet: {
+      picks: number[]; betAmount: string; mode: string;
+      hitCount?: number; multiplier?: number; payout?: number; newBalance?: number;
+    } | null;
+  } | null>(null);
+  const [betPlaced, setBetPlaced] = useState(false);
   const [countdown, setCountdown] = useState(30);
 
   const walletRef = useRef(wallet);
   walletRef.current = wallet;
-  // stable refs so the countdown interval can read the latest values without
-  // being recreated on every render
-  const handlePlayRef = useRef<() => void>(() => {});
-  const canPlayRef = useRef(false);
+  const lastAnimatedRoundRef = useRef<number | null>(null);
 
   // Load wallet + paytable
   async function loadWallet() {
@@ -449,41 +459,97 @@ export default function KenoPage() {
     }
   }, [mode]);
 
-  // ── Betting countdown timer ────────────────────────────────────────────────
-  // Ticks 30→0 during the betting phase. Pauses while drawing/playing.
-  // Resets to 30 when the drawing phase ends.
+  // ── Poll shared round state from server ───────────────────────────────────
   useEffect(() => {
     if (!mode) return;
+    let stopped = false;
+    async function poll() {
+      while (!stopped) {
+        try {
+          const res = await apiFetch("/api/games/keno/state");
+          if (res.ok && !stopped) setRoundState(await res.json());
+        } catch { /* ignore */ }
+        await new Promise<void>(r => setTimeout(r, 1200));
+      }
+    }
+    poll();
+    return () => { stopped = true; };
+  }, [mode]);
 
-    // Enter/re-enter betting phase: reset to 30
-    if (!animating && !playing) {
-      setCountdown(30);
+  // ── Smooth local countdown (seeded from server, decrements locally) ────────
+  useEffect(() => {
+    if (!roundState) return;
+    setCountdown(roundState.phase === "betting" ? roundState.secondsLeft : 0);
+  }, [roundState?.roundId, roundState?.phase, roundState?.secondsLeft]);
+
+  useEffect(() => {
+    if (!roundState || roundState.phase !== "betting" || animating) return;
+    const id = setInterval(() => setCountdown(prev => Math.max(0, prev - 1)), 1000);
+    return () => clearInterval(id);
+  }, [roundState?.roundId, roundState?.phase, animating]);
+
+  // ── Trigger shared draw animation when round enters drawing phase ──────────
+  useEffect(() => {
+    if (!roundState) return;
+    if (roundState.phase !== "drawing") return;
+    if (!roundState.drawnNumbers?.length) return;
+    if (lastAnimatedRoundRef.current === roundState.roundId) return;
+
+    lastAnimatedRoundRef.current = roundState.roundId;
+    const drawn      = roundState.drawnNumbers;
+    const myBetSnap  = roundState.myBet;
+    const currentMode = mode;
+
+    let cancelled = false;
+
+    async function animate() {
+      setAnimating(true);
+      setRevealedNums([]);
+      setActiveDrawNumber(null);
+      setDrawProgress(0);
+
+      for (let i = 0; i < drawn.length; i++) {
+        if (cancelled) return;
+        setActiveDrawNumber(drawn[i]);
+        await new Promise<void>(r => setTimeout(r, 560));
+        if (cancelled) return;
+        setRevealedNums(prev => [...prev, drawn[i]]);
+        setDrawProgress(i + 1);
+        await new Promise<void>(r => setTimeout(r, 110));
+      }
+
+      if (cancelled) return;
+      await new Promise<void>(r => setTimeout(r, 400));
+      setActiveDrawNumber(null);
+      setAnimating(false);
+      setBetPlaced(false); // unlock for next round
+
+      // Show result overlay only if user placed a bet
+      if (myBetSnap && myBetSnap.hitCount !== undefined) {
+        setResult({
+          drawn,
+          picks:       myBetSnap.picks,
+          hitCount:    myBetSnap.hitCount,
+          multiplier:  myBetSnap.multiplier!,
+          payout:      myBetSnap.payout!,
+          betAmount:   parseFloat(myBetSnap.betAmount),
+        });
+        if (currentMode === "real") {
+          setWallet(prev => prev ? { ...prev, realBalance: String(myBetSnap.newBalance) } : prev);
+        } else {
+          setWallet(prev => prev ? { ...prev, demoBalance: String(myBetSnap.newBalance) } : prev);
+        }
+      }
+
+      await loadHistory();
     }
 
-    // Pause the ticker while a round is in-flight
-    if (animating || playing) return;
-
-    const id = setInterval(() => {
-      setCountdown(prev => {
-        if (prev <= 1) {
-          if (canPlayRef.current) {
-            // Bet is ready — fire it and hold display at 0 until draw begins
-            setTimeout(() => handlePlayRef.current?.(), 0);
-            return 0;
-          } else {
-            // Nothing to bet — skip this round and restart immediately
-            return 30;
-          }
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(id);
-  }, [mode, animating, playing]);
+    animate();
+    return () => { cancelled = true; };
+  }, [roundState?.roundId, roundState?.phase]);
 
   function toggleNumber(n: number) {
-    if (animating || playing) return;
+    if (animating || betPlaced) return;
     setSelectedNums(prev => {
       if (prev.includes(n)) return prev.filter(x => x !== n);
       if (prev.length >= 10) {
@@ -495,7 +561,7 @@ export default function KenoPage() {
   }
 
   function clearSelections() {
-    if (!animating && !playing) setSelectedNums([]);
+    if (!animating && !betPlaced) setSelectedNums([]);
   }
 
   const balance = mode === "real"
@@ -504,81 +570,41 @@ export default function KenoPage() {
 
   const bet = parseFloat(betAmount);
   const settings = wallet?.settings;
-  const canPlay = (
+  const canBet = (
+    !betPlaced &&
+    !animating &&
+    roundState?.phase === "betting" &&
+    (roundState?.secondsLeft ?? 0) > 0 &&
     selectedNums.length >= 1 &&
     !isNaN(bet) && bet > 0 &&
     bet <= balance &&
     (!settings || (bet >= parseFloat(settings.minBet) && bet <= parseFloat(settings.maxBet))) &&
-    !playing &&
-    !animating &&
     (settings?.gameEnabled !== false)
   );
 
-  async function handlePlay() {
-    if (!canPlay || !mode) return;
-    setPlaying(true);
-    setRevealedNums([]);
-    setActiveDrawNumber(null);
-    setDrawProgress(0);
-
+  async function handleBet() {
+    if (!canBet || !mode) return;
     try {
-      const res = await apiFetch("/api/games/keno/play", {
+      const res = await apiFetch("/api/games/keno/bet", {
         method: "POST",
         body: JSON.stringify({ picks: selectedNums, betAmount: bet.toFixed(2), mode }),
       });
       const data = await res.json();
       if (!res.ok) {
-        toast({ description: data.error ?? "Play failed", variant: "destructive" });
-        setPlaying(false);
+        toast({ description: data.error ?? "Bet failed", variant: "destructive" });
         return;
       }
-
-      // Animate the draw reveal as a paced 20-ball sequence.
-      setAnimating(true);
-      setPlaying(false);
-      const drawn: number[] = data.drawn;
-
-      for (let i = 0; i < drawn.length; i++) {
-        setActiveDrawNumber(drawn[i]);
-        await new Promise(r => setTimeout(r, 560));
-        setRevealedNums(prev => [...prev, drawn[i]]);
-        setDrawProgress(i + 1);
-        await new Promise(r => setTimeout(r, 110));
-      }
-
-      await new Promise(r => setTimeout(r, 400));
-      setActiveDrawNumber(null);
-      setAnimating(false);
-
-      setResult({
-        drawn,
-        picks: selectedNums,
-        hitCount: data.hitCount,
-        multiplier: data.multiplier,
-        payout: data.payout,
-        betAmount: bet,
-      });
-
-      // Update balance
+      setBetPlaced(true);
+      // Reflect deducted balance immediately
       if (mode === "real") {
-        setWallet(prev => prev ? { ...prev, realBalance: String(data.newBalance) } : prev);
+        setWallet(prev => prev ? { ...prev, realBalance: String(data.balanceAfterDeduction) } : prev);
       } else {
-        setWallet(prev => prev ? { ...prev, demoBalance: String(data.newBalance) } : prev);
+        setWallet(prev => prev ? { ...prev, demoBalance: String(data.balanceAfterDeduction) } : prev);
       }
-
-      await loadHistory();
     } catch {
       toast({ description: "Network error", variant: "destructive" });
-      setPlaying(false);
-      setAnimating(false);
-      setActiveDrawNumber(null);
-      setDrawProgress(0);
     }
   }
-
-  // Keep refs current every render so the interval reads the latest values
-  handlePlayRef.current = handlePlay;
-  canPlayRef.current = canPlay;
 
   async function resetDemo() {
     setResettingDemo(true);
@@ -693,7 +719,7 @@ export default function KenoPage() {
           <main className="min-w-0">
             <div className="mb-3 overflow-hidden rounded-xl border border-white/10 bg-[#273335]">
               {/* ── Countdown bar ───────────────────────────────────────── */}
-              {!animating && !playing && (
+              {!animating && roundState?.phase === "betting" && (
                 <div className="relative h-1 w-full overflow-hidden bg-white/5">
                   <div
                     className={`h-full transition-all duration-1000 ease-linear ${
@@ -730,10 +756,21 @@ export default function KenoPage() {
                 )}
                 <div className="relative z-20">
                   <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-300">
-                    {animating ? "Drawing numbers" : playing ? "Placing bet…" : "Betting open — place your numbers!"}
+                    {animating
+                      ? "Drawing numbers — shared draw!"
+                      : betPlaced
+                      ? "Bet placed ✓ — waiting for draw…"
+                      : roundState?.phase === "drawing"
+                      ? "Drawing numbers…"
+                      : "Betting open — place your numbers!"}
                   </p>
                   <h2 className="text-xl font-black text-white sm:text-2xl">Choose up to 10 numbers</h2>
-                  <p className="mt-1 text-sm font-semibold text-cyan-300">From 1 to 80 · {selectedNums.length} selected</p>
+                  <p className="mt-1 text-sm font-semibold text-cyan-300">
+                    From 1 to 80 · {selectedNums.length} selected
+                    {(roundState?.totalBets ?? 0) > 0 && !animating && (
+                      <span className="ml-2 text-slate-400">· {roundState!.totalBets} player{roundState!.totalBets !== 1 ? "s" : ""} betting</span>
+                    )}
+                  </p>
                 </div>
 
                 {/* ── Countdown ring / draw progress ──────────────────── */}
@@ -771,12 +808,12 @@ export default function KenoPage() {
                         />
                       </svg>
                       <span className={`font-mono text-2xl font-black ${countdown <= 5 ? "text-red-400" : countdown <= 10 ? "text-orange-400" : "text-emerald-300"}`}>
-                        {playing ? <Loader2 className="h-5 w-5 animate-spin text-slate-400" /> : countdown}
+                        {countdown}
                       </span>
                     </div>
                   )}
                   <p className="text-[9px] font-bold uppercase tracking-widest text-slate-500">
-                    {animating ? "Drawing" : playing ? "Wait…" : "Seconds left"}
+                    {animating ? "Drawing" : "Seconds left"}
                   </p>
                 </div>
 
@@ -830,8 +867,8 @@ export default function KenoPage() {
                 </div>
                 <button type="button" data-testid="button-double-bet" onClick={() => setBetAmount((bet * 2).toFixed(2))} className="rounded-lg border border-emerald-400/20 bg-emerald-400/10 px-3 text-xs font-black text-emerald-300 hover:bg-emerald-400/20">X2</button>
                 <button type="button" data-testid="button-max-bet" onClick={() => setBetAmount(settings?.maxBet ?? "100.00")} className="rounded-lg border border-emerald-400/20 bg-emerald-400/10 px-3 text-xs font-black text-emerald-300 hover:bg-emerald-400/20">MAX</button>
-                <button type="button" data-testid="button-play-keno" onClick={handlePlay} disabled={!canPlay} className="min-w-[92px] rounded-lg bg-gradient-to-r from-emerald-500 to-emerald-400 px-4 text-sm font-black uppercase tracking-wider text-[#10221c] shadow-lg shadow-emerald-500/10 transition hover:from-emerald-400 hover:to-cyan-300 disabled:cursor-not-allowed disabled:opacity-35">
-                  {playing || animating ? <Loader2 className="mx-auto h-5 w-5 animate-spin" /> : "Bet"}
+                <button type="button" data-testid="button-play-keno" onClick={handleBet} disabled={!canBet} className={`min-w-[92px] rounded-lg px-4 text-sm font-black uppercase tracking-wider shadow-lg transition disabled:cursor-not-allowed disabled:opacity-35 ${betPlaced ? "bg-emerald-700 text-emerald-200" : "bg-gradient-to-r from-emerald-500 to-emerald-400 text-[#10221c] hover:from-emerald-400 hover:to-cyan-300 shadow-emerald-500/10"}`}>
+                  {animating ? <Loader2 className="mx-auto h-5 w-5 animate-spin" /> : betPlaced ? <span className="flex items-center gap-1"><Check className="h-4 w-4" /> Placed</span> : "Bet"}
                 </button>
               </div>
               <div className="mt-2 flex items-center justify-between px-1 text-[10px] text-slate-500">
