@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { AdminLayout, AdminGuard } from "@/components/admin-layout";
-import { adminGet, adminFetch } from "@/lib/admin-api";
-import { Gamepad2, Users, TrendingUp, DollarSign, Settings, RefreshCw, ChevronDown, ChevronUp, Save, AlertTriangle, CheckCircle, BarChart2 } from "lucide-react";
+import { adminGet, adminFetch, adminPost } from "@/lib/admin-api";
+import { Gamepad2, Users, TrendingUp, DollarSign, Settings, RefreshCw, ChevronDown, ChevronUp, Save, AlertTriangle, CheckCircle, BarChart2, ArrowDownToLine } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -12,6 +12,8 @@ interface KenoBotStats {
   today: { total_wagered: string; total_paid_out: string; house_profit: string };
   totalTopups: string;
   totalWithdrawals: string;
+  mergedProfit: string;
+  platformCollected: string;
 }
 
 interface KenoPlayer {
@@ -74,11 +76,35 @@ function StatCard({ label, value, sub, color = "text-foreground" }: { label: str
 
 // ─── Overview tab ─────────────────────────────────────────────────────────────
 
-function OverviewTab({ stats }: { stats: KenoBotStats | null }) {
+function OverviewTab({ stats, onRefresh }: { stats: KenoBotStats | null; onRefresh: () => void }) {
+  const [merging, setMerging] = useState(false);
+  const [mergeMsg, setMergeMsg] = useState<string | null>(null);
+
+  async function handleMerge() {
+    setMerging(true);
+    setMergeMsg(null);
+    try {
+      const result = await adminPost<{ success: boolean; merged: number; message?: string }>("/games/keno/merge-profit");
+      if (result.merged > 0) {
+        setMergeMsg(`✓ Merged $${result.merged.toFixed(2)} to platform wallet`);
+        onRefresh();
+      } else {
+        setMergeMsg(result.message ?? "No new profit to merge");
+      }
+    } catch (e: any) {
+      setMergeMsg(`Error: ${e.message}`);
+    } finally {
+      setMerging(false);
+    }
+  }
+
   if (!stats) return <div className="text-center py-8 text-muted-foreground text-sm">Loading stats…</div>;
 
   const allTime = stats.allTime ?? {};
   const today = stats.today ?? {};
+  const houseProfit = parseFloat(allTime.house_profit ?? "0");
+  const mergedProfit = parseFloat(stats.mergedProfit ?? "0");
+  const unmerged = Math.max(0, houseProfit - mergedProfit);
 
   return (
     <div className="space-y-4">
@@ -87,7 +113,7 @@ function OverviewTab({ stats }: { stats: KenoBotStats | null }) {
         <StatCard label="Total Rounds" value={stats.realRounds.toLocaleString()} sub={`+ ${stats.demoRounds.toLocaleString()} demo`} />
         <StatCard label="Total Wagered" value={`$${parseFloat(allTime.total_wagered ?? "0").toFixed(2)}`} />
         <StatCard label="Total Paid Out" value={`$${parseFloat(allTime.total_paid_out ?? "0").toFixed(2)}`} />
-        <StatCard label="House Profit" value={`$${parseFloat(allTime.house_profit ?? "0").toFixed(2)}`} color="text-green-400" />
+        <StatCard label="House Profit" value={`$${houseProfit.toFixed(2)}`} color="text-green-400" />
         <StatCard label="Total Topped Up" value={`$${parseFloat(stats.totalTopups ?? "0").toFixed(2)}`} />
         <StatCard label="Total Withdrawn" value={`$${parseFloat(stats.totalWithdrawals ?? "0").toFixed(2)}`} />
       </div>
@@ -97,6 +123,40 @@ function OverviewTab({ stats }: { stats: KenoBotStats | null }) {
         <StatCard label="Wagered" value={`$${parseFloat(today.total_wagered ?? "0").toFixed(2)}`} />
         <StatCard label="Paid Out" value={`$${parseFloat(today.total_paid_out ?? "0").toFixed(2)}`} />
         <StatCard label="Profit" value={`$${parseFloat(today.house_profit ?? "0").toFixed(2)}`} color="text-green-400" />
+      </div>
+
+      {/* ── Merge Profit ── */}
+      <div className="rounded-xl border border-border bg-card p-4 space-y-3 mt-2">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-semibold">Merge Profit</p>
+            <p className="text-xs text-muted-foreground">Transfer house profit to platform wallet</p>
+          </div>
+          <div className="text-right">
+            <p className="text-xs text-muted-foreground">Available</p>
+            <p className={`text-lg font-bold ${unmerged > 0 ? "text-green-400" : "text-muted-foreground"}`}>
+              ${unmerged.toFixed(2)}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center justify-between text-xs text-muted-foreground border-t border-border pt-2">
+          <span>Total collected in platform wallet</span>
+          <span className="font-semibold text-foreground">${parseFloat(stats.platformCollected ?? "0").toFixed(2)}</span>
+        </div>
+        {mergeMsg && (
+          <p className={`text-xs text-center ${mergeMsg.startsWith("✓") ? "text-green-400" : "text-muted-foreground"}`}>
+            {mergeMsg}
+          </p>
+        )}
+        <button
+          onClick={handleMerge}
+          disabled={merging || unmerged <= 0}
+          className="w-full py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 disabled:opacity-40 text-white text-sm font-semibold flex items-center justify-center gap-2 transition-colors"
+        >
+          {merging
+            ? <><RefreshCw className="w-4 h-4 animate-spin" /> Merging…</>
+            : <><ArrowDownToLine className="w-4 h-4" /> Merge Profit to Platform</>}
+        </button>
       </div>
     </div>
   );
@@ -484,18 +544,8 @@ export default function AdminGamesPage() {
 
   return (
     <AdminGuard>
-      <AdminLayout>
+      <AdminLayout title="Keno Games">
         <div className="p-4 space-y-4 max-w-2xl mx-auto">
-          {/* Header */}
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-purple-600/20 flex items-center justify-center">
-              <Gamepad2 className="w-5 h-5 text-purple-400" />
-            </div>
-            <div>
-              <h1 className="font-bold text-lg">Keno Games</h1>
-              <p className="text-xs text-muted-foreground">Manage game settings, paytable, and player activity</p>
-            </div>
-          </div>
 
           {/* Tab bar */}
           <div className="flex gap-1 bg-secondary rounded-xl p-1">
@@ -517,7 +567,13 @@ export default function AdminGamesPage() {
           </div>
 
           {/* Tab content */}
-          {tab === "overview" && <OverviewTab stats={stats} />}
+          {tab === "overview" && <OverviewTab stats={stats} onRefresh={() => {
+            setStatsLoading(true);
+            adminGet<KenoBotStats>("/games/keno/stats")
+              .then(setStats)
+              .catch(console.error)
+              .finally(() => setStatsLoading(false));
+          }} />}
           {tab === "players" && <PlayersTab />}
           {tab === "paytable" && <PaytableTab />}
           {tab === "settings" && <SettingsTab />}

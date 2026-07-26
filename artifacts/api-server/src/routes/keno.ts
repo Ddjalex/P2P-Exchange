@@ -25,6 +25,7 @@ import {
   walletsTable,
   transactionsTable,
   usersTable,
+  platformWalletTable,
 } from "@workspace/db";
 import { eq, and, desc, sql } from "drizzle-orm";
 
@@ -932,9 +933,11 @@ kenoAdminRouter.get("/keno/stats", adminAuth, async (req, res) => {
       `),
     ]);
 
-    const [topups, withdrawals] = await Promise.all([
+    const [topups, withdrawals, mergedSetting, platformRow] = await Promise.all([
       db.execute(sql`SELECT COALESCE(SUM(amount::numeric), 0) AS total FROM keno_transactions WHERE type = 'topup'`),
       db.execute(sql`SELECT COALESCE(SUM(amount::numeric), 0) AS total FROM keno_transactions WHERE type = 'withdraw'`),
+      db.select().from(kenoSettingsTable).where(eq(kenoSettingsTable.key, 'merged_profit')).then(r => r[0]),
+      db.execute(sql`SELECT total_collected FROM platform_wallet WHERE asset = 'USDT' LIMIT 1`),
     ]);
 
     const getRow = (r: any) => (r as any).rows?.[0] ?? (r as any)[0] ?? {};
@@ -946,6 +949,8 @@ kenoAdminRouter.get("/keno/stats", adminAuth, async (req, res) => {
       today: getRow(today),
       totalTopups: getRow(topups).total ?? "0",
       totalWithdrawals: getRow(withdrawals).total ?? "0",
+      mergedProfit: mergedSetting?.value ?? "0",
+      platformCollected: getRow(platformRow).total_collected ?? "0",
     });
   } catch (err) {
     console.error("keno admin stats error", err);
@@ -1033,6 +1038,49 @@ kenoAdminRouter.get("/keno/settings", adminAuth, async (req, res) => {
     for (const r of rows) settings[r.key] = r.value;
     res.json(settings);
   } catch (err) {
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// POST /api/admin/games/keno/merge-profit — transfer accumulated house profit to platform wallet
+kenoAdminRouter.post("/keno/merge-profit", adminAuth, async (req, res) => {
+  try {
+    await ensureSeeded();
+
+    // Total house profit across all real rounds
+    const profitResult = await db.execute(sql`
+      SELECT COALESCE(SUM(bet_amount::numeric) - SUM(payout_amount::numeric), 0) AS house_profit
+      FROM keno_rounds WHERE mode = 'real'
+    `);
+    const houseProfit = parseFloat(((profitResult as any).rows?.[0] ?? (profitResult as any)[0])?.house_profit ?? "0");
+
+    // How much was already merged in previous calls
+    const mergedRow = await db.select().from(kenoSettingsTable).where(eq(kenoSettingsTable.key, 'merged_profit')).then(r => r[0]);
+    const alreadyMerged = parseFloat(mergedRow?.value ?? "0");
+
+    const toMerge = houseProfit - alreadyMerged;
+    if (toMerge <= 0) {
+      return res.json({ success: true, merged: 0, message: "No new profit to merge" });
+    }
+
+    // Add the delta to the platform wallet
+    await db.execute(sql`
+      UPDATE platform_wallet
+      SET total_collected = total_collected + ${toMerge.toFixed(8)}, updated_at = NOW()
+      WHERE asset = 'USDT'
+    `);
+
+    // Record the new watermark so next merge only takes the delta
+    await db.insert(kenoSettingsTable)
+      .values({ key: 'merged_profit', value: String(houseProfit) })
+      .onConflictDoUpdate({
+        target: kenoSettingsTable.key,
+        set: { value: String(houseProfit), updatedAt: new Date() },
+      });
+
+    res.json({ success: true, merged: toMerge });
+  } catch (err) {
+    console.error("keno merge profit error", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });

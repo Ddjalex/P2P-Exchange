@@ -310,7 +310,6 @@ function PaytableSheet({ paytable, picksCount, onClose }: { paytable: PaytableEn
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-bold">Payouts — Pick {picksCount}</h3>
           <div className="flex items-center gap-3">
-            <span className="text-xs text-muted-foreground">RTP: <span className="text-purple-400 font-semibold">{(rtp * 100).toFixed(1)}%</span></span>
             <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X className="w-5 h-5" /></button>
           </div>
         </div>
@@ -941,7 +940,6 @@ export default function KenoPage() {
               <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-white/10 pt-3">
                 <div className="flex items-center gap-2 text-xs text-slate-500">
                   <span className="font-bold text-slate-200">{selectedNums.length}/10</span> numbers selected
-                  {rtp !== null && <span className="text-emerald-300">· RTP {(rtp * 100).toFixed(0)}%</span>}
                 </div>
                 <div className="flex items-center gap-3">
                   <button type="button" data-testid="button-clear-keno-selection" onClick={clearSelections} disabled={selectedNums.length === 0} className="text-xs font-bold text-slate-500 hover:text-white disabled:opacity-30">Clear</button>
