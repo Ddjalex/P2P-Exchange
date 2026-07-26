@@ -496,6 +496,13 @@ export default function KenoPage() {
   const walletRef = useRef(wallet);
   walletRef.current = wallet;
   const lastAnimatedRoundRef = useRef<number | null>(null);
+  // Cancelled only on unmount — never on round/phase change — so animation
+  // always runs to completion even if the server has already moved on.
+  const animCancelledRef = useRef(false);
+  useEffect(() => {
+    animCancelledRef.current = false;
+    return () => { animCancelledRef.current = true; };
+  }, []);
 
   // Load wallet + paytable
   async function loadWallet() {
@@ -564,11 +571,9 @@ export default function KenoPage() {
     if (lastAnimatedRoundRef.current === roundState.roundId) return;
 
     lastAnimatedRoundRef.current = roundState.roundId;
-    const drawn      = roundState.drawnNumbers;
-    const myBetSnap  = roundState.myBet;
+    const drawn       = roundState.drawnNumbers;
+    const myBetSnap   = roundState.myBet;
     const currentMode = mode;
-
-    let cancelled = false;
 
     async function animate() {
       setAnimating(true);
@@ -577,36 +582,33 @@ export default function KenoPage() {
       setDrawProgress(0);
 
       for (let i = 0; i < drawn.length; i++) {
-        if (cancelled) return;
-        // Show in tray immediately (gold) + flash the grid cell at the same time
+        if (animCancelledRef.current) return;   // only stops on unmount
+        // Add to tray immediately (gold) and flash the grid cell together
         setRevealedNums(prev => [...prev, drawn[i]]);
         setActiveDrawNumber(drawn[i]);
         setDrawProgress(i + 1);
-        // Keep it gold/active for 420ms then settle to gray
         await new Promise<void>(r => setTimeout(r, 420));
-        if (cancelled) return;
+        if (animCancelledRef.current) return;
         setActiveDrawNumber(null);
-        // 80ms gap before next ball
         await new Promise<void>(r => setTimeout(r, 80));
       }
 
-      if (cancelled) return;
+      if (animCancelledRef.current) return;
       await new Promise<void>(r => setTimeout(r, 400));
       setActiveDrawNumber(null);
-      setRevealedNums([]);   // clear drawn numbers so grid resets for next round
+      setRevealedNums([]);
       setDrawProgress(0);
       setAnimating(false);
-      setBetPlaced(false); // unlock for next round
+      setBetPlaced(false);
 
-      // Show result overlay only if user placed a bet
       if (myBetSnap && myBetSnap.hitCount !== undefined) {
         setResult({
           drawn,
-          picks:       myBetSnap.picks,
-          hitCount:    myBetSnap.hitCount,
-          multiplier:  myBetSnap.multiplier!,
-          payout:      myBetSnap.payout!,
-          betAmount:   parseFloat(myBetSnap.betAmount),
+          picks:      myBetSnap.picks,
+          hitCount:   myBetSnap.hitCount,
+          multiplier: myBetSnap.multiplier!,
+          payout:     myBetSnap.payout!,
+          betAmount:  parseFloat(myBetSnap.betAmount),
         });
         if (currentMode === "real") {
           setWallet(prev => prev ? { ...prev, realBalance: String(myBetSnap.newBalance) } : prev);
@@ -619,7 +621,8 @@ export default function KenoPage() {
     }
 
     animate();
-    return () => { cancelled = true; };
+    // No cleanup here — animation must always run to completion.
+    // animCancelledRef handles unmount cancellation via its own effect.
   }, [roundState?.roundId, roundState?.phase]);
 
   function toggleNumber(n: number) {
