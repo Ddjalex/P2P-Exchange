@@ -90,6 +90,7 @@ function calcRtp(picks: number, paytable: PaytableEntry[]): number {
 
 function ModeSelector({ onSelect }: { onSelect: (mode: "demo" | "real") => void }) {
   const [, setLocation] = useLocation();
+  const [selected, setSelected] = useState<"demo" | "real">("demo");
 
   return (
     <div className="relative min-h-screen bg-[#0e1117] flex flex-col items-center justify-center px-4 py-8">
@@ -104,7 +105,7 @@ function ModeSelector({ onSelect }: { onSelect: (mode: "demo" | "real") => void 
         Wallet
       </button>
 
-      <div className="w-full max-w-[360px] flex flex-col items-center gap-5">
+      <div className="w-full max-w-[360px] flex flex-col items-center gap-6">
         {/* Hero image */}
         <div className="w-full rounded-2xl overflow-hidden shadow-2xl shadow-purple-900/40 border border-white/10">
           <img
@@ -115,58 +116,59 @@ function ModeSelector({ onSelect }: { onSelect: (mode: "demo" | "real") => void 
           />
         </div>
 
-        {/* Title */}
-        <div className="text-center">
-          <h1 className="text-2xl font-extrabold text-white tracking-tight">Keno</h1>
-          <p className="text-sm text-slate-400 mt-0.5">Pick your numbers, beat the draw</p>
-        </div>
-
-        {/* Mode cards */}
-        <div className="w-full space-y-3">
-          {/* Demo mode */}
+        {/* DEMO / REAL toggle */}
+        <div className="flex items-center gap-4">
+          <span className={`text-sm font-bold tracking-wide transition-colors ${selected === "demo" ? "text-white" : "text-slate-500"}`}>
+            DEMO
+          </span>
           <button
             type="button"
-            onClick={() => onSelect("demo")}
-            className="w-full rounded-2xl border-2 border-purple-500/40 bg-purple-500/10 hover:bg-purple-500/15 hover:border-purple-400/60 transition-all p-4 text-left"
+            aria-label="Toggle mode"
+            onClick={() => setSelected(s => s === "demo" ? "real" : "demo")}
+            className="relative h-7 w-14 rounded-full border border-white/20 bg-white/10 transition-colors focus:outline-none"
           >
-            <div className="flex items-center gap-4">
-              <div className="w-11 h-11 rounded-xl bg-purple-500/25 flex items-center justify-center flex-shrink-0">
-                <Zap className="w-5 h-5 text-purple-400" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="font-bold text-white">Demo Mode</span>
-                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-purple-400/20 text-purple-300 uppercase tracking-wider">Free</span>
-                </div>
-                <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">Play with virtual credits — no real money involved</p>
-                <p className="text-xs text-purple-400 font-semibold mt-1">10,000 demo credits to start</p>
-              </div>
-            </div>
+            <span
+              className={`absolute top-0.5 h-6 w-6 rounded-full shadow transition-all duration-300 ${
+                selected === "real"
+                  ? "left-[calc(100%-26px)] bg-amber-400"
+                  : "left-0.5 bg-purple-400"
+              }`}
+            />
           </button>
-
-          {/* Real mode */}
-          <button
-            type="button"
-            onClick={() => onSelect("real")}
-            className="w-full rounded-2xl border-2 border-amber-500/40 bg-amber-500/8 hover:bg-amber-500/12 hover:border-amber-400/60 transition-all p-4 text-left"
-          >
-            <div className="flex items-center gap-4">
-              <div className="w-11 h-11 rounded-xl bg-amber-500/20 flex items-center justify-center flex-shrink-0">
-                <Trophy className="w-5 h-5 text-amber-400" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="font-bold text-white">Real Mode</span>
-                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-amber-400/20 text-amber-300 uppercase tracking-wider">USDT</span>
-                </div>
-                <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">Play with real USDT from your Keno wallet</p>
-                <p className="text-xs text-amber-400 font-semibold mt-1">Top up from your main wallet anytime</p>
-              </div>
-            </div>
-          </button>
+          <span className={`text-sm font-bold tracking-wide transition-colors ${selected === "real" ? "text-white" : "text-slate-500"}`}>
+            REAL
+          </span>
         </div>
 
-        <p className="text-center text-[11px] text-slate-600 mt-1">
+        {/* Mode description */}
+        <div className="w-full rounded-2xl border border-white/10 bg-white/5 px-5 py-4 text-center min-h-[72px] flex flex-col items-center justify-center gap-1">
+          {selected === "demo" ? (
+            <>
+              <p className="text-sm text-slate-200 font-medium">Play with virtual credits — no real money involved</p>
+              <p className="text-xs text-purple-400 font-semibold">10,000 demo credits to start</p>
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-slate-200 font-medium">Play with real USDT from your Keno wallet</p>
+              <p className="text-xs text-amber-400 font-semibold">Top up from your main wallet anytime</p>
+            </>
+          )}
+        </div>
+
+        {/* Play button */}
+        <button
+          type="button"
+          onClick={() => onSelect(selected)}
+          className={`w-full rounded-2xl py-4 text-base font-extrabold uppercase tracking-widest shadow-lg transition-all ${
+            selected === "demo"
+              ? "bg-purple-500 hover:bg-purple-400 text-white shadow-purple-500/30"
+              : "bg-amber-400 hover:bg-amber-300 text-[#1a1000] shadow-amber-400/30"
+          }`}
+        >
+          {selected === "demo" ? "Demo Play" : "Real Play"}
+        </button>
+
+        <p className="text-center text-[11px] text-slate-600">
           Games are for entertainment. Play responsibly.
         </p>
       </div>
@@ -532,6 +534,8 @@ export default function KenoPage() {
       if (cancelled) return;
       await new Promise<void>(r => setTimeout(r, 400));
       setActiveDrawNumber(null);
+      setRevealedNums([]);   // clear drawn numbers so grid resets for next round
+      setDrawProgress(0);
       setAnimating(false);
       setBetPlaced(false); // unlock for next round
 

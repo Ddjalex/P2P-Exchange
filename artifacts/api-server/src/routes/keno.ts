@@ -302,13 +302,15 @@ async function advanceRound() {
   if (activeRound.phase !== "betting") return;
 
   const drawn = drawKeno();
+
+  // Settle every pending bet BEFORE flipping to "drawing" phase so that the
+  // first client poll that sees phase==="drawing" already has myBet results.
+  const bets = Array.from(activeRound.bets.values());
+  await Promise.allSettled(bets.map(bet => settleBet(bet, drawn)));
+
   activeRound.phase         = "drawing";
   activeRound.drawnNumbers  = drawn;
   activeRound.drawingEndsAt = Date.now() + DRAWING_MS;
-
-  // Settle every pending bet concurrently
-  const bets = Array.from(activeRound.bets.values());
-  await Promise.allSettled(bets.map(bet => settleBet(bet, drawn)));
 
   // Start next betting round after the drawing window closes
   setTimeout(() => {
