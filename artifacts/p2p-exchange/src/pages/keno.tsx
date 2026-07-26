@@ -328,6 +328,58 @@ function PaytableSheet({ paytable, picksCount, onClose }: { paytable: PaytableEn
   );
 }
 
+// ─── Ball tray (drawn numbers shown as round balls) ──────────────────────────
+
+function KenoBallTray({
+  drawnNumbers,
+  activeNumber,
+  totalExpected,
+}: {
+  drawnNumbers: number[];
+  activeNumber: number | null;
+  totalExpected: number;
+}) {
+  // Fill up to 20 slots (two rows of 10)
+  const slots = Array.from({ length: totalExpected }, (_, i) => drawnNumbers[i] ?? null);
+  const row1 = slots.slice(0, 10);
+  const row2 = slots.slice(10, 20);
+
+  function Ball({ num, idx }: { num: number | null; idx: number }) {
+    if (num === null) {
+      return (
+        <div className="h-7 w-7 flex-shrink-0 rounded-full border border-white/10 bg-white/5 sm:h-8 sm:w-8" />
+      );
+    }
+    const isActive = num === activeNumber;
+    return (
+      <div
+        key={`ball-${idx}`}
+        className={`keno-ball-drop relative flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-black sm:h-8 sm:w-8 sm:text-xs ${
+          isActive
+            ? "bg-yellow-400 text-gray-900 shadow-lg shadow-yellow-400/60 scale-110"
+            : "bg-gradient-to-b from-gray-200 to-gray-400 text-gray-900 shadow-md shadow-black/40"
+        }`}
+        style={{ animationDelay: `${idx * 30}ms` }}
+      >
+        {num}
+        {/* Shine gloss */}
+        <span className="pointer-events-none absolute inset-0 rounded-full bg-gradient-to-br from-white/50 to-transparent opacity-60" style={{ clipPath: "ellipse(55% 45% at 38% 28%)" }} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-3 space-y-1.5 px-1">
+      <div className="flex items-center gap-1 sm:gap-1.5">
+        {row1.map((num, i) => <Ball key={i} num={num} idx={i} />)}
+      </div>
+      <div className="flex items-center gap-1 sm:gap-1.5">
+        {row2.map((num, i) => <Ball key={i + 10} num={num} idx={i + 10} />)}
+      </div>
+    </div>
+  );
+}
+
 // ─── Result overlay ───────────────────────────────────────────────────────────
 
 function ResultOverlay({
@@ -751,22 +803,16 @@ export default function KenoPage() {
               <div className="relative flex min-h-[112px] items-center justify-between overflow-hidden px-5 py-5 sm:px-8">
                 <div className="pointer-events-none absolute -right-8 -top-20 h-64 w-64 rounded-full border-[18px] border-emerald-400/5" />
                 <div className="pointer-events-none absolute -right-20 top-10 h-40 w-40 rounded-full border-[14px] border-cyan-300/5" />
-                {animating && activeDrawNumber !== null && (
+                {/* Status text during draw */}
+                {animating && (
                   <div
-                    className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center"
+                    className="pointer-events-none absolute inset-0 z-10 flex items-end justify-center pb-3"
                     role="status"
                     aria-live="polite"
-                    aria-label={`Number ${activeDrawNumber} of ${drawProgress} drawn`}
                   >
-                    <div className="keno-draw-orbit absolute h-28 w-28 rounded-full border border-cyan-300/20" />
-                    <div className="keno-draw-orbit keno-draw-orbit-delayed absolute h-20 w-20 rounded-full border border-emerald-300/20" />
-                    <div className={`keno-draw-ball relative flex h-16 w-16 items-center justify-center rounded-full border-2 text-2xl font-black ${selectedNums.includes(activeDrawNumber) ? "border-emerald-200 bg-emerald-400 text-[#10221c] shadow-emerald-400/60" : "border-cyan-200 bg-[#1d5960] text-white shadow-cyan-400/60"}`}>
-                      {activeDrawNumber}
-                      {selectedNums.includes(activeDrawNumber) && <Check className="absolute -right-1 -top-1 h-4 w-4 rounded-full bg-emerald-200 p-0.5 text-[#10221c]" />}
-                    </div>
-                    <div className="absolute top-2 text-[9px] font-black uppercase tracking-[0.28em] text-cyan-200/80">
-                      Draw {drawProgress} / 20
-                    </div>
+                    <span className="keno-status-pulse rounded-full bg-black/40 px-4 py-1 text-xs font-black uppercase tracking-[0.22em] text-yellow-300">
+                      Good luck!
+                    </span>
                   </div>
                 )}
                 <div className="relative z-20">
@@ -851,14 +897,36 @@ export default function KenoPage() {
                       type="button"
                       data-testid={`button-keno-number-${n}`}
                       onClick={() => toggleNumber(n)}
-                      className={`relative aspect-square rounded-md text-xs font-bold transition-all sm:rounded-lg sm:text-sm ${isHit ? "scale-105 bg-emerald-400 text-[#10221c] shadow-lg shadow-emerald-400/20" : isSelected ? "border-2 border-cyan-300 bg-cyan-300/20 text-cyan-200" : isDrawn ? "bg-[#303b3d] text-slate-600" : "bg-[#2a3436] text-slate-400 hover:bg-[#344143] hover:text-white"} ${isActive ? "keno-number-reveal" : ""} ${animating ? "cursor-not-allowed" : ""}`}
+                      className={`relative aspect-square rounded-md text-xs font-bold transition-all sm:rounded-lg sm:text-sm
+                        ${isHit
+                          ? "bg-yellow-400 text-gray-900 shadow-md shadow-yellow-400/30 ring-2 ring-red-500 ring-offset-1 ring-offset-[#1b2324]"
+                          : isSelected
+                          ? "bg-[#2a3436] text-white ring-2 ring-red-500 ring-offset-1 ring-offset-[#1b2324]"
+                          : isDrawn
+                          ? "bg-[#222b2d] text-slate-600"
+                          : "bg-[#2a3436] text-slate-400 hover:bg-[#344143] hover:text-white"
+                        }
+                        ${isActive ? "keno-cell-flash" : ""}
+                        ${animating ? "cursor-not-allowed" : ""}
+                      `}
                     >
-                      {isHit && <Check className="absolute right-1 top-1 h-2.5 w-2.5" />}
                       {n}
                     </button>
                   );
                 })}
               </div>
+
+              {/* ── Ball tray — drawn numbers as round balls ─────────── */}
+              {(animating || revealedNums.length > 0) && (
+                <div className="mt-3 border-t border-white/10 pt-3">
+                  <p className="mb-2 text-[9px] font-black uppercase tracking-[0.2em] text-slate-500">Drawn numbers</p>
+                  <KenoBallTray
+                    drawnNumbers={revealedNums}
+                    activeNumber={activeDrawNumber}
+                    totalExpected={20}
+                  />
+                </div>
+              )}
 
               <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-white/10 pt-3">
                 <div className="flex items-center gap-2 text-xs text-slate-500">

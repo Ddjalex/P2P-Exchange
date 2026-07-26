@@ -144,73 +144,41 @@
   }
 }
 
-@keyframes keno-draw-ball-in {
-  0% {
-    opacity: 0;
-    transform: scale(.45) translateY(-12px);
-    filter: blur(5px);
-  }
-  55% {
-    opacity: 1;
-    transform: scale(1.08) translateY(0);
-    filter: blur(0);
-  }
-  100% {
-    opacity: 1;
-    transform: scale(1);
-    filter: blur(0);
-  }
+/* ── Keno: grid cell active flash ─────────────────────────────────────── */
+@keyframes keno-cell-flash {
+  0%   { box-shadow: 0 0 0 3px rgba(250,204,21,.9), 0 0 22px rgba(250,204,21,.6); transform: scale(1.18); }
+  60%  { box-shadow: 0 0 0 2px rgba(250,204,21,.5), 0 0 10px rgba(250,204,21,.3); transform: scale(1.06); }
+  100% { box-shadow: 0 0 0 0 rgba(250,204,21,0);   transform: scale(1); }
 }
 
-@keyframes keno-draw-orbit {
-  0% {
-    opacity: .15;
-    transform: scale(.7) rotate(0deg);
-  }
-  50% {
-    opacity: .75;
-  }
-  100% {
-    opacity: .15;
-    transform: scale(1.25) rotate(180deg);
-  }
+/* ── Keno: ball slides into tray from right ───────────────────────────── */
+@keyframes keno-ball-drop {
+  0%   { opacity: 0; transform: translateX(28px) scale(.7); }
+  55%  { opacity: 1; transform: translateX(-3px) scale(1.08); }
+  100% { opacity: 1; transform: translateX(0)    scale(1); }
 }
 
-@keyframes keno-number-reveal {
-  0% {
-    transform: scale(.7);
-    opacity: .45;
-    box-shadow: 0 0 0 0 rgba(45, 212, 191, 0);
-  }
-  45% {
-    transform: scale(1.14);
-    opacity: 1;
-    box-shadow: 0 0 0 5px rgba(45, 212, 191, .18), 0 0 22px rgba(45, 212, 191, .5);
-  }
-  100% {
-    transform: scale(1);
-    opacity: 1;
-    box-shadow: 0 0 0 0 rgba(45, 212, 191, 0);
-  }
+/* ── Keno: "Good luck!" / status text pulse ───────────────────────────── */
+@keyframes keno-text-pulse {
+  0%, 100% { opacity: .7; }
+  50%       { opacity: 1;  }
 }
 
-.keno-draw-ball {
-  animation: keno-draw-ball-in .56s cubic-bezier(.2, .8, .2, 1) both;
-  box-shadow: 0 0 24px rgba(34, 211, 238, .42), inset 0 0 18px rgba(255, 255, 255, .12);
-}
-
-.keno-draw-orbit {
-  animation: keno-draw-orbit 1.8s ease-out infinite;
-  box-shadow: 0 0 25px rgba(34, 211, 238, .2);
-}
-
-.keno-draw-orbit-delayed {
-  animation-delay: -.7s;
-  animation-duration: 1.35s;
-  border-color: rgba(52, 211, 153, .25);
-}
-
-.keno-number-reveal {
-  animation: keno-number-reveal .56s cubic-bezier(.2, .8, .2, 1) both;
+.keno-cell-flash {
+  animation: keno-cell-flash .55s cubic-bezier(.2,.8,.2,1) both;
   z-index: 2;
 }
+
+.keno-ball-drop {
+  animation: keno-ball-drop .45s cubic-bezier(.25,.8,.25,1) both;
+}
+
+.keno-status-pulse {
+  animation: keno-text-pulse 1.4s ease-in-out infinite;
+}
+
+/* legacy classes kept so nothing breaks if referenced elsewhere */
+.keno-draw-ball  { }
+.keno-draw-orbit { }
+.keno-draw-orbit-delayed { }
+.keno-number-reveal { }
