@@ -499,7 +499,6 @@ export default function KenoPage() {
   // queuedTickets = tickets already confirmed, waiting to be placed as a batch
   const [currentPicks, setCurrentPicks] = useState<number[]>([]);
   const [currentBetAmount, setCurrentBetAmount] = useState("1.00");
-  const [queuedTickets, setQueuedTickets] = useState<TicketDraft[]>([]);
 
   const [animating, setAnimating] = useState(false);
   const [revealedNums, setRevealedNums] = useState<number[]>([]);
@@ -673,25 +672,9 @@ export default function KenoPage() {
     });
   }
 
-  /** Lock current picks into the queue as a new ticket, clear the grid */
-  function confirmCurrentTicket() {
-    if (animating || betPlaced || currentPicks.length === 0) return;
-    if (queuedTickets.length >= 10) {
-      toast({ description: "Maximum 10 tickets per round", variant: "destructive" });
-      return;
-    }
-    setQueuedTickets(prev => [...prev, { picks: currentPicks, betAmount: currentBetAmount }]);
-    setCurrentPicks([]);
-  }
-
-  function removeQueuedTicket(idx: number) {
-    setQueuedTickets(prev => prev.filter((_, i) => i !== idx));
-  }
-
   function resetAllTickets() {
     setCurrentPicks([]);
     setCurrentBetAmount("1.00");
-    setQueuedTickets([]);
   }
 
   // ── Computed values ───────────────────────────────────────────────────────
@@ -702,32 +685,22 @@ export default function KenoPage() {
 
   const settings = wallet?.settings;
   const activeBet = parseFloat(currentBetAmount || "1.00");
-  const totalStake = parseFloat(
-    (queuedTickets.reduce((sum, t) => sum + parseFloat(t.betAmount || "0"), 0)).toFixed(2)
-  );
 
-  /** Can add current picks as a new queued ticket */
-  const canAddTicket = (
-    !betPlaced && !animating &&
-    currentPicks.length >= 1 &&
-    !isNaN(activeBet) && activeBet > 0 &&
-    queuedTickets.length < 10 &&
-    (!settings || (activeBet >= parseFloat(settings.minBet) && activeBet <= parseFloat(settings.maxBet)))
-  );
-
-  /** Can submit the queued batch to the server */
+  /** Can submit the current picks immediately */
   const canPlace = (
     !betPlaced && !animating &&
     roundState?.phase === "betting" &&
     (roundState?.secondsLeft ?? 0) > 0 &&
-    queuedTickets.length > 0 &&
-    totalStake <= balance &&
+    currentPicks.length >= 1 &&
+    !isNaN(activeBet) && activeBet > 0 &&
+    activeBet <= balance &&
+    (!settings || (activeBet >= parseFloat(settings.minBet) && activeBet <= parseFloat(settings.maxBet))) &&
     (settings?.gameEnabled !== false)
   );
 
   async function handlePlace() {
     if (!canPlace || !mode) return;
-    const payload = queuedTickets.map(t => ({ picks: t.picks, betAmount: parseFloat(t.betAmount).toFixed(2) }));
+    const payload = [{ picks: currentPicks, betAmount: activeBet.toFixed(2) }];
     try {
       const res = await apiFetch("/api/games/keno/bet-batch", {
         method: "POST",
@@ -967,8 +940,6 @@ export default function KenoPage() {
               <div className="grid grid-cols-10 gap-1 sm:gap-1.5">
                 {Array.from({ length: 80 }, (_, i) => i + 1).map(n => {
                   const isSelected = currentPicks.includes(n);
-                  // show a dot if this number is already locked into a queued ticket
-                  const inQueue = queuedTickets.some(t => t.picks.includes(n));
                   const isDrawn = revealedNums.includes(n);
                   const isHit = isSelected && isDrawn;
                   const isFlash = activeDrawNumber === n;
@@ -993,10 +964,6 @@ export default function KenoPage() {
                       `}
                     >
                       {n}
-                      {/* orange dot = this number is in a queued ticket */}
-                      {inQueue && !isSelected && !isDrawn && (
-                        <span className="pointer-events-none absolute bottom-0.5 right-0.5 h-1.5 w-1.5 rounded-full bg-amber-400" />
-                      )}
                     </button>
                   );
                 })}
@@ -1023,7 +990,7 @@ export default function KenoPage() {
               </div>
 
               {/* ── Bet amount ───────────────────────────────────────── */}
-              <div className="mt-3 grid grid-cols-[1fr_auto_auto_auto] gap-2">
+              <div className="mt-3 grid grid-cols-[1fr_auto_auto] gap-2">
                 <div className="flex items-center rounded-lg border border-white/10 bg-[#263133]">
                   <button type="button" data-testid="button-decrease-bet" onClick={() => setCurrentBetAmount(Math.max(0.1, activeBet - 0.1).toFixed(2))} disabled={betPlaced || animating} className="flex h-11 w-10 items-center justify-center text-slate-400 hover:text-white disabled:opacity-30"><Minus className="h-4 w-4" /></button>
                   <label className="flex flex-1 items-center justify-center gap-1 text-sm font-black text-white">
@@ -1034,46 +1001,7 @@ export default function KenoPage() {
                 </div>
                 <button type="button" data-testid="button-double-bet" onClick={() => setCurrentBetAmount((activeBet * 2).toFixed(2))} disabled={betPlaced || animating} className="rounded-lg border border-emerald-400/20 bg-emerald-400/10 px-3 text-xs font-black text-emerald-300 hover:bg-emerald-400/20 disabled:opacity-30">X2</button>
                 <button type="button" data-testid="button-max-bet" onClick={() => setCurrentBetAmount(settings?.maxBet ?? "100.00")} disabled={betPlaced || animating} className="rounded-lg border border-emerald-400/20 bg-emerald-400/10 px-3 text-xs font-black text-emerald-300 hover:bg-emerald-400/20 disabled:opacity-30">MAX</button>
-                {/* Add Ticket — locks current picks into the queue */}
-                <button
-                  type="button"
-                  data-testid="button-add-ticket"
-                  onClick={confirmCurrentTicket}
-                  disabled={!canAddTicket}
-                  className="rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white px-3 text-xs font-black uppercase tracking-wide shadow transition disabled:opacity-30 disabled:cursor-not-allowed"
-                >
-                  + Ticket
-                </button>
               </div>
-
-              {/* ── Queued ticket chips ───────────────────────────────── */}
-              {queuedTickets.length > 0 && (
-                <div className="mt-3 rounded-lg border border-white/10 bg-[#1a2526] p-2.5 space-y-1.5">
-                  <p className="text-[9px] font-black uppercase tracking-[0.18em] text-slate-500 mb-1">Queued tickets</p>
-                  {queuedTickets.map((t, i) => (
-                    <div key={i} className="flex items-center justify-between gap-2 rounded-md bg-[#263133] px-2.5 py-1.5">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="flex-shrink-0 rounded bg-emerald-500/20 px-1.5 py-0.5 text-[10px] font-black text-emerald-400">T{i + 1}</span>
-                        <div className="flex flex-wrap gap-0.5 min-w-0">
-                          {t.picks.map(p => (
-                            <span key={p} className="rounded bg-[#344043] px-1 py-0.5 text-[9px] font-bold text-slate-300">{p}</span>
-                          ))}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        <span className="text-[10px] font-bold text-slate-400">{parseFloat(t.betAmount).toFixed(2)}</span>
-                        {!betPlaced && !animating && (
-                          <button type="button" onClick={() => removeQueuedTicket(i)} className="text-slate-600 hover:text-red-400 transition-colors text-sm leading-none">×</button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                  <div className="flex items-center justify-between pt-1 border-t border-white/10 text-[10px] text-slate-500">
-                    <span>{queuedTickets.length} ticket{queuedTickets.length !== 1 ? "s" : ""}</span>
-                    <span className="font-bold text-slate-300">Total {totalStake.toFixed(2)} USDT</span>
-                  </div>
-                </div>
-              )}
 
               {/* ── Place all button ──────────────────────────────────── */}
               <div className="mt-3">
@@ -1091,10 +1019,10 @@ export default function KenoPage() {
                   {animating
                     ? <Loader2 className="mx-auto h-5 w-5 animate-spin" />
                     : betPlaced
-                    ? <span className="flex items-center justify-center gap-2"><Check className="h-4 w-4" /> {queuedTickets.length} Ticket{queuedTickets.length !== 1 ? "s" : ""} Placed</span>
-                    : queuedTickets.length > 0
-                    ? `Place ${queuedTickets.length} Ticket${queuedTickets.length !== 1 ? "s" : ""} · ${totalStake.toFixed(2)} USDT`
-                    : "Add a ticket first"
+                    ? <span className="flex items-center justify-center gap-2"><Check className="h-4 w-4" /> Bet Placed — Waiting for Draw</span>
+                    : currentPicks.length > 0
+                    ? `Place Bet · ${activeBet.toFixed(2)} USDT`
+                    : "Select numbers to place a bet"
                   }
                 </button>
                 <div className="mt-1.5 flex items-center justify-between px-1 text-[10px] text-slate-500">
