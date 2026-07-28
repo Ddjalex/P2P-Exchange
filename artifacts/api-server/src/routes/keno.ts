@@ -827,21 +827,39 @@ kenoRouter.post("/bet", async (req, res) => {
     if (activeRound.bets.has(betKey))
       return res.status(400).json({ error: "You already placed a bet this round" });
 
+    // Claim the slot immediately — prevents concurrent requests from both
+    // passing the has() check above before either finishes the DB deduction.
+    const claimedRoundId = activeRound.roundId;
+    activeRound.bets.set(betKey, null as any);
+
     const [minBet, maxBet, gameEnabled] = await Promise.all([
       getSetting("min_bet", "0.10").then(parseFloat),
       getSetting("max_bet", "100.00").then(parseFloat),
       getSetting("game_enabled", "true"),
     ]);
-    if (gameEnabled !== "true") return res.status(403).json({ error: "Keno is temporarily disabled" });
-    if (bet < minBet) return res.status(400).json({ error: `Minimum bet is ${minBet} USDT` });
-    if (bet > maxBet) return res.status(400).json({ error: `Maximum bet is ${maxBet} USDT` });
+    if (gameEnabled !== "true") {
+      activeRound.bets.delete(betKey);
+      return res.status(403).json({ error: "Keno is temporarily disabled" });
+    }
+    if (bet < minBet) {
+      activeRound.bets.delete(betKey);
+      return res.status(400).json({ error: `Minimum bet is ${minBet} USDT` });
+    }
+    if (bet > maxBet) {
+      activeRound.bets.delete(betKey);
+      return res.status(400).json({ error: `Maximum bet is ${maxBet} USDT` });
+    }
 
     // Deduct TOTAL_STAKED in ONE atomic SQL command before the draw
     const deductRes = await deductBatchStake(userId, mode as "demo" | "real", bet);
-    if ("error" in deductRes) return res.status(400).json({ error: deductRes.error });
+    if ("error" in deductRes) {
+      activeRound.bets.delete(betKey);
+      return res.status(400).json({ error: deductRes.error });
+    }
 
     // Race: round closed while the DB transaction was in flight — refund and reject
-    if (activeRound.phase !== "betting") {
+    if (activeRound.phase !== "betting" || activeRound.roundId !== claimedRoundId) {
+      activeRound.bets.delete(betKey);
       await refundBatchStake(userId, mode as "demo" | "real", bet);
       return res.status(400).json({ error: "Betting just closed — your balance was refunded" });
     }
@@ -895,12 +913,20 @@ kenoRouter.post("/bet-batch", async (req, res) => {
     if (activeRound.bets.has(betKey))
       return res.status(400).json({ error: "You already have a batch queued this round" });
 
+    // Claim the slot immediately — prevents concurrent requests from both
+    // passing the has() check above before either finishes the DB deduction.
+    const claimedRoundId = activeRound.roundId;
+    activeRound.bets.set(betKey, null as any);
+
     const [minBet, maxBet, gameEnabled] = await Promise.all([
       getSetting("min_bet", "0.10").then(parseFloat),
       getSetting("max_bet", "100.00").then(parseFloat),
       getSetting("game_enabled", "true"),
     ]);
-    if (gameEnabled !== "true") return res.status(403).json({ error: "Keno is temporarily disabled" });
+    if (gameEnabled !== "true") {
+      activeRound.bets.delete(betKey);
+      return res.status(403).json({ error: "Keno is temporarily disabled" });
+    }
 
     // Validate every ticket and accumulate total stake
     let totalStaked = 0;
@@ -908,22 +934,35 @@ kenoRouter.post("/bet-batch", async (req, res) => {
     for (const [i, raw] of (tickets as any[]).entries()) {
       try {
         const { picks, betAmount: rawBet } = raw ?? {};
-        if (!Array.isArray(picks) || picks.length < 1 || picks.length > 10)
+        if (!Array.isArray(picks) || picks.length < 1 || picks.length > 10) {
+          activeRound.bets.delete(betKey);
           return res.status(400).json({ error: `Ticket ${i + 1}: select 1–10 numbers` });
-        if (picks.some((n: any) => !Number.isInteger(n) || n < 1 || n > 80))
+        }
+        if (picks.some((n: any) => !Number.isInteger(n) || n < 1 || n > 80)) {
+          activeRound.bets.delete(betKey);
           return res.status(400).json({ error: `Ticket ${i + 1}: numbers must be integers 1–80` });
-        if (new Set(picks).size !== picks.length)
+        }
+        if (new Set(picks).size !== picks.length) {
+          activeRound.bets.delete(betKey);
           return res.status(400).json({ error: `Ticket ${i + 1}: duplicate numbers not allowed` });
+        }
         const bet = parseFloat(rawBet);
-        if (isNaN(bet) || bet <= 0)
+        if (isNaN(bet) || bet <= 0) {
+          activeRound.bets.delete(betKey);
           return res.status(400).json({ error: `Ticket ${i + 1}: invalid bet amount` });
-        if (bet < minBet)
+        }
+        if (bet < minBet) {
+          activeRound.bets.delete(betKey);
           return res.status(400).json({ error: `Ticket ${i + 1}: minimum bet is ${minBet} USDT` });
-        if (bet > maxBet)
+        }
+        if (bet > maxBet) {
+          activeRound.bets.delete(betKey);
           return res.status(400).json({ error: `Ticket ${i + 1}: maximum bet is ${maxBet} USDT` });
+        }
         totalStaked += bet;
         validatedTickets.push({ picks, betAmount: bet.toFixed(2) });
       } catch {
+        activeRound.bets.delete(betKey);
         return res.status(400).json({ error: `Ticket ${i + 1}: malformed` });
       }
     }
@@ -931,10 +970,14 @@ kenoRouter.post("/bet-batch", async (req, res) => {
 
     // Deduct TOTAL stake in ONE atomic SQL command before the draw
     const deductRes = await deductBatchStake(userId, mode as "demo" | "real", totalStaked);
-    if ("error" in deductRes) return res.status(400).json({ error: deductRes.error });
+    if ("error" in deductRes) {
+      activeRound.bets.delete(betKey);
+      return res.status(400).json({ error: deductRes.error });
+    }
 
     // Race: round closed while the DB transaction was in flight — refund and reject
-    if (activeRound.phase !== "betting") {
+    if (activeRound.phase !== "betting" || activeRound.roundId !== claimedRoundId) {
+      activeRound.bets.delete(betKey);
       await refundBatchStake(userId, mode as "demo" | "real", totalStaked);
       return res.status(400).json({ error: "Betting just closed — your balance was refunded" });
     }
