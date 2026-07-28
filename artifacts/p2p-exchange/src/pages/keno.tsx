@@ -382,72 +382,103 @@ function KenoBallTray({
   );
 }
 
-// ─── Result overlay ───────────────────────────────────────────────────────────
+// ─── Result overlay (multi-ticket) ───────────────────────────────────────────
 
-function ResultOverlay({
-  drawn,
-  picks,
-  hitCount,
-  multiplier,
-  payout,
-  betAmount,
-  onClose,
-}: {
-  drawn: number[];
+interface TicketResult {
   picks: number[];
+  betAmount: number;
   hitCount: number;
   multiplier: number;
   payout: number;
-  betAmount: number;
+}
+
+function ResultOverlay({
+  drawn,
+  tickets,
+  totalPayout,
+  onClose,
+}: {
+  drawn: number[];
+  tickets: TicketResult[];
+  totalPayout: number;
   onClose: () => void;
 }) {
-  const won = payout > 0;
+  const [activeIdx, setActiveIdx] = useState(0);
+  const ticket = tickets[activeIdx] ?? tickets[0];
+  const won = totalPayout > 0;
+
   return (
     <div className="fixed inset-0 z-[9996] flex items-center justify-center px-4">
       <div className="absolute inset-0 bg-black/80" onClick={onClose} />
-      <div className="relative w-full max-w-sm bg-card rounded-2xl border border-border p-6 text-center space-y-4">
-        <div className={`w-16 h-16 rounded-full mx-auto flex items-center justify-center ${won ? "bg-purple-600/20" : "bg-muted/30"}`}>
-          {won
-            ? <Trophy className="w-8 h-8 text-purple-400" />
-            : <X className="w-8 h-8 text-muted-foreground" />
-          }
+      <div className="relative w-full max-w-sm bg-card rounded-2xl border border-border p-5 text-center space-y-3 max-h-[90vh] overflow-y-auto">
+        {/* Header */}
+        <div className={`w-14 h-14 rounded-full mx-auto flex items-center justify-center ${won ? "bg-emerald-600/20" : "bg-muted/30"}`}>
+          {won ? <Trophy className="w-7 h-7 text-emerald-400" /> : <X className="w-7 h-7 text-muted-foreground" />}
         </div>
-
         <div>
-          <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">{won ? "You won!" : "No win this round"}</p>
-          {won && (
-            <p className="text-3xl font-black text-purple-400">+{payout.toFixed(2)} <span className="text-lg">USDT</span></p>
-          )}
-          <p className="text-sm text-muted-foreground mt-1">
-            {hitCount} hit{hitCount !== 1 ? "s" : ""} · {multiplier}× multiplier
+          <p className="text-xs text-muted-foreground uppercase tracking-wide mb-0.5">{won ? "Round complete!" : "No wins this round"}</p>
+          <p className="text-2xl font-black text-emerald-400">
+            {totalPayout > 0 ? `+${totalPayout.toFixed(2)}` : "0.00"} <span className="text-base font-medium text-emerald-400/70">USDT</span>
           </p>
+          <p className="text-xs text-slate-500 mt-0.5">{tickets.length} ticket{tickets.length !== 1 ? "s" : ""} played</p>
         </div>
 
-        {/* Mini grid showing draw result */}
-        <div className="grid grid-cols-10 gap-1 max-w-[260px] mx-auto">
-          {drawn.map(n => {
-            const isHit = picks.includes(n);
-            return (
-              <div
-                key={n}
-                className={`aspect-square rounded text-[9px] font-bold flex items-center justify-center
-                  ${isHit ? "bg-purple-600 text-white" : "bg-secondary text-muted-foreground"}`}
+        {/* Ticket tabs */}
+        {tickets.length > 1 && (
+          <div className="flex gap-1.5 justify-center flex-wrap">
+            {tickets.map((t, i) => (
+              <button
+                key={i}
+                onClick={() => setActiveIdx(i)}
+                className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all ${
+                  i === activeIdx
+                    ? "bg-emerald-500 text-[#10221c]"
+                    : t.payout > 0
+                    ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                    : "bg-white/5 text-slate-400 border border-white/10"
+                }`}
               >
-                {n}
-              </div>
-            );
-          })}
-        </div>
+                T{i + 1} {t.payout > 0 ? `+${t.payout.toFixed(2)}` : "×"}
+              </button>
+            ))}
+          </div>
+        )}
 
-        <button
-          onClick={onClose}
-          className="w-full py-3 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-semibold text-sm transition-colors"
-        >
+        {/* Active ticket detail */}
+        {ticket && (
+          <div className="rounded-xl border border-white/10 bg-[#1b2324] p-3 text-left space-y-2">
+            <div className="flex justify-between text-xs">
+              <span className="text-slate-400">Ticket {activeIdx + 1}</span>
+              <span className={ticket.payout > 0 ? "text-emerald-400 font-bold" : "text-slate-500"}>
+                {ticket.hitCount} hit{ticket.hitCount !== 1 ? "s" : ""} · {ticket.multiplier}× · {ticket.payout > 0 ? `+${ticket.payout.toFixed(2)}` : "no win"}
+              </span>
+            </div>
+            <div className="grid grid-cols-10 gap-1">
+              {drawn.map(n => {
+                const isHit = ticket.picks.includes(n);
+                return (
+                  <div key={n} className={`aspect-square rounded text-[9px] font-bold flex items-center justify-center ${isHit ? "bg-emerald-600 text-white" : "bg-[#263133] text-slate-500"}`}>
+                    {n}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        <button onClick={onClose} className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-sm transition-colors">
           Play Again
         </button>
       </div>
     </div>
   );
+}
+
+// ─── Ticket draft type ────────────────────────────────────────────────────────
+
+interface TicketDraft {
+  picks: number[];
+  betAmount: string;
 }
 
 // ─── Main Game Component ──────────────────────────────────────────────────────
@@ -463,14 +494,16 @@ export default function KenoPage() {
   const [paytable, setPaytable] = useState<PaytableEntry[]>([]);
   const [history, setHistory] = useState<KenoRound[]>([]);
 
-  const [selectedNums, setSelectedNums] = useState<number[]>([]);
-  const [betAmount, setBetAmount] = useState("1.00");
+  // ── Multi-ticket state ───────────────────────────────────────────────────
+  const [tickets, setTickets] = useState<TicketDraft[]>([{ picks: [], betAmount: "1.00" }]);
+  const [activeTicketIdx, setActiveTicketIdx] = useState(0);
+
   const [animating, setAnimating] = useState(false);
   const [revealedNums, setRevealedNums] = useState<number[]>([]);
   const [activeDrawNumber, setActiveDrawNumber] = useState<number | null>(null);
   const [drawProgress, setDrawProgress] = useState(0);
 
-  const [result, setResult] = useState<{ drawn: number[]; picks: number[]; hitCount: number; multiplier: number; payout: number; betAmount: number } | null>(null);
+  const [batchResult, setBatchResult] = useState<{ drawn: number[]; tickets: TicketResult[]; totalPayout: number } | null>(null);
   const [showTopUp, setShowTopUp] = useState(false);
   const [showWithdraw, setShowWithdraw] = useState(false);
   const [showPaytable, setShowPaytable] = useState(false);
@@ -484,24 +517,24 @@ export default function KenoPage() {
     secondsLeft: number;
     totalBets: number;
     drawnNumbers: number[] | null;
-    myBet: {
-      picks: number[]; betAmount: string; mode: string;
-      hitCount?: number; multiplier?: number; payout?: number; newBalance?: number;
+    myBatch: {
+      mode: string; totalStaked: string; ticketCount: number;
+      tickets: { picks: number[]; betAmount: string; hitCount?: number; multiplier?: number; payout?: number }[];
+      totalPayout?: number; newBalance?: number;
     } | null;
   } | null>(null);
   const [betPlaced, setBetPlaced] = useState(false);
   const [countdown, setCountdown] = useState(30);
 
-  const walletRef = useRef(wallet);
-  walletRef.current = wallet;
   const lastAnimatedRoundRef = useRef<number | null>(null);
-  // Cancelled only on unmount — never on round/phase change — so animation
-  // always runs to completion even if the server has already moved on.
   const animCancelledRef = useRef(false);
   useEffect(() => {
     animCancelledRef.current = false;
     return () => { animCancelledRef.current = true; };
   }, []);
+
+  // convenience: active ticket
+  const activeTicket = tickets[activeTicketIdx] ?? tickets[0];
 
   // Load wallet + paytable
   async function loadWallet() {
@@ -550,7 +583,7 @@ export default function KenoPage() {
     return () => { stopped = true; };
   }, [mode]);
 
-  // ── Smooth local countdown (seeded from server, decrements locally) ────────
+  // ── Smooth local countdown ────────────────────────────────────────────────
   useEffect(() => {
     if (!roundState) return;
     setCountdown(roundState.phase === "betting" ? roundState.secondsLeft : 0);
@@ -562,7 +595,7 @@ export default function KenoPage() {
     return () => clearInterval(id);
   }, [roundState?.roundId, roundState?.phase, animating]);
 
-  // ── Trigger shared draw animation when round enters drawing phase ──────────
+  // ── Trigger draw animation when round enters drawing phase ────────────────
   useEffect(() => {
     if (!roundState) return;
     if (roundState.phase !== "drawing") return;
@@ -570,9 +603,9 @@ export default function KenoPage() {
     if (lastAnimatedRoundRef.current === roundState.roundId) return;
 
     lastAnimatedRoundRef.current = roundState.roundId;
-    const drawn       = roundState.drawnNumbers;
-    const myBetSnap   = roundState.myBet;
-    const currentMode = mode;
+    const drawn        = roundState.drawnNumbers;
+    const myBatchSnap  = roundState.myBatch;
+    const currentMode  = mode;
 
     async function animate() {
       setAnimating(true);
@@ -581,8 +614,7 @@ export default function KenoPage() {
       setDrawProgress(0);
 
       for (let i = 0; i < drawn.length; i++) {
-        if (animCancelledRef.current) return;   // only stops on unmount
-        // Add to tray immediately (gold) and flash the grid cell together
+        if (animCancelledRef.current) return;
         setRevealedNums(prev => [...prev, drawn[i]]);
         setActiveDrawNumber(drawn[i]);
         setDrawProgress(i + 1);
@@ -600,19 +632,23 @@ export default function KenoPage() {
       setAnimating(false);
       setBetPlaced(false);
 
-      if (myBetSnap && myBetSnap.hitCount !== undefined) {
-        setResult({
+      // Show batch result overlay if this user had tickets
+      if (myBatchSnap && myBatchSnap.totalPayout !== undefined && myBatchSnap.tickets.every(t => t.hitCount !== undefined)) {
+        setBatchResult({
           drawn,
-          picks:      myBetSnap.picks,
-          hitCount:   myBetSnap.hitCount,
-          multiplier: myBetSnap.multiplier!,
-          payout:     myBetSnap.payout!,
-          betAmount:  parseFloat(myBetSnap.betAmount),
+          tickets: myBatchSnap.tickets.map(t => ({
+            picks:      t.picks,
+            betAmount:  parseFloat(t.betAmount),
+            hitCount:   t.hitCount!,
+            multiplier: t.multiplier!,
+            payout:     t.payout!,
+          })),
+          totalPayout: myBatchSnap.totalPayout,
         });
         if (currentMode === "real") {
-          setWallet(prev => prev ? { ...prev, realBalance: String(myBetSnap.newBalance) } : prev);
+          setWallet(prev => prev ? { ...prev, realBalance: String(myBatchSnap.newBalance) } : prev);
         } else {
-          setWallet(prev => prev ? { ...prev, demoBalance: String(myBetSnap.newBalance) } : prev);
+          setWallet(prev => prev ? { ...prev, demoBalance: String(myBatchSnap.newBalance) } : prev);
         }
       }
 
@@ -620,50 +656,105 @@ export default function KenoPage() {
     }
 
     animate();
-    // No cleanup here — animation must always run to completion.
-    // animCancelledRef handles unmount cancellation via its own effect.
   }, [roundState?.roundId, roundState?.phase]);
+
+  // ── Ticket management ─────────────────────────────────────────────────────
 
   function toggleNumber(n: number) {
     if (animating || betPlaced) return;
-    setSelectedNums(prev => {
-      if (prev.includes(n)) return prev.filter(x => x !== n);
-      if (prev.length >= 10) {
-        toast({ description: "Maximum 10 numbers", variant: "destructive" });
-        return prev;
+    setTickets(prev => {
+      const updated = [...prev];
+      const t = { ...updated[activeTicketIdx], picks: [...updated[activeTicketIdx].picks] };
+      if (t.picks.includes(n)) {
+        t.picks = t.picks.filter(x => x !== n);
+      } else {
+        if (t.picks.length >= 10) {
+          toast({ description: "Maximum 10 numbers per ticket", variant: "destructive" });
+          return prev;
+        }
+        t.picks = [...t.picks, n].sort((a, b) => a - b);
       }
-      return [...prev, n].sort((a, b) => a - b);
+      updated[activeTicketIdx] = t;
+      return updated;
     });
   }
 
-  function clearSelections() {
-    if (!animating && !betPlaced) setSelectedNums([]);
+  function clearActiveTicket() {
+    if (animating || betPlaced) return;
+    setTickets(prev => {
+      const updated = [...prev];
+      updated[activeTicketIdx] = { ...updated[activeTicketIdx], picks: [] };
+      return updated;
+    });
   }
+
+  function setActiveBetAmount(val: string) {
+    setTickets(prev => {
+      const updated = [...prev];
+      updated[activeTicketIdx] = { ...updated[activeTicketIdx], betAmount: val };
+      return updated;
+    });
+  }
+
+  function addTicket() {
+    if (tickets.length >= 10) {
+      toast({ description: "Maximum 10 tickets per round", variant: "destructive" });
+      return;
+    }
+    const newTicket: TicketDraft = { picks: [], betAmount: activeTicket.betAmount };
+    setTickets(prev => [...prev, newTicket]);
+    setActiveTicketIdx(tickets.length); // index of new ticket
+  }
+
+  function removeTicket(idx: number) {
+    if (tickets.length === 1) {
+      // Just clear it instead of removing
+      setTickets([{ picks: [], betAmount: "1.00" }]);
+      setActiveTicketIdx(0);
+      return;
+    }
+    setTickets(prev => prev.filter((_, i) => i !== idx));
+    setActiveTicketIdx(prev => (prev >= idx && prev > 0 ? prev - 1 : prev));
+  }
+
+  function resetAllTickets() {
+    setTickets([{ picks: [], betAmount: "1.00" }]);
+    setActiveTicketIdx(0);
+  }
+
+  // ── Computed values ───────────────────────────────────────────────────────
 
   const balance = mode === "real"
     ? parseFloat(wallet?.realBalance ?? "0")
     : parseFloat(wallet?.demoBalance ?? "10000");
 
-  const bet = parseFloat(betAmount);
   const settings = wallet?.settings;
-  const canBet = (
+  const activeBet = parseFloat(activeTicket?.betAmount ?? "1.00");
+  const totalStake = tickets.reduce((sum, t) => sum + parseFloat(t.betAmount || "0"), 0);
+
+  const ticketsReady = tickets.filter(t => t.picks.length >= 1 && !isNaN(parseFloat(t.betAmount)) && parseFloat(t.betAmount) > 0);
+
+  const canPlace = (
     !betPlaced &&
     !animating &&
     roundState?.phase === "betting" &&
     (roundState?.secondsLeft ?? 0) > 0 &&
-    selectedNums.length >= 1 &&
-    !isNaN(bet) && bet > 0 &&
-    bet <= balance &&
-    (!settings || (bet >= parseFloat(settings.minBet) && bet <= parseFloat(settings.maxBet))) &&
-    (settings?.gameEnabled !== false)
+    ticketsReady.length > 0 &&
+    totalStake <= balance &&
+    (settings?.gameEnabled !== false) &&
+    ticketsReady.every(t => {
+      const b = parseFloat(t.betAmount);
+      return !settings || (b >= parseFloat(settings.minBet) && b <= parseFloat(settings.maxBet));
+    })
   );
 
-  async function handleBet() {
-    if (!canBet || !mode) return;
+  async function handlePlace() {
+    if (!canPlace || !mode) return;
+    const payload = ticketsReady.map(t => ({ picks: t.picks, betAmount: parseFloat(t.betAmount).toFixed(2) }));
     try {
-      const res = await apiFetch("/api/games/keno/bet", {
+      const res = await apiFetch("/api/games/keno/bet-batch", {
         method: "POST",
-        body: JSON.stringify({ picks: selectedNums, betAmount: bet.toFixed(2), mode }),
+        body: JSON.stringify({ tickets: payload, mode }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -671,7 +762,6 @@ export default function KenoPage() {
         return;
       }
       setBetPlaced(true);
-      // Reflect deducted balance immediately
       if (mode === "real") {
         setWallet(prev => prev ? { ...prev, realBalance: String(data.balanceAfterDeduction) } : prev);
       } else {
@@ -698,7 +788,7 @@ export default function KenoPage() {
   // ─── Mode selector screen ──────────────────────────────────────────────────
   if (!mode) return <ModeSelector onSelect={setMode} />;
 
-  const rtp = selectedNums.length > 0 ? calcRtp(selectedNums.length, paytable) : null;
+  const rtp = (activeTicket?.picks.length ?? 0) > 0 ? calcRtp(activeTicket!.picks.length, paytable) : null;
 
   return (
     <AppLayout showNav={false} wide>
@@ -708,7 +798,7 @@ export default function KenoPage() {
             <button
               type="button"
               data-testid="button-exit-keno"
-              onClick={() => { setMode(null); setSelectedNums([]); setRevealedNums([]); setResult(null); }}
+              onClick={() => { setMode(null); resetAllTickets(); setRevealedNums([]); setBatchResult(null); }}
               className="flex h-9 w-9 items-center justify-center rounded-lg bg-white/5 text-slate-400 transition hover:bg-white/10 hover:text-white"
               aria-label="Exit Keno"
             >
@@ -836,7 +926,7 @@ export default function KenoPage() {
                   </p>
                   <h2 className="text-xl font-black text-white sm:text-2xl">Choose up to 10 numbers</h2>
                   <p className="mt-1 text-sm font-semibold text-cyan-300">
-                    From 1 to 80 · {selectedNums.length} selected
+                    From 1 to 80 · {activeTicket?.picks.length ?? 0} selected
                     {(roundState?.totalBets ?? 0) > 0 && !animating && (
                       <span className="ml-2 text-slate-400">· {roundState!.totalBets} player{roundState!.totalBets !== 1 ? "s" : ""} betting</span>
                     )}
@@ -894,9 +984,61 @@ export default function KenoPage() {
             </div>
 
             <div className="rounded-xl border border-white/10 bg-[#1b2324] p-2 sm:p-3">
+
+              {/* ── Ticket tabs ───────────────────────────────────────── */}
+              <div className="mb-2 flex items-center gap-1.5 overflow-x-auto pb-1">
+                {tickets.map((t, i) => {
+                  const isActive = i === activeTicketIdx;
+                  const hasNumbers = t.picks.length > 0;
+                  return (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => setActiveTicketIdx(i)}
+                      disabled={betPlaced || animating}
+                      className={`flex-shrink-0 flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-bold transition-all border ${
+                        isActive
+                          ? "bg-emerald-500/20 border-emerald-400/50 text-emerald-300"
+                          : hasNumbers
+                          ? "bg-white/5 border-white/10 text-slate-300 hover:border-emerald-400/30"
+                          : "bg-white/5 border-white/10 text-slate-500 hover:border-white/20"
+                      }`}
+                    >
+                      <span>T{i + 1}</span>
+                      {hasNumbers && (
+                        <span className={`rounded px-1 text-[9px] font-black ${isActive ? "bg-emerald-400/20 text-emerald-300" : "bg-white/10 text-slate-400"}`}>
+                          {t.picks.length}#
+                        </span>
+                      )}
+                      {tickets.length > 1 && !betPlaced && !animating && (
+                        <span
+                          role="button"
+                          onClick={e => { e.stopPropagation(); removeTicket(i); }}
+                          className="ml-0.5 text-slate-600 hover:text-red-400 transition-colors"
+                          aria-label={`Remove ticket ${i + 1}`}
+                        >×</span>
+                      )}
+                    </button>
+                  );
+                })}
+                {/* Add ticket button */}
+                {!betPlaced && !animating && tickets.length < 10 && (
+                  <button
+                    type="button"
+                    onClick={addTicket}
+                    className="flex-shrink-0 flex items-center gap-1 rounded-lg border border-dashed border-emerald-400/30 px-2.5 py-1.5 text-[11px] font-bold text-emerald-500 hover:border-emerald-400/60 hover:text-emerald-400 transition-all"
+                  >
+                    <Plus className="h-3 w-3" /> Add
+                  </button>
+                )}
+              </div>
+
+              {/* ── Number grid ──────────────────────────────────────── */}
               <div className="grid grid-cols-10 gap-1 sm:gap-1.5">
                 {Array.from({ length: 80 }, (_, i) => i + 1).map(n => {
-                  const isSelected = selectedNums.includes(n);
+                  const isSelected = activeTicket?.picks.includes(n) ?? false;
+                  // dim if selected by another ticket but not this one
+                  const otherTicketSelected = !isSelected && tickets.some((t, i) => i !== activeTicketIdx && t.picks.includes(n));
                   const isDrawn = revealedNums.includes(n);
                   const isHit = isSelected && isDrawn;
                   const isActive = activeDrawNumber === n;
@@ -908,18 +1050,24 @@ export default function KenoPage() {
                       onClick={() => toggleNumber(n)}
                       className={`relative aspect-square rounded-md text-xs font-bold transition-all sm:rounded-lg sm:text-sm
                         ${isHit
-                          ? "bg-yellow-400 text-gray-900 shadow-md shadow-yellow-400/30 ring-2 ring-red-500 ring-offset-1 ring-offset-[#1b2324]"
+                          ? "bg-yellow-400 text-gray-900 shadow-md shadow-yellow-400/30 ring-2 ring-emerald-500 ring-offset-1 ring-offset-[#1b2324]"
                           : isSelected
-                          ? "bg-[#2a3436] text-white ring-2 ring-red-500 ring-offset-1 ring-offset-[#1b2324]"
+                          ? "bg-emerald-600/30 text-emerald-200 ring-2 ring-emerald-500 ring-offset-1 ring-offset-[#1b2324]"
                           : isDrawn
                           ? "bg-[#222b2d] text-slate-600"
+                          : otherTicketSelected
+                          ? "bg-[#2a3436] text-slate-600 opacity-50"
                           : "bg-[#2a3436] text-slate-400 hover:bg-[#344143] hover:text-white"
                         }
                         ${isActive ? "keno-cell-flash" : ""}
-                        ${animating ? "cursor-not-allowed" : ""}
+                        ${animating || betPlaced ? "cursor-not-allowed" : ""}
                       `}
                     >
                       {n}
+                      {/* dot for other-ticket picks */}
+                      {otherTicketSelected && !isDrawn && (
+                        <span className="absolute bottom-0.5 right-0.5 h-1 w-1 rounded-full bg-slate-500" />
+                      )}
                     </button>
                   );
                 })}
@@ -939,32 +1087,54 @@ export default function KenoPage() {
 
               <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-white/10 pt-3">
                 <div className="flex items-center gap-2 text-xs text-slate-500">
-                  <span className="font-bold text-slate-200">{selectedNums.length}/10</span> numbers selected
+                  <span className="font-bold text-slate-200">{activeTicket?.picks.length ?? 0}/10</span> on T{activeTicketIdx + 1}
                 </div>
                 <div className="flex items-center gap-3">
-                  <button type="button" data-testid="button-clear-keno-selection" onClick={clearSelections} disabled={selectedNums.length === 0} className="text-xs font-bold text-slate-500 hover:text-white disabled:opacity-30">Clear</button>
+                  <button type="button" data-testid="button-clear-keno-selection" onClick={clearActiveTicket} disabled={(activeTicket?.picks.length ?? 0) === 0 || betPlaced || animating} className="text-xs font-bold text-slate-500 hover:text-white disabled:opacity-30">Clear</button>
                   <button type="button" data-testid="button-show-payouts" onClick={() => setShowPaytable(true)} className="flex items-center gap-1 text-xs font-bold text-cyan-300 hover:text-cyan-200"><Info className="h-3 w-3" /> Payouts</button>
                 </div>
               </div>
 
-              <div className="mt-3 grid grid-cols-[1fr_auto_auto_auto] gap-2">
+              {/* ── Bet amount for active ticket ──────────────────────── */}
+              <div className="mt-3 grid grid-cols-[1fr_auto_auto] gap-2">
                 <div className="flex items-center rounded-lg border border-white/10 bg-[#263133]">
-                  <button type="button" data-testid="button-decrease-bet" onClick={() => setBetAmount(Math.max(0.1, bet - 0.1).toFixed(2))} className="flex h-11 w-10 items-center justify-center text-slate-400 hover:text-white"><Minus className="h-4 w-4" /></button>
+                  <button type="button" data-testid="button-decrease-bet" onClick={() => setActiveBetAmount(Math.max(0.1, activeBet - 0.1).toFixed(2))} disabled={betPlaced || animating} className="flex h-11 w-10 items-center justify-center text-slate-400 hover:text-white disabled:opacity-30"><Minus className="h-4 w-4" /></button>
                   <label className="flex flex-1 items-center justify-center gap-1 text-sm font-black text-white">
-                    <input type="number" data-testid="input-keno-bet" value={betAmount} onChange={e => setBetAmount(e.target.value)} min={settings?.minBet ?? "0.10"} max={settings?.maxBet ?? "100"} step="0.10" className="w-16 bg-transparent text-center outline-none" aria-label="Bet amount" />
+                    <input type="number" data-testid="input-keno-bet" value={activeTicket?.betAmount ?? "1.00"} onChange={e => setActiveBetAmount(e.target.value)} min={settings?.minBet ?? "0.10"} max={settings?.maxBet ?? "100"} step="0.10" disabled={betPlaced || animating} className="w-16 bg-transparent text-center outline-none disabled:opacity-50" aria-label="Bet amount" />
                     <span className="text-[10px] font-bold text-slate-500">USDT</span>
                   </label>
-                  <button type="button" data-testid="button-increase-bet" onClick={() => setBetAmount((bet + 0.1).toFixed(2))} className="flex h-11 w-10 items-center justify-center text-slate-400 hover:text-white"><Plus className="h-4 w-4" /></button>
+                  <button type="button" data-testid="button-increase-bet" onClick={() => setActiveBetAmount((activeBet + 0.1).toFixed(2))} disabled={betPlaced || animating} className="flex h-11 w-10 items-center justify-center text-slate-400 hover:text-white disabled:opacity-30"><Plus className="h-4 w-4" /></button>
                 </div>
-                <button type="button" data-testid="button-double-bet" onClick={() => setBetAmount((bet * 2).toFixed(2))} className="rounded-lg border border-emerald-400/20 bg-emerald-400/10 px-3 text-xs font-black text-emerald-300 hover:bg-emerald-400/20">X2</button>
-                <button type="button" data-testid="button-max-bet" onClick={() => setBetAmount(settings?.maxBet ?? "100.00")} className="rounded-lg border border-emerald-400/20 bg-emerald-400/10 px-3 text-xs font-black text-emerald-300 hover:bg-emerald-400/20">MAX</button>
-                <button type="button" data-testid="button-play-keno" onClick={handleBet} disabled={!canBet} className={`min-w-[92px] rounded-lg px-4 text-sm font-black uppercase tracking-wider shadow-lg transition disabled:cursor-not-allowed disabled:opacity-35 ${betPlaced ? "bg-emerald-700 text-emerald-200" : "bg-gradient-to-r from-emerald-500 to-emerald-400 text-[#10221c] hover:from-emerald-400 hover:to-cyan-300 shadow-emerald-500/10"}`}>
-                  {animating ? <Loader2 className="mx-auto h-5 w-5 animate-spin" /> : betPlaced ? <span className="flex items-center gap-1"><Check className="h-4 w-4" /> Placed</span> : "Bet"}
-                </button>
+                <button type="button" data-testid="button-double-bet" onClick={() => setActiveBetAmount((activeBet * 2).toFixed(2))} disabled={betPlaced || animating} className="rounded-lg border border-emerald-400/20 bg-emerald-400/10 px-3 text-xs font-black text-emerald-300 hover:bg-emerald-400/20 disabled:opacity-30">X2</button>
+                <button type="button" data-testid="button-max-bet" onClick={() => setActiveBetAmount(settings?.maxBet ?? "100.00")} disabled={betPlaced || animating} className="rounded-lg border border-emerald-400/20 bg-emerald-400/10 px-3 text-xs font-black text-emerald-300 hover:bg-emerald-400/20 disabled:opacity-30">MAX</button>
               </div>
-              <div className="mt-2 flex items-center justify-between px-1 text-[10px] text-slate-500">
-                <span>{settings ? `${settings.minBet}–${settings.maxBet} USDT per round` : "Select 1–10 numbers to play"}</span>
-                <span>Balance {balance.toFixed(2)}</span>
+
+              {/* ── Place all tickets button ──────────────────────────── */}
+              <div className="mt-3">
+                <button
+                  type="button"
+                  data-testid="button-play-keno"
+                  onClick={handlePlace}
+                  disabled={!canPlace}
+                  className={`w-full rounded-xl py-3.5 text-sm font-black uppercase tracking-wider shadow-lg transition disabled:cursor-not-allowed disabled:opacity-35 ${
+                    betPlaced
+                      ? "bg-emerald-700 text-emerald-200"
+                      : "bg-gradient-to-r from-emerald-500 to-emerald-400 text-[#10221c] hover:from-emerald-400 hover:to-cyan-300 shadow-emerald-500/20"
+                  }`}
+                >
+                  {animating
+                    ? <Loader2 className="mx-auto h-5 w-5 animate-spin" />
+                    : betPlaced
+                    ? <span className="flex items-center justify-center gap-2"><Check className="h-4 w-4" /> {ticketsReady.length} Ticket{ticketsReady.length !== 1 ? "s" : ""} Placed</span>
+                    : ticketsReady.length > 1
+                    ? `Place ${ticketsReady.length} Tickets · ${totalStake.toFixed(2)} USDT`
+                    : "Place Ticket"
+                  }
+                </button>
+                <div className="mt-1.5 flex items-center justify-between px-1 text-[10px] text-slate-500">
+                  <span>{settings ? `${settings.minBet}–${settings.maxBet} USDT per ticket` : "Select numbers to play"}</span>
+                  <span>Balance {balance.toFixed(2)}</span>
+                </div>
               </div>
             </div>
           </main>
@@ -1002,10 +1172,12 @@ export default function KenoPage() {
       </div>
 
       {/* Overlays */}
-      {result && (
+      {batchResult && (
         <ResultOverlay
-          {...result}
-          onClose={() => { setResult(null); setRevealedNums([]); setSelectedNums([]); }}
+          drawn={batchResult.drawn}
+          tickets={batchResult.tickets}
+          totalPayout={batchResult.totalPayout}
+          onClose={() => { setBatchResult(null); setRevealedNums([]); resetAllTickets(); }}
         />
       )}
 
@@ -1038,10 +1210,10 @@ export default function KenoPage() {
         />
       )}
 
-      {showPaytable && selectedNums.length > 0 && (
+      {showPaytable && (activeTicket?.picks.length ?? 0) > 0 && (
         <PaytableSheet
           paytable={paytable}
-          picksCount={selectedNums.length}
+          picksCount={activeTicket!.picks.length}
           onClose={() => setShowPaytable(false)}
         />
       )}
