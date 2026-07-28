@@ -510,6 +510,7 @@ export default function KenoPage() {
   const [showWithdraw, setShowWithdraw] = useState(false);
   const [showPaytable, setShowPaytable] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [sidebarTab, setSidebarTab] = useState<"game" | "history">("game");
   const [resettingDemo, setResettingDemo] = useState(false);
 
   // ── Multiplayer round state ───────────────────────────────────────────────
@@ -806,37 +807,73 @@ export default function KenoPage() {
           <aside className={`${showHistory ? "block" : "hidden"} rounded-xl border border-white/10 bg-[#1b2324] lg:block`}>
             <div className="border-b border-white/10 px-4 py-3">
               <div className="flex items-center gap-4 text-xs font-bold uppercase tracking-wider">
-                <button type="button" data-testid="button-game-tab" className="border-b-2 border-emerald-400 pb-2 text-emerald-300">Game</button>
-                <button type="button" data-testid="button-history-tab" onClick={() => setShowHistory(true)} className="pb-2 text-slate-500 hover:text-slate-200">History</button>
+                <button
+                  type="button"
+                  data-testid="button-game-tab"
+                  onClick={() => setSidebarTab("game")}
+                  className={`pb-2 transition-colors ${sidebarTab === "game" ? "border-b-2 border-emerald-400 text-emerald-300" : "text-slate-500 hover:text-slate-200"}`}
+                >
+                  Game
+                </button>
+                <button
+                  type="button"
+                  data-testid="button-history-tab"
+                  onClick={() => { setSidebarTab("history"); loadHistory(); }}
+                  className={`pb-2 transition-colors ${sidebarTab === "history" ? "border-b-2 border-emerald-400 text-emerald-300" : "text-slate-500 hover:text-slate-200"}`}
+                >
+                  History
+                </button>
               </div>
               <div className="mt-4 flex items-center justify-between text-[10px] text-slate-500">
-                <span>My tickets</span>
+                <span>{sidebarTab === "history" ? "Past rounds" : "My tickets"}</span>
                 <span>{history.length} rounds</span>
               </div>
             </div>
             <div className="max-h-[calc(100vh-180px)] space-y-2 overflow-y-auto p-2">
-              {history.length === 0 && (
-                <div className="rounded-lg border border-dashed border-white/10 px-3 py-8 text-center text-xs text-slate-500">Your tickets will appear here after a draw.</div>
+              {sidebarTab === "game" ? (
+                <>
+                  {ticketsThisRound === 0 && !animating && (
+                    <div className="rounded-lg border border-dashed border-white/10 px-3 py-8 text-center text-xs text-slate-500">Your tickets will appear here after a draw.</div>
+                  )}
+                  {ticketsThisRound > 0 && !animating && (
+                    <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-4 text-center">
+                      <p className="text-sm font-black text-emerald-300">{ticketsThisRound} ticket{ticketsThisRound !== 1 ? "s" : ""} placed</p>
+                      <p className="mt-1 text-[10px] text-slate-400">Waiting for the draw…</p>
+                    </div>
+                  )}
+                  {animating && (
+                    <div className="rounded-lg border border-yellow-400/20 bg-yellow-400/10 px-3 py-4 text-center">
+                      <Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin text-yellow-300" />
+                      <p className="text-sm font-black text-yellow-300">Drawing…</p>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  {history.length === 0 && (
+                    <div className="rounded-lg border border-dashed border-white/10 px-3 py-8 text-center text-xs text-slate-500">No rounds played yet.</div>
+                  )}
+                  {history.map((round, index) => (
+                    <div key={round.id} data-testid={`card-keno-ticket-${round.id}`} className="rounded-lg border border-white/5 bg-[#222c2d] p-2.5">
+                      <div className="mb-2 flex items-center justify-between">
+                        <span className="text-xs font-bold text-emerald-300">Ticket {history.length - index}</span>
+                        <span className={`text-[10px] font-bold ${parseFloat(round.payoutAmount) > 0 ? "text-emerald-300" : "text-slate-500"}`}>
+                          {parseFloat(round.payoutAmount) > 0 ? `+${parseFloat(round.payoutAmount).toFixed(2)}` : "No win"}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {round.picks.map(pick => (
+                          <span key={pick} className={`flex h-6 min-w-6 items-center justify-center rounded bg-[#334043] px-1 text-[10px] font-bold ${round.drawnNumbers.includes(pick) ? "bg-emerald-500 text-[#10221c]" : "text-slate-300"}`}>{pick}</span>
+                        ))}
+                      </div>
+                      <div className="mt-2 flex items-center justify-between border-t border-white/5 pt-2 text-[10px] text-slate-500">
+                        <span>Bet {parseFloat(round.betAmount).toFixed(2)}</span>
+                        <span>{round.hitCount}/{round.picks.length} hits</span>
+                      </div>
+                    </div>
+                  ))}
+                </>
               )}
-              {history.map((round, index) => (
-                <div key={round.id} data-testid={`card-keno-ticket-${round.id}`} className="rounded-lg border border-white/5 bg-[#222c2d] p-2.5">
-                  <div className="mb-2 flex items-center justify-between">
-                    <span className="text-xs font-bold text-emerald-300">Ticket {history.length - index}</span>
-                    <span className={`text-[10px] font-bold ${parseFloat(round.payoutAmount) > 0 ? "text-emerald-300" : "text-slate-500"}`}>
-                      {parseFloat(round.payoutAmount) > 0 ? `+${parseFloat(round.payoutAmount).toFixed(2)}` : "No win"}
-                    </span>
-                  </div>
-                  <div className="flex flex-wrap gap-1">
-                    {round.picks.map(pick => (
-                      <span key={pick} className={`flex h-6 min-w-6 items-center justify-center rounded bg-[#334043] px-1 text-[10px] font-bold ${round.drawnNumbers.includes(pick) ? "bg-emerald-500 text-[#10221c]" : "text-slate-300"}`}>{pick}</span>
-                    ))}
-                  </div>
-                  <div className="mt-2 flex items-center justify-between border-t border-white/5 pt-2 text-[10px] text-slate-500">
-                    <span>Bet {parseFloat(round.betAmount).toFixed(2)}</span>
-                    <span>{round.hitCount}/{round.picks.length} hits</span>
-                  </div>
-                </div>
-              ))}
             </div>
             {mode === "real" && (
               <div className="border-t border-white/10 p-3">
@@ -848,6 +885,14 @@ export default function KenoPage() {
           </aside>
 
           <main className="min-w-0">
+            {/* ── Drawn numbers — shown before the betting banner ───────── */}
+            {(animating || revealedNums.length > 0) && (
+              <div className="mb-3 rounded-xl border border-white/10 bg-[#1b2324] px-4 py-3">
+                <p className="mb-2 text-[9px] font-black uppercase tracking-[0.2em] text-slate-500">Drawn numbers</p>
+                <KenoBallTray drawnNumbers={revealedNums} activeNumber={activeDrawNumber} totalExpected={20} />
+              </div>
+            )}
+
             <div className="mb-3 overflow-hidden rounded-xl border border-white/10 bg-[#273335]">
               {/* ── Countdown bar ───────────────────────────────────────── */}
               {!animating && roundState?.phase === "betting" && (
@@ -982,14 +1027,6 @@ export default function KenoPage() {
                   );
                 })}
               </div>
-
-              {/* ── Ball tray ────────────────────────────────────────── */}
-              {(animating || revealedNums.length > 0) && (
-                <div className="mt-3 border-t border-white/10 pt-3">
-                  <p className="mb-2 text-[9px] font-black uppercase tracking-[0.2em] text-slate-500">Drawn numbers</p>
-                  <KenoBallTray drawnNumbers={revealedNums} activeNumber={activeDrawNumber} totalExpected={20} />
-                </div>
-              )}
 
               {/* ── Selection info + Clear ───────────────────────────── */}
               <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-white/10 pt-3">
