@@ -887,8 +887,11 @@ kenoRouter.post("/bet", async (req, res) => {
   }
 });
 
-// POST /api/games/keno/bet-batch  — queue 1–10 tickets for the current shared round
-// ALL tickets share ONE draw at round end. TOTAL stake deducted atomically up front.
+// POST /api/games/keno/bet-batch  — add 1 ticket to the current shared round.
+// Users may call this up to MAX_TICKETS_PER_ROUND times per round; each call
+// appends one ticket and deducts only that ticket's stake immediately.
+const MAX_TICKETS_PER_ROUND = 20;
+
 kenoRouter.post("/bet-batch", async (req, res) => {
   try {
     await ensureSeeded();
@@ -906,15 +909,21 @@ kenoRouter.post("/bet-batch", async (req, res) => {
     if (!["demo", "real"].includes(mode as string))
       return res.status(400).json({ error: "Invalid mode" });
 
-    if (!Array.isArray(tickets) || tickets.length < 1 || tickets.length > 10)
-      return res.status(400).json({ error: "Submit 1–10 tickets per batch" });
+    if (!Array.isArray(tickets) || tickets.length !== 1)
+      return res.status(400).json({ error: "Submit exactly 1 ticket per request" });
 
     const betKey = `${userId}:${mode}`;
-    if (activeRound.bets.has(betKey))
-      return res.status(400).json({ error: "You already have a batch queued this round" });
 
-    // Claim the slot immediately — prevents concurrent requests from both
-    // passing the has() check above before either finishes the DB deduction.
+    // Snapshot the existing batch (may be undefined for first ticket)
+    const existingBatch = activeRound.bets.get(betKey) as PendingBatch | null | undefined;
+
+    // Check per-round ticket cap
+    const existingCount = existingBatch?.tickets?.length ?? 0;
+    if (existingCount >= MAX_TICKETS_PER_ROUND) {
+      return res.status(400).json({ error: `Maximum ${MAX_TICKETS_PER_ROUND} tickets per round` });
+    }
+
+    // Claim / lock the slot to prevent duplicate concurrent requests
     const claimedRoundId = activeRound.roundId;
     activeRound.bets.set(betKey, null as any);
 
@@ -924,69 +933,67 @@ kenoRouter.post("/bet-batch", async (req, res) => {
       getSetting("game_enabled", "true"),
     ]);
     if (gameEnabled !== "true") {
-      activeRound.bets.delete(betKey);
+      // Restore previous batch state on error
+      if (existingBatch != null) activeRound.bets.set(betKey, existingBatch);
+      else activeRound.bets.delete(betKey);
       return res.status(403).json({ error: "Keno is temporarily disabled" });
     }
 
-    // Validate every ticket and accumulate total stake
-    let totalStaked = 0;
-    const validatedTickets: PendingTicket[] = [];
-    for (const [i, raw] of (tickets as any[]).entries()) {
-      try {
-        const { picks, betAmount: rawBet } = raw ?? {};
-        if (!Array.isArray(picks) || picks.length < 1 || picks.length > 10) {
-          activeRound.bets.delete(betKey);
-          return res.status(400).json({ error: `Ticket ${i + 1}: select 1–10 numbers` });
-        }
-        if (picks.some((n: any) => !Number.isInteger(n) || n < 1 || n > 80)) {
-          activeRound.bets.delete(betKey);
-          return res.status(400).json({ error: `Ticket ${i + 1}: numbers must be integers 1–80` });
-        }
-        if (new Set(picks).size !== picks.length) {
-          activeRound.bets.delete(betKey);
-          return res.status(400).json({ error: `Ticket ${i + 1}: duplicate numbers not allowed` });
-        }
-        const bet = parseFloat(rawBet);
-        if (isNaN(bet) || bet <= 0) {
-          activeRound.bets.delete(betKey);
-          return res.status(400).json({ error: `Ticket ${i + 1}: invalid bet amount` });
-        }
-        if (bet < minBet) {
-          activeRound.bets.delete(betKey);
-          return res.status(400).json({ error: `Ticket ${i + 1}: minimum bet is ${minBet} USDT` });
-        }
-        if (bet > maxBet) {
-          activeRound.bets.delete(betKey);
-          return res.status(400).json({ error: `Ticket ${i + 1}: maximum bet is ${maxBet} USDT` });
-        }
-        totalStaked += bet;
-        validatedTickets.push({ picks, betAmount: bet.toFixed(2) });
-      } catch {
-        activeRound.bets.delete(betKey);
-        return res.status(400).json({ error: `Ticket ${i + 1}: malformed` });
-      }
-    }
-    totalStaked = parseFloat(totalStaked.toFixed(2));
+    // Validate the single ticket
+    const raw = (tickets as any[])[0] ?? {};
+    const { picks, betAmount: rawBet } = raw;
 
-    // Deduct TOTAL stake in ONE atomic SQL command before the draw
-    const deductRes = await deductBatchStake(userId, mode as "demo" | "real", totalStaked);
+    const restore = () => {
+      if (existingBatch != null) activeRound.bets.set(betKey, existingBatch);
+      else activeRound.bets.delete(betKey);
+    };
+
+    if (!Array.isArray(picks) || picks.length < 1 || picks.length > 10) {
+      restore(); return res.status(400).json({ error: "Select 1–10 numbers per ticket" });
+    }
+    if (picks.some((n: any) => !Number.isInteger(n) || n < 1 || n > 80)) {
+      restore(); return res.status(400).json({ error: "Numbers must be integers 1–80" });
+    }
+    if (new Set(picks).size !== picks.length) {
+      restore(); return res.status(400).json({ error: "Duplicate numbers not allowed" });
+    }
+    const bet = parseFloat(rawBet);
+    if (isNaN(bet) || bet <= 0) {
+      restore(); return res.status(400).json({ error: "Invalid bet amount" });
+    }
+    if (bet < minBet) {
+      restore(); return res.status(400).json({ error: `Minimum bet is ${minBet} USDT` });
+    }
+    if (bet > maxBet) {
+      restore(); return res.status(400).json({ error: `Maximum bet is ${maxBet} USDT` });
+    }
+
+    const newTicket: PendingTicket = { picks, betAmount: bet.toFixed(2) };
+
+    // Deduct only this ticket's stake atomically
+    const deductRes = await deductBatchStake(userId, mode as "demo" | "real", bet);
     if ("error" in deductRes) {
-      activeRound.bets.delete(betKey);
-      return res.status(400).json({ error: deductRes.error });
+      restore(); return res.status(400).json({ error: deductRes.error });
     }
 
-    // Race: round closed while the DB transaction was in flight — refund and reject
+    // Race: round closed during the DB transaction — refund and reject
     if (activeRound.phase !== "betting" || activeRound.roundId !== claimedRoundId) {
-      activeRound.bets.delete(betKey);
-      await refundBatchStake(userId, mode as "demo" | "real", totalStaked);
+      restore();
+      await refundBatchStake(userId, mode as "demo" | "real", bet);
       return res.status(400).json({ error: "Betting just closed — your balance was refunded" });
     }
 
+    // Merge new ticket into (possibly existing) batch
+    const prevTickets = existingBatch?.tickets ?? [];
+    const prevStaked  = parseFloat(existingBatch?.totalStaked ?? "0");
+    const allTickets  = [...prevTickets, newTicket];
+    const totalStaked = parseFloat((prevStaked + bet).toFixed(2));
+
     activeRound.bets.set(betKey, {
       userId,
-      tickets: validatedTickets,
-      totalStaked: totalStaked.toFixed(2),
-      mode: mode as "demo" | "real",
+      tickets:               allTickets,
+      totalStaked:           totalStaked.toFixed(2),
+      mode:                  mode as "demo" | "real",
       balanceAfterDeduction: deductRes.balanceAfterDeduction,
     });
 
@@ -994,10 +1001,10 @@ kenoRouter.post("/bet-batch", async (req, res) => {
       success:               true,
       roundId:               activeRound.roundId,
       mode,
-      ticketCount:           validatedTickets.length,
+      ticketCount:           allTickets.length,
       totalStaked:           totalStaked.toFixed(2),
       balanceAfterDeduction: deductRes.balanceAfterDeduction,
-      tickets: validatedTickets.map(t => ({ picks: t.picks, betAmount: t.betAmount })),
+      tickets: allTickets.map(t => ({ picks: t.picks, betAmount: t.betAmount })),
     });
   } catch (err) {
     req.log?.error({ err }, "keno/bet-batch error");

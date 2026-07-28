@@ -995,7 +995,6 @@ export default function KenoPage() {
               <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-white/10 pt-3">
                 <div className="flex items-center gap-2 text-xs text-slate-500">
                   <span className="font-bold text-slate-200">{currentPicks.length}/10</span> selected
-                  {rtp !== null && <span className="text-slate-600">· RTP {(rtp * 100).toFixed(0)}%</span>}
                 </div>
                 <div className="flex items-center gap-3">
                   <button type="button" data-testid="button-clear-keno-selection" onClick={() => setCurrentPicks([])} disabled={currentPicks.length === 0 || animating} className="text-xs font-bold text-slate-500 hover:text-white disabled:opacity-30">Clear</button>
