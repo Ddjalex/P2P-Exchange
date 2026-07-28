@@ -1,44 +1,61 @@
-# XenDRX — P2P Crypto Exchange
+# XendrX — P2P USDT Exchange
 
-A full-stack peer-to-peer USDT (BEP20/BSC) exchange platform with an admin dashboard, Telegram bot integration, KYC verification, and PWA push notifications.
+A full-stack P2P cryptocurrency exchange platform (EthioP2P / XendrX) built with React + Vite (frontend) and Express.js (API), backed by Neon PostgreSQL via Drizzle ORM.
 
-## Stack
+## Architecture
 
-- **Frontend** (`artifacts/p2p-exchange`): React + Vite + Tailwind CSS
-- **Backend** (`artifacts/api-server`): Node.js + Express, built with esbuild
-- **Database**: Neon PostgreSQL (via Drizzle ORM) — no local database; `NEON_DATABASE_URL` is the sole DB backend
-- **Blockchain**: BEP20/BSC — per-user HD deposit addresses (BIP-44), hot-wallet sweeps
-- **Auth**: JWT for users (`jsonwebtoken`), HMAC-based JWT for admin
-- **Notifications**: Web Push (VAPID) + Telegram bot (`telegraf`)
+| Layer | Path | Notes |
+|-------|------|-------|
+| Frontend | `artifacts/p2p-exchange/` | React + Vite + Tailwind + shadcn/ui |
+| API Server | `artifacts/api-server/` | Express.js, ESM, built with esbuild |
+| DB schema | `lib/db/` | Drizzle ORM, Neon PostgreSQL |
+| Shared types | `lib/api-zod/`, `lib/api-client-react/` | Zod schemas + React query hooks |
 
 ## How to run
 
-The run button starts both services in parallel:
-- `artifacts/api-server: API Server` — Express API on port 8080 (build via esbuild, then `node dist/index.mjs`)
-- `artifacts/p2p-exchange: web` — Vite dev server on a dynamic port, proxies `/api` to port 8080
+Two workflows must be running:
 
-To install dependencies after pulling new changes:
-```
-pnpm install
-```
+- **`artifacts/api-server: API Server`** — Express API on port 8080
+- **`artifacts/p2p-exchange: web`** — Vite dev server (proxies `/api` → port 8080)
+
+Both start automatically via the `Project` run button.
 
 ## Required secrets
 
-| Secret | Description |
-|---|---|
-| `NEON_DATABASE_URL` | Neon PostgreSQL connection string (e.g. `postgresql://user:pass@ep-xxx.neon.tech/neondb?sslmode=require`) |
-| `BSC_HOT_WALLET_PRIVATE_KEY` | 64-char hex BSC private key — signs withdrawals and derives per-user HD deposit addresses |
-| `TELEGRAM_BOT_TOKEN` | From @BotFather on Telegram |
-| `VAPID_PRIVATE_KEY` | VAPID private key for web push notifications |
-| `TURNSTILE_SECRET_KEY` | Cloudflare Turnstile server-side secret (bot protection) |
+| Secret | Purpose |
+|--------|---------|
+| `NEON_DATABASE_URL` | Neon PostgreSQL connection string |
+| `JWT_SECRET` | Signs user auth tokens |
+| `ADMIN_JWT_SECRET` | Signs admin auth tokens |
+| `ADMIN_PASSWORD` | Admin panel login password |
 
-Only `NEON_DATABASE_URL` is required to start the server. The others enable Telegram, push notifications, withdrawals, and bot protection respectively.
+## Optional secrets (for full functionality)
+
+| Secret | Purpose |
+|--------|---------|
+| `BSC_HOT_WALLET_PRIVATE_KEY` | BEP20 deposits + withdrawals + HD address derivation |
+| `BSC_HOT_WALLET_ADDRESS` | Public address of the hot wallet |
+| `TELEGRAM_BOT_TOKEN` | Telegram bot integration |
+| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VITE_VAPID_PUBLIC_KEY` | PWA push notifications |
+| `VITE_TURNSTILE_SITE_KEY` / `TURNSTILE_SECRET_KEY` | Cloudflare Turnstile bot protection |
+| `GOOGLE_CLIENT_ID` | Google Sign-In |
+
+## Database migrations
+
+Migrations live in `lib/db/drizzle/`. To apply new migrations:
+
+```bash
+cd lib/db && npx drizzle-kit migrate --config ./drizzle.config.ts
+```
+
+To generate a new migration after schema changes:
+
+```bash
+pnpm --filter @workspace/db run generate
+```
 
 ## Admin panel
 
-Available at `/admin`. Default credentials are set via `ADMIN_EMAIL` and `ADMIN_PASSWORD` env vars (or overridden via the admin UI and stored in the DB).
+Navigate to `/admin` — log in with `ADMIN_EMAIL` + `ADMIN_PASSWORD`.
 
 ## User preferences
-
-- Keep the existing monorepo structure under `artifacts/`
-- Do not restructure or migrate the stack

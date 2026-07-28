@@ -494,9 +494,9 @@ export default function KenoPage() {
   const [paytable, setPaytable] = useState<PaytableEntry[]>([]);
   const [history, setHistory] = useState<KenoRound[]>([]);
 
-  // ── Multi-ticket state ───────────────────────────────────────────────────
+  // ── Per-ticket state ──────────────────────────────────────────────────────
   // currentPicks / currentBetAmount = what the user is picking RIGHT NOW
-  // queuedTickets = tickets already confirmed, waiting to be placed as a batch
+  // Each Place Bet submits one ticket immediately; user can keep adding up to 20
   const [currentPicks, setCurrentPicks] = useState<number[]>([]);
   const [currentBetAmount, setCurrentBetAmount] = useState("1.00");
 
@@ -525,7 +525,9 @@ export default function KenoPage() {
       totalPayout?: number; newBalance?: number;
     } | null;
   } | null>(null);
-  const [betPlaced, setBetPlaced] = useState(false);
+  // How many tickets the user has placed in the current round (resets each draw)
+  const [ticketsThisRound, setTicketsThisRound] = useState(0);
+  const lastRoundIdRef = useRef<number | null>(null);
   const [countdown, setCountdown] = useState(30);
 
   const lastAnimatedRoundRef = useRef<number | null>(null);
@@ -630,7 +632,7 @@ export default function KenoPage() {
       setRevealedNums([]);
       setDrawProgress(0);
       setAnimating(false);
-      setBetPlaced(false);
+      setTicketsThisRound(0);
 
       // Show batch result overlay if this user had tickets
       if (myBatchSnap && myBatchSnap.totalPayout !== undefined && myBatchSnap.tickets.every(t => t.hitCount !== undefined)) {
@@ -658,10 +660,19 @@ export default function KenoPage() {
     animate();
   }, [roundState?.roundId, roundState?.phase]);
 
+  // ── Reset ticket counter when a new round's betting phase starts ──────────
+  useEffect(() => {
+    if (!roundState) return;
+    if (roundState.phase === "betting" && roundState.roundId !== lastRoundIdRef.current) {
+      lastRoundIdRef.current = roundState.roundId;
+      setTicketsThisRound(0);
+    }
+  }, [roundState?.roundId, roundState?.phase]);
+
   // ── Ticket management ─────────────────────────────────────────────────────
 
   function toggleNumber(n: number) {
-    if (animating || betPlaced) return;
+    if (animating) return;
     setCurrentPicks(prev => {
       if (prev.includes(n)) return prev.filter(x => x !== n);
       if (prev.length >= 10) {
@@ -686,9 +697,12 @@ export default function KenoPage() {
   const settings = wallet?.settings;
   const activeBet = parseFloat(currentBetAmount || "1.00");
 
+  const MAX_TICKETS_PER_ROUND = 20;
+
   /** Can submit the current picks immediately */
   const canPlace = (
-    !betPlaced && !animating &&
+    !animating &&
+    ticketsThisRound < MAX_TICKETS_PER_ROUND &&
     roundState?.phase === "betting" &&
     (roundState?.secondsLeft ?? 0) > 0 &&
     currentPicks.length >= 1 &&
@@ -711,8 +725,8 @@ export default function KenoPage() {
         toast({ description: data.error ?? "Bet failed", variant: "destructive" });
         return;
       }
-      setBetPlaced(true);
-      setCurrentPicks([]); // clear grid after placing
+      setTicketsThisRound(prev => prev + 1);
+      setCurrentPicks([]); // clear grid so user can pick next ticket
       if (mode === "real") {
         setWallet(prev => prev ? { ...prev, realBalance: String(data.balanceAfterDeduction) } : prev);
       } else {
@@ -869,8 +883,8 @@ export default function KenoPage() {
                   <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-300">
                     {animating
                       ? "Drawing numbers — shared draw!"
-                      : betPlaced
-                      ? "Bet placed ✓ — waiting for draw…"
+                      : ticketsThisRound > 0
+                      ? `${ticketsThisRound} bet${ticketsThisRound !== 1 ? "s" : ""} placed ✓ — keep picking or wait for draw…`
                       : roundState?.phase === "drawing"
                       ? "Drawing numbers…"
                       : "Betting open — place your numbers!"}
@@ -949,7 +963,7 @@ export default function KenoPage() {
                       type="button"
                       data-testid={`button-keno-number-${n}`}
                       onClick={() => toggleNumber(n)}
-                      disabled={animating || betPlaced}
+                      disabled={animating}
                       className={`relative aspect-square rounded-md text-xs font-bold transition-all sm:rounded-lg sm:text-sm
                         ${isHit
                           ? "bg-yellow-400 text-gray-900 shadow-md shadow-yellow-400/30 ring-2 ring-emerald-500 ring-offset-1 ring-offset-[#1b2324]"
@@ -960,7 +974,7 @@ export default function KenoPage() {
                           : "bg-[#2a3436] text-slate-400 hover:bg-[#344143] hover:text-white"
                         }
                         ${isFlash ? "keno-cell-flash" : ""}
-                        ${animating || betPlaced ? "cursor-not-allowed opacity-60" : ""}
+                        ${animating ? "cursor-not-allowed opacity-60" : ""}
                       `}
                     >
                       {n}
@@ -984,7 +998,7 @@ export default function KenoPage() {
                   {rtp !== null && <span className="text-slate-600">· RTP {(rtp * 100).toFixed(0)}%</span>}
                 </div>
                 <div className="flex items-center gap-3">
-                  <button type="button" data-testid="button-clear-keno-selection" onClick={() => setCurrentPicks([])} disabled={currentPicks.length === 0 || betPlaced || animating} className="text-xs font-bold text-slate-500 hover:text-white disabled:opacity-30">Clear</button>
+                  <button type="button" data-testid="button-clear-keno-selection" onClick={() => setCurrentPicks([])} disabled={currentPicks.length === 0 || animating} className="text-xs font-bold text-slate-500 hover:text-white disabled:opacity-30">Clear</button>
                   <button type="button" data-testid="button-show-payouts" onClick={() => setShowPaytable(true)} disabled={currentPicks.length === 0} className="flex items-center gap-1 text-xs font-bold text-cyan-300 hover:text-cyan-200 disabled:opacity-30"><Info className="h-3 w-3" /> Payouts</button>
                 </div>
               </div>
@@ -992,41 +1006,49 @@ export default function KenoPage() {
               {/* ── Bet amount ───────────────────────────────────────── */}
               <div className="mt-3 grid grid-cols-[1fr_auto_auto] gap-2">
                 <div className="flex items-center rounded-lg border border-white/10 bg-[#263133]">
-                  <button type="button" data-testid="button-decrease-bet" onClick={() => setCurrentBetAmount(Math.max(0.1, activeBet - 0.1).toFixed(2))} disabled={betPlaced || animating} className="flex h-11 w-10 items-center justify-center text-slate-400 hover:text-white disabled:opacity-30"><Minus className="h-4 w-4" /></button>
+                  <button type="button" data-testid="button-decrease-bet" onClick={() => setCurrentBetAmount(Math.max(0.1, activeBet - 0.1).toFixed(2))} disabled={animating} className="flex h-11 w-10 items-center justify-center text-slate-400 hover:text-white disabled:opacity-30"><Minus className="h-4 w-4" /></button>
                   <label className="flex flex-1 items-center justify-center gap-1 text-sm font-black text-white">
-                    <input type="number" data-testid="input-keno-bet" value={currentBetAmount} onChange={e => setCurrentBetAmount(e.target.value)} min={settings?.minBet ?? "0.10"} max={settings?.maxBet ?? "100"} step="0.10" disabled={betPlaced || animating} className="w-16 bg-transparent text-center outline-none disabled:opacity-50" aria-label="Bet amount" />
+                    <input type="number" data-testid="input-keno-bet" value={currentBetAmount} onChange={e => setCurrentBetAmount(e.target.value)} min={settings?.minBet ?? "0.10"} max={settings?.maxBet ?? "100"} step="0.10" disabled={animating} className="w-16 bg-transparent text-center outline-none disabled:opacity-50" aria-label="Bet amount" />
                     <span className="text-[10px] font-bold text-slate-500">USDT</span>
                   </label>
-                  <button type="button" data-testid="button-increase-bet" onClick={() => setCurrentBetAmount((activeBet + 0.1).toFixed(2))} disabled={betPlaced || animating} className="flex h-11 w-10 items-center justify-center text-slate-400 hover:text-white disabled:opacity-30"><Plus className="h-4 w-4" /></button>
+                  <button type="button" data-testid="button-increase-bet" onClick={() => setCurrentBetAmount((activeBet + 0.1).toFixed(2))} disabled={animating} className="flex h-11 w-10 items-center justify-center text-slate-400 hover:text-white disabled:opacity-30"><Plus className="h-4 w-4" /></button>
                 </div>
-                <button type="button" data-testid="button-double-bet" onClick={() => setCurrentBetAmount((activeBet * 2).toFixed(2))} disabled={betPlaced || animating} className="rounded-lg border border-emerald-400/20 bg-emerald-400/10 px-3 text-xs font-black text-emerald-300 hover:bg-emerald-400/20 disabled:opacity-30">X2</button>
-                <button type="button" data-testid="button-max-bet" onClick={() => setCurrentBetAmount(settings?.maxBet ?? "100.00")} disabled={betPlaced || animating} className="rounded-lg border border-emerald-400/20 bg-emerald-400/10 px-3 text-xs font-black text-emerald-300 hover:bg-emerald-400/20 disabled:opacity-30">MAX</button>
+                <button type="button" data-testid="button-double-bet" onClick={() => setCurrentBetAmount((activeBet * 2).toFixed(2))} disabled={animating} className="rounded-lg border border-emerald-400/20 bg-emerald-400/10 px-3 text-xs font-black text-emerald-300 hover:bg-emerald-400/20 disabled:opacity-30">X2</button>
+                <button type="button" data-testid="button-max-bet" onClick={() => setCurrentBetAmount(settings?.maxBet ?? "100.00")} disabled={animating} className="rounded-lg border border-emerald-400/20 bg-emerald-400/10 px-3 text-xs font-black text-emerald-300 hover:bg-emerald-400/20 disabled:opacity-30">MAX</button>
               </div>
 
-              {/* ── Place all button ──────────────────────────────────── */}
+              {/* ── Place Bet button ──────────────────────────────────── */}
               <div className="mt-3">
+                {/* Tickets placed this round indicator */}
+                {ticketsThisRound > 0 && !animating && (
+                  <div className="mb-2 flex items-center gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-1.5">
+                    <Check className="h-3 w-3 text-emerald-400 flex-shrink-0" />
+                    <span className="text-[11px] font-bold text-emerald-300">
+                      {ticketsThisRound} ticket{ticketsThisRound !== 1 ? "s" : ""} placed this round
+                    </span>
+                    <span className="ml-auto text-[10px] text-slate-500">
+                      {MAX_TICKETS_PER_ROUND - ticketsThisRound} left
+                    </span>
+                  </div>
+                )}
                 <button
                   type="button"
                   data-testid="button-play-keno"
                   onClick={handlePlace}
                   disabled={!canPlace}
-                  className={`w-full rounded-xl py-3.5 text-sm font-black uppercase tracking-wider shadow-lg transition disabled:cursor-not-allowed disabled:opacity-35 ${
-                    betPlaced
-                      ? "bg-emerald-700 text-emerald-200"
-                      : "bg-gradient-to-r from-emerald-500 to-emerald-400 text-[#10221c] hover:from-emerald-400 hover:to-cyan-300 shadow-emerald-500/20"
-                  }`}
+                  className="w-full rounded-xl py-3.5 text-sm font-black uppercase tracking-wider shadow-lg transition disabled:cursor-not-allowed disabled:opacity-35 bg-gradient-to-r from-emerald-500 to-emerald-400 text-[#10221c] hover:from-emerald-400 hover:to-cyan-300 shadow-emerald-500/20"
                 >
                   {animating
                     ? <Loader2 className="mx-auto h-5 w-5 animate-spin" />
-                    : betPlaced
-                    ? <span className="flex items-center justify-center gap-2"><Check className="h-4 w-4" /> Bet Placed — Waiting for Draw</span>
+                    : ticketsThisRound >= MAX_TICKETS_PER_ROUND
+                    ? <span className="flex items-center justify-center gap-2"><Check className="h-4 w-4" /> Max tickets reached — waiting for draw</span>
                     : currentPicks.length > 0
-                    ? `Place Bet · ${activeBet.toFixed(2)} USDT`
+                    ? `Place Bet · ${activeBet.toFixed(2)} USDT${ticketsThisRound > 0 ? ` (Ticket ${ticketsThisRound + 1})` : ""}`
                     : "Select numbers to place a bet"
                   }
                 </button>
                 <div className="mt-1.5 flex items-center justify-between px-1 text-[10px] text-slate-500">
-                  <span>{settings ? `${settings.minBet}–${settings.maxBet} USDT per ticket` : "Pick numbers, then + Ticket"}</span>
+                  <span>{settings ? `${settings.minBet}–${settings.maxBet} USDT per ticket · up to ${MAX_TICKETS_PER_ROUND} tickets` : `Up to ${MAX_TICKETS_PER_ROUND} tickets per round`}</span>
                   <span>Balance {balance.toFixed(2)}</span>
                 </div>
               </div>

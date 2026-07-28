@@ -36,7 +36,7 @@ timeoutMs = 20000
 
 [userenv.shared]
 ADMIN_EMAIL = "admin@xendrx.com"
-PORT = "5000"
+PORT = "8080"
 BASE_PATH = "/"
 LOG_LEVEL = "info"
 API_PORT = "8080"
@@ -49,6 +49,7 @@ BSC_HOT_WALLET_ADDRESS = "0x24c3AaC7A62a37333885Bc9a8A82ca4fDe7321B3"
 ADMIN_JWT_SECRET = "e79098d195c8a6269bdd5d8715b5cfad390efe21a755f086d384b74d6872873a"
 ADMIN_PASSWORD = "a1e2y3t4"
 JWT_SECRET = "d1a895bcb4467e6bd7f63bbdb1596024f2cb7882a5649cdf046c62ab0808863b"
+NODE_ENV = "development"
 
 [nix]
 channel = "stable-25_05"
