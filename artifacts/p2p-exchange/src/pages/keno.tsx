@@ -1069,35 +1069,40 @@ export default function KenoPage() {
 
               {/* ── Number grid ──────────────────────────────────────── */}
               <div className="grid grid-cols-10 gap-1 sm:gap-1.5">
-                {Array.from({ length: 80 }, (_, i) => i + 1).map(n => {
-                  const isSelected = currentPicks.includes(n);
-                  const isDrawn = revealedNums.includes(n);
-                  const isHit = isSelected && isDrawn;
-                  const isFlash = activeDrawNumber === n;
-                  return (
-                    <button
-                      key={n}
-                      type="button"
-                      data-testid={`button-keno-number-${n}`}
-                      onClick={() => toggleNumber(n)}
-                      disabled={animating}
-                      className={`relative aspect-square rounded-md text-xs font-bold transition-all sm:rounded-lg sm:text-sm
-                        ${isHit
-                          ? "bg-yellow-400 text-gray-900 shadow-md shadow-yellow-400/50 ring-2 ring-white ring-offset-1 ring-offset-[#1b2324]"
-                          : isDrawn
-                          ? "bg-yellow-400 text-gray-900 shadow-sm shadow-yellow-400/30"
-                          : isSelected
-                          ? "bg-yellow-400 text-gray-900 shadow-md shadow-yellow-400/20 ring-2 ring-yellow-300 ring-offset-1 ring-offset-[#1b2324]"
-                          : "bg-[#2a3436] text-slate-400 hover:bg-[#344143] hover:text-white"
-                        }
-                        ${isFlash ? "keno-cell-flash" : ""}
-                        ${animating ? "cursor-not-allowed opacity-60" : ""}
-                      `}
-                    >
-                      {n}
-                    </button>
-                  );
-                })}
+                {(() => {
+                  // All picks across every placed ticket this round
+                  const allPlacedPicksSet = new Set(placedTickets.flatMap(t => t.picks));
+                  return Array.from({ length: 80 }, (_, i) => i + 1).map(n => {
+                    const isSelected = currentPicks.includes(n);
+                    const isDrawn = revealedNums.includes(n);
+                    // Drawn AND in one of the user's placed tickets → hit!
+                    const isTicketHit = isDrawn && allPlacedPicksSet.has(n);
+                    const isFlash = activeDrawNumber === n;
+                    return (
+                      <button
+                        key={n}
+                        type="button"
+                        data-testid={`button-keno-number-${n}`}
+                        onClick={() => toggleNumber(n)}
+                        disabled={animating}
+                        className={`relative aspect-square rounded-md text-xs font-bold transition-all sm:rounded-lg sm:text-sm
+                          ${isTicketHit
+                            ? "bg-emerald-400 text-gray-900 shadow-md shadow-emerald-400/60 ring-2 ring-white ring-offset-1 ring-offset-[#1b2324] scale-105"
+                            : isDrawn
+                            ? "bg-yellow-400 text-gray-900 shadow-sm shadow-yellow-400/30"
+                            : isSelected
+                            ? "bg-yellow-400 text-gray-900 shadow-md shadow-yellow-400/20 ring-2 ring-yellow-300 ring-offset-1 ring-offset-[#1b2324]"
+                            : "bg-[#2a3436] text-slate-400 hover:bg-[#344143] hover:text-white"
+                          }
+                          ${isFlash ? "keno-cell-flash" : ""}
+                          ${animating ? "cursor-not-allowed" : ""}
+                        `}
+                      >
+                        {n}
+                      </button>
+                    );
+                  });
+                })()}
               </div>
 
               {/* ── Selection info + Clear ───────────────────────────── */}
