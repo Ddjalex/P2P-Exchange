@@ -1444,6 +1444,28 @@ kenoRouter.get("/history", async (req, res) => {
   }
 });
 
+// GET /api/games/keno/rounds  — global draw history (all users, no auth needed)
+kenoRouter.get("/rounds", async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit as string || "20"), 50);
+    // One row per distinct draw set, most recent first
+    const rows = await db.execute(sql`
+      SELECT drawn_numbers, MAX(created_at) AS drawn_at
+      FROM keno_rounds
+      GROUP BY drawn_numbers::text, drawn_numbers
+      ORDER BY drawn_at DESC
+      LIMIT ${limit}
+    `);
+    res.json(rows.rows.map((r: any) => ({
+      drawnNumbers: r.drawn_numbers as number[],
+      drawnAt: r.drawn_at,
+    })));
+  } catch (err) {
+    req.log?.error({ err }, "keno/rounds error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // ─── ─────────────────────────────────────────────────────────────────────────
 // ADMIN ROUTES  (all require adminAuth)
 // ─────────────────────────────────────────────────────────────────────────────

@@ -494,6 +494,7 @@ export default function KenoPage() {
   const [wallet, setWallet] = useState<KenoWallet | null>(null);
   const [paytable, setPaytable] = useState<PaytableEntry[]>([]);
   const [history, setHistory] = useState<KenoRound[]>([]);
+  const [globalRounds, setGlobalRounds] = useState<{ drawnNumbers: number[]; drawnAt: string }[]>([]);
 
   // ── Per-ticket state ──────────────────────────────────────────────────────
   // currentPicks / currentBetAmount = what the user is picking RIGHT NOW
@@ -570,11 +571,19 @@ export default function KenoPage() {
     } catch { /* ignore */ }
   }
 
+  async function loadGlobalRounds() {
+    try {
+      const res = await apiFetch("/api/games/keno/rounds?limit=20");
+      if (res.ok) setGlobalRounds(await res.json());
+    } catch { /* ignore */ }
+  }
+
   useEffect(() => {
     if (mode) {
       loadWallet();
       loadPaytable();
       loadHistory();
+      loadGlobalRounds();
     }
   }, [mode]);
 
@@ -666,6 +675,7 @@ export default function KenoPage() {
       }
 
       await loadHistory();
+      await loadGlobalRounds();
     }
 
     animate();
@@ -895,61 +905,22 @@ export default function KenoPage() {
                 </>
               ) : (
                 <>
-                  {history.length === 0 && (
-                    <div className="rounded-lg border border-dashed border-white/10 px-3 py-8 text-center text-xs text-slate-500">No rounds played yet.</div>
+                  {globalRounds.length === 0 && (
+                    <div className="rounded-lg border border-dashed border-white/10 px-3 py-8 text-center text-xs text-slate-500">No rounds completed yet.</div>
                   )}
-                  {(() => {
-                    // Group tickets by batchId; null batchId = one group per ticket
-                    const groups: { key: string; rounds: KenoRound[] }[] = [];
-                    const seen = new Map<string, KenoRound[]>();
-                    for (const round of history) {
-                      const key = round.batchId != null ? `batch-${round.batchId}` : `solo-${round.id}`;
-                      if (!seen.has(key)) { seen.set(key, []); groups.push({ key, rounds: seen.get(key)! }); }
-                      seen.get(key)!.push(round);
-                    }
-                    return groups.map((group, gi) => {
-                      const drawn = group.rounds[0].drawnNumbers;
-                      const totalPayout = group.rounds.reduce((s, r) => s + parseFloat(r.payoutAmount), 0);
-                      const totalBet = group.rounds.reduce((s, r) => s + parseFloat(r.betAmount), 0);
-                      const roundNum = groups.length - gi;
-                      return (
-                        <div key={group.key} className="rounded-lg border border-white/5 bg-[#222c2d] p-2.5 space-y-2">
-                          {/* Round header */}
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs font-bold text-emerald-300">Round #{roundNum}</span>
-                            <span className={`text-[10px] font-bold ${totalPayout > 0 ? "text-emerald-300" : "text-slate-500"}`}>
-                              {totalPayout > 0 ? `+${totalPayout.toFixed(2)}` : "No win"}
-                            </span>
-                          </div>
-                          {/* Drawn numbers as small balls */}
-                          <div className="flex flex-wrap gap-1">
-                            {drawn.slice(0, 20).map(n => (
-                              <span key={n} className="flex h-5 w-5 items-center justify-center rounded-full bg-gradient-to-b from-gray-200 to-gray-400 text-[8px] font-black text-gray-900">{n}</span>
-                            ))}
-                          </div>
-                          {/* Tickets in this round */}
-                          {group.rounds.map((round, ti) => (
-                            <div key={round.id} data-testid={`card-keno-ticket-${round.id}`} className="rounded border border-white/5 bg-[#1b2526] p-2">
-                              <div className="mb-1.5 flex items-center justify-between text-[10px]">
-                                <span className="font-bold text-slate-300">Ticket {group.rounds.length > 1 ? ti + 1 : ""}</span>
-                                <span className="text-slate-500">{round.hitCount}/{round.picks.length} hits · {parseFloat(round.betAmount).toFixed(2)} USDT</span>
-                              </div>
-                              <div className="flex flex-wrap gap-1">
-                                {round.picks.map(pick => (
-                                  <span key={pick} className={`flex h-6 min-w-[22px] items-center justify-center rounded px-1 text-[10px] font-bold ${round.drawnNumbers.includes(pick) ? "bg-yellow-400 text-gray-900" : "bg-[#2e3b3d] text-slate-300"}`}>{pick}</span>
-                                ))}
-                              </div>
-                            </div>
-                          ))}
-                          {/* Round footer */}
-                          <div className="flex items-center justify-between border-t border-white/5 pt-1.5 text-[10px] text-slate-500">
-                            <span>{group.rounds.length} ticket{group.rounds.length !== 1 ? "s" : ""} · {totalBet.toFixed(2)} USDT staked</span>
-                            <span>{new Date(group.rounds[0].createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
-                          </div>
-                        </div>
-                      );
-                    });
-                  })()}
+                  {globalRounds.map((round, idx) => (
+                    <div key={idx} className="rounded-lg border border-white/5 bg-[#222c2d] p-2.5 space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold text-emerald-300">Draw #{globalRounds.length - idx}</span>
+                        <span className="text-[10px] text-slate-500">{new Date(round.drawnAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {round.drawnNumbers.map(n => (
+                          <span key={n} className="flex h-5 w-5 items-center justify-center rounded-full bg-gradient-to-b from-gray-200 to-gray-400 text-[8px] font-black text-gray-900">{n}</span>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
                 </>
               )}
             </div>
@@ -963,36 +934,9 @@ export default function KenoPage() {
           </aside>
 
           <main className="min-w-0">
-            {/* ── Provably Fair commitment badge ────────────────────────── */}
-            {roundState?.serverHash && !animating && roundState.phase === "betting" && (
-              <div className="mb-3 rounded-xl border border-cyan-400/20 bg-cyan-400/5 px-4 py-2.5 flex items-center gap-2.5">
-                <div className="flex-shrink-0 h-6 w-6 rounded-full bg-cyan-400/15 flex items-center justify-center">
-                  <svg className="h-3.5 w-3.5 text-cyan-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-[9px] font-black uppercase tracking-widest text-cyan-400">Provably Fair — Round #{roundState.roundId}</p>
-                  <p className="truncate font-mono text-[10px] text-slate-400 mt-0.5" title={roundState.serverHash}>
-                    Hash: {roundState.serverHash.slice(0, 16)}…{roundState.serverHash.slice(-8)}
-                  </p>
-                </div>
-                <span className="flex-shrink-0 rounded-full bg-emerald-400/10 px-2 py-0.5 text-[9px] font-bold text-emerald-400">COMMITTED</span>
-              </div>
-            )}
-
-            {/* ── Seed reveal after draw ────────────────────────────────── */}
-            {roundState?.serverSeedRevealed && roundState.phase === "drawing" && (
-              <div className="mb-3 rounded-xl border border-purple-400/20 bg-purple-400/5 px-4 py-2.5">
-                <div className="flex items-center gap-2 mb-1.5">
-                  <svg className="h-3.5 w-3.5 text-purple-400 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                  <span className="text-[9px] font-black uppercase tracking-widest text-purple-400">Seed Revealed — Verify Draw</span>
-                </div>
-                <p className="font-mono text-[10px] text-slate-300 break-all leading-relaxed">
-                  <span className="text-slate-500">seed: </span>{roundState.serverSeedRevealed}
-                </p>
-                <p className="mt-1 text-[9px] text-slate-500">
-                  Verify: SHA-256(seed | {roundState.roundId} | {roundState.seedTimestamp}) = {roundState.serverHash?.slice(0, 12)}…
-                </p>
-              </div>
+            {/* ── Round number (Provably Fair runs silently in background) ── */}
+            {roundState?.roundId != null && (
+              <p className="mb-3 text-sm font-bold text-white">Round #{roundState.roundId}</p>
             )}
 
             {/* ── Drawn numbers — shown before the betting banner ───────── */}
@@ -1218,19 +1162,19 @@ export default function KenoPage() {
               </div>
             </div>
             <div className="max-h-[calc(100vh-180px)] overflow-y-auto p-2">
-              {history.length === 0 && <p className="px-3 py-8 text-center text-xs text-slate-500">Results will show here.</p>}
-              {history.map(round => (
-                <div key={round.id} data-testid={`row-keno-result-${round.id}`} className="mb-1 rounded-lg bg-[#273335] p-2">
+              {globalRounds.length === 0 && <p className="px-3 py-8 text-center text-xs text-slate-500">Results will show here.</p>}
+              {globalRounds.map((round, idx) => (
+                <div key={idx} data-testid={`row-keno-result-${idx}`} className="mb-1 rounded-lg bg-[#273335] p-2">
                   <div className="flex items-center justify-between text-[10px]">
-                    <span className="flex items-center gap-1 font-semibold text-emerald-300"><Check className="h-3 w-3" /> #{round.id}</span>
-                    <span className="text-slate-500">{new Date(round.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                    <span className="flex items-center gap-1 font-semibold text-emerald-300"><Check className="h-3 w-3" /> Draw #{globalRounds.length - idx}</span>
+                    <span className="text-slate-500">{new Date(round.drawnAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
                   </div>
                   <div className="mt-1 grid grid-cols-5 gap-1">
                     {round.drawnNumbers.slice(0, 10).map(number => (
-                      <span key={number} className={`rounded bg-[#344144] py-0.5 text-center text-[9px] font-bold ${round.picks.includes(number) ? "bg-emerald-500/80 text-[#10221c]" : "text-slate-400"}`}>{number}</span>
+                      <span key={number} className="rounded bg-[#344144] py-0.5 text-center text-[9px] font-bold text-slate-400">{number}</span>
                     ))}
                   </div>
-                  <div className="mt-1 text-right text-[10px] font-bold text-slate-500">{round.hitCount} hits · {parseFloat(round.multiplier).toFixed(2)}×</div>
+                  <div className="mt-1 text-right text-[10px] text-slate-500">{round.drawnNumbers.length} numbers drawn</div>
                 </div>
               ))}
             </div>
