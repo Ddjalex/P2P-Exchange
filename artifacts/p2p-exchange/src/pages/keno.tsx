@@ -1083,11 +1083,11 @@ export default function KenoPage() {
                       disabled={animating}
                       className={`relative aspect-square rounded-md text-xs font-bold transition-all sm:rounded-lg sm:text-sm
                         ${isHit
-                          ? "bg-yellow-400 text-gray-900 shadow-md shadow-yellow-400/30 ring-2 ring-yellow-400 ring-offset-1 ring-offset-[#1b2324]"
+                          ? "bg-yellow-400 text-gray-900 shadow-md shadow-yellow-400/50 ring-2 ring-white ring-offset-1 ring-offset-[#1b2324]"
+                          : isDrawn
+                          ? "bg-yellow-400 text-gray-900 shadow-sm shadow-yellow-400/30"
                           : isSelected
                           ? "bg-yellow-400 text-gray-900 shadow-md shadow-yellow-400/20 ring-2 ring-yellow-300 ring-offset-1 ring-offset-[#1b2324]"
-                          : isDrawn
-                          ? "bg-[#222b2d] text-slate-600"
                           : "bg-[#2a3436] text-slate-400 hover:bg-[#344143] hover:text-white"
                         }
                         ${isFlash ? "keno-cell-flash" : ""}
