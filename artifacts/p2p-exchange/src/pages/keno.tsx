@@ -630,10 +630,10 @@ export default function KenoPage() {
         setRevealedNums(prev => [...prev, drawn[i]]);
         setActiveDrawNumber(drawn[i]);
         setDrawProgress(i + 1);
-        await new Promise<void>(r => setTimeout(r, 110)); // 110 ms active pulse
+        await new Promise<void>(r => setTimeout(r, 350)); // 350 ms active pulse
         if (animCancelledRef.current) return;
         setActiveDrawNumber(null);
-        await new Promise<void>(r => setTimeout(r, 40));  //  40 ms gap = 150 ms/ball total
+        await new Promise<void>(r => setTimeout(r, 150)); // 150 ms gap = 500 ms/ball total
       }
 
       if (animCancelledRef.current) return;
