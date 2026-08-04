@@ -276,9 +276,11 @@ interface PendingBatch {
 interface SettledTicketResult {
   picks:      number[];
   betAmount:  string;
+  matches:    number[];   // actual intersecting numbers
   hitCount:   number;
   multiplier: number;
   payout:     number;
+  isWin:      boolean;
 }
 
 /** Settlement result stored in activeRound.results keyed by `${userId}:${mode}`. */
@@ -325,10 +327,11 @@ async function evaluateUserBatch(
 
   return tickets.map(ticket => {
     const betAmt   = parseFloat(ticket.betAmount);
-    const hitCount = ticket.picks.filter(n => drawnSet.has(n)).length;
+    const matches  = ticket.picks.filter(n => drawnSet.has(n));
+    const hitCount = matches.length;
     const multiplier = ptMap.get(`${ticket.picks.length}:${hitCount}`) ?? 0;
     const payout     = parseFloat((betAmt * multiplier).toFixed(2));
-    return { picks: ticket.picks, betAmount: ticket.betAmount, hitCount, multiplier, payout };
+    return { picks: ticket.picks, betAmount: ticket.betAmount, matches, hitCount, multiplier, payout, isWin: payout > 0 };
   });
 }
 
@@ -721,11 +724,19 @@ kenoRouter.get("/state", (req, res) => {
         newBalance:   myResult.newBalance,
         tickets: myResult.tickets.map(r => ({
           picks:      r.picks,
+          matches:    r.matches,
           betAmount:  r.betAmount,
           hitCount:   r.hitCount,
           multiplier: r.multiplier,
           payout:     r.payout,
+          isWin:      r.isWin,
         })),
+        summary: {
+          totalBet:      parseFloat(myBatch!.totalStaked),
+          totalWinnings: parseFloat(myResult.totalPayout.toFixed(2)),
+          netChange:     parseFloat((myResult.totalPayout - parseFloat(myBatch!.totalStaked)).toFixed(2)),
+          newBalance:    myResult.newBalance,
+        },
       } : {}),
     } : null;
 
@@ -1043,7 +1054,9 @@ kenoRouter.post("/play", async (req, res) => {
 
     // ── Draw (crypto.randomInt — non-negotiable) ─────────────────────────────
     const drawn = drawKeno();
-    const hitCount = picks.filter((n: number) => drawn.includes(n)).length;
+    const drawnSet = new Set(drawn);
+    const matches = (picks as number[]).filter(n => drawnSet.has(n));
+    const hitCount = matches.length;
 
     // ── Paytable lookup ──────────────────────────────────────────────────────
     const ptRow = await db.select({ multiplier: kenoPaytableTable.multiplier })
@@ -1115,13 +1128,24 @@ kenoRouter.post("/play", async (req, res) => {
     if ("error" in result) return res.status(400).json({ error: result.error });
 
     res.json({
-      roundId: result.round?.id,
-      drawn: result.drawn,
-      picks,
-      hitCount: result.hitCount,
-      multiplier: result.multiplier,
-      payout: result.payout,
-      newBalance: result.newBalance,
+      roundId:    result.round?.id,
+      drawnNumbers: result.drawn,
+      tickets: [{
+        ticketId:   result.round?.id,
+        picks,
+        matches,
+        hitCount:   result.hitCount,
+        betAmount:  parseFloat(bet.toFixed(2)),
+        multiplier: result.multiplier,
+        payout:     result.payout,
+        isWin:      result.payout > 0,
+      }],
+      summary: {
+        totalBet:      parseFloat(bet.toFixed(2)),
+        totalWinnings: parseFloat(result.payout.toFixed(2)),
+        netChange:     parseFloat((result.payout - bet).toFixed(2)),
+        newBalance:    result.newBalance,
+      },
       mode,
     });
   } catch (err) {
@@ -1279,21 +1303,26 @@ kenoRouter.post("/play-batch", async (req, res) => {
     if ("error" in result) return res.status(400).json({ error: result.error });
 
     res.json({
-      batchId:     result.batchId,
-      drawn,
-      totalStaked: totalStaked.toFixed(2),
-      totalPayout: totalPayout.toFixed(2),
-      newBalance:  result.newBalance,
+      batchId:      result.batchId,
+      drawnNumbers: drawn,
+      entropyData:  result.entropyData,   // SHA-256(nonce) for provably-fair verification
       mode,
-      entropyData: result.entropyData,   // SHA-256(nonce) for provably-fair verification
       tickets: ticketResults.map((r, i) => ({
         ticketIndex: i + 1,
         picks:       r.picks,
-        betAmount:   r.betAmount,
+        matches:     r.matches,
         hitCount:    r.hitCount,
+        betAmount:   parseFloat(r.betAmount),
         multiplier:  r.multiplier,
         payout:      r.payout,
+        isWin:       r.isWin,
       })),
+      summary: {
+        totalBet:      parseFloat(totalStaked.toFixed(2)),
+        totalWinnings: parseFloat(totalPayout.toFixed(2)),
+        netChange:     parseFloat((totalPayout - totalStaked).toFixed(2)),
+        newBalance:    result.newBalance,
+      },
     });
   } catch (err) {
     req.log?.error({ err }, "keno/play-batch error");

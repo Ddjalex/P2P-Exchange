@@ -16,9 +16,9 @@ A full-stack P2P cryptocurrency exchange platform (EthioP2P / XendrX) built with
 Two workflows must be running:
 
 - **`artifacts/api-server: API Server`** — Express API on port 8080
-- **`artifacts/p2p-exchange: web`** — Vite dev server (proxies `/api` → port 8080)
+- **`artifacts/p2p-exchange: web`** — Vite dev server on port 5000 (proxies `/api` → port 8080)
 
-Both start automatically via the `Project` run button.
+Both start automatically via the **Project** run button.
 
 ## Required secrets
 
