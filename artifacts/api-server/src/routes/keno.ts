@@ -285,7 +285,9 @@ function deriveProvablyFairDraw(serverSeed: string, roundId: number, drawTimesta
     const j = h.readUInt32BE(0) % (i + 1);
     [pool[i], pool[j]] = [pool[j], pool[i]];
   }
-  return pool.slice(0, 20).sort((a, b) => a - b);
+  // Return in raw shuffle order — the frontend animates tiles in this exact
+  // sequence so they light up randomly across the grid, not top-to-bottom.
+  return pool.slice(0, 20);
 }
 
 // ─── Multiplayer Round Manager ────────────────────────────────────────────────

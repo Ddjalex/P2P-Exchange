@@ -455,7 +455,7 @@ function ResultOverlay({
               </span>
             </div>
             <div className="grid grid-cols-10 gap-1">
-              {drawn.map(n => {
+              {[...drawn].sort((a, b) => a - b).map(n => {
                 const isHit = ticket.picks.includes(n);
                 return (
                   <div key={n} className={`aspect-square rounded text-[9px] font-bold flex items-center justify-center ${isHit ? "bg-emerald-600 text-white" : "bg-[#263133] text-slate-500"}`}>
