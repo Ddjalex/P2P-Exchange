@@ -536,7 +536,7 @@ router.post("/:id/release", async (req, res) => {
     }).catch(err => {
       console.error('[Push] orderCompleted FAILED:', err.message, err.stack);
     });
-    // Telegram receipt removed per user preference
+    TelegramNotify.orderCompleted(order.buyerId, id, buyerReceives.toFixed(4)).catch(console.error);
     emitToUser(order.buyerId, "order_update", { orderId: id, status: "completed", type: "order_completed" });
     emitToUser(order.buyerId, "wallet_update", {});
     emitToUser(order.sellerId, "order_update", { orderId: id, status: "completed", type: "order_completed" });
