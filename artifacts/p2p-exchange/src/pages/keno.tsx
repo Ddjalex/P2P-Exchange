@@ -499,6 +499,8 @@ export default function KenoPage() {
   // Each Place Bet submits one ticket immediately; user can keep adding up to 20
   const [currentPicks, setCurrentPicks] = useState<number[]>([]);
   const [currentBetAmount, setCurrentBetAmount] = useState("1.00");
+  // Tickets placed this round (with their picked numbers, for display)
+  const [placedTickets, setPlacedTickets] = useState<{ picks: number[]; betAmount: string }[]>([]);
 
   const [animating, setAnimating] = useState(false);
   const [revealedNums, setRevealedNums] = useState<number[]>([]);
@@ -634,6 +636,7 @@ export default function KenoPage() {
       setDrawProgress(0);
       setAnimating(false);
       setTicketsThisRound(0);
+      setPlacedTickets([]);
 
       // Show batch result overlay if this user had tickets
       if (myBatchSnap && myBatchSnap.totalPayout !== undefined && myBatchSnap.tickets.every(t => t.hitCount !== undefined)) {
@@ -667,6 +670,7 @@ export default function KenoPage() {
     if (roundState.phase === "betting" && roundState.roundId !== lastRoundIdRef.current) {
       lastRoundIdRef.current = roundState.roundId;
       setTicketsThisRound(0);
+      setPlacedTickets([]);
     }
   }, [roundState?.roundId, roundState?.phase]);
 
@@ -687,6 +691,7 @@ export default function KenoPage() {
   function resetAllTickets() {
     setCurrentPicks([]);
     setCurrentBetAmount("1.00");
+    setPlacedTickets([]);
   }
 
   // ── Computed values ───────────────────────────────────────────────────────
@@ -727,6 +732,7 @@ export default function KenoPage() {
         return;
       }
       setTicketsThisRound(prev => prev + 1);
+      setPlacedTickets(prev => [...prev, { picks: currentPicks, betAmount: activeBet.toFixed(2) }]);
       setCurrentPicks([]); // clear grid so user can pick next ticket
       if (mode === "real") {
         setWallet(prev => prev ? { ...prev, realBalance: String(data.balanceAfterDeduction) } : prev);
@@ -833,18 +839,50 @@ export default function KenoPage() {
               {sidebarTab === "game" ? (
                 <>
                   {ticketsThisRound === 0 && !animating && (
-                    <div className="rounded-lg border border-dashed border-white/10 px-3 py-8 text-center text-xs text-slate-500">Your tickets will appear here after a draw.</div>
-                  )}
-                  {ticketsThisRound > 0 && !animating && (
-                    <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-4 text-center">
-                      <p className="text-sm font-black text-emerald-300">{ticketsThisRound} ticket{ticketsThisRound !== 1 ? "s" : ""} placed</p>
-                      <p className="mt-1 text-[10px] text-slate-400">Waiting for the draw…</p>
-                    </div>
+                    <div className="rounded-lg border border-dashed border-white/10 px-3 py-8 text-center text-xs text-slate-500">Pick numbers and place a bet — your tickets will appear here.</div>
                   )}
                   {animating && (
-                    <div className="rounded-lg border border-yellow-400/20 bg-yellow-400/10 px-3 py-4 text-center">
-                      <Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin text-yellow-300" />
+                    <div className="mb-2 rounded-lg border border-yellow-400/20 bg-yellow-400/10 px-3 py-3 text-center">
+                      <Loader2 className="mx-auto mb-1.5 h-5 w-5 animate-spin text-yellow-300" />
                       <p className="text-sm font-black text-yellow-300">Drawing…</p>
+                    </div>
+                  )}
+                  {placedTickets.length > 0 && (
+                    <div className="space-y-2">
+                      {!animating && (
+                        <p className="px-1 text-[10px] font-bold uppercase tracking-wider text-emerald-400">
+                          {placedTickets.length} ticket{placedTickets.length !== 1 ? "s" : ""} placed · waiting for draw…
+                        </p>
+                      )}
+                      {placedTickets.map((ticket, idx) => (
+                        <div key={idx} className="rounded-lg border border-white/5 bg-[#222c2d] p-2.5">
+                          <div className="mb-2 flex items-center justify-between">
+                            <span className="text-xs font-bold text-emerald-300">Ticket {idx + 1}</span>
+                            <span className="text-[10px] text-slate-400">{ticket.betAmount} USDT</span>
+                          </div>
+                          <div className="flex flex-wrap gap-1">
+                            {ticket.picks.map(pick => {
+                              const isDrawn = revealedNums.includes(pick);
+                              const isHit = isDrawn;
+                              return (
+                                <span
+                                  key={pick}
+                                  className={`flex h-6 min-w-[24px] items-center justify-center rounded px-1 text-[10px] font-bold transition-colors ${
+                                    isHit
+                                      ? "bg-yellow-400 text-gray-900"
+                                      : isDrawn
+                                      ? "bg-slate-600 text-slate-300"
+                                      : "bg-emerald-600/30 text-emerald-200 ring-1 ring-emerald-500/50"
+                                  }`}
+                                >
+                                  {pick}
+                                </span>
+                              );
+                            })}
+                          </div>
+                          <div className="mt-1.5 text-[10px] text-slate-500">{ticket.picks.length} number{ticket.picks.length !== 1 ? "s" : ""} chosen</div>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </>
