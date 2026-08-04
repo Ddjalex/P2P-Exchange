@@ -1,4 +1,4 @@
-import { pgTable, serial, integer, text, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, serial, integer, text, timestamp, numeric } from "drizzle-orm/pg-core";
 
 export const adminEmailSendsTable = pgTable("admin_email_sends", {
   id: serial("id").primaryKey(),
@@ -19,7 +19,36 @@ export const adminLogsTable = pgTable("admin_logs", {
   targetType: text("target_type"),
   targetId: integer("target_id"),
   note: text("note"),
+  ipAddress: text("ip_address"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// Audit table — tracks every wallet balance change (trigger-populated on prod)
+export const walletBalanceAuditTable = pgTable("wallet_balance_audit", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull(),
+  oldAvailable: numeric("old_available"),
+  newAvailable: numeric("new_available"),
+  oldFrozen: numeric("old_frozen"),
+  newFrozen: numeric("new_frozen"),
+  changedAt: timestamp("changed_at").notNull().defaultNow(),
+  appUser: text("app_user"),
+  clientAddr: text("client_addr"),
+  consumedByQueueId: integer("consumed_by_queue_id"),
+});
+
+// Audit table — tracks card queue status changes
+export const cardQueueAuditTable = pgTable("card_queue_audit", {
+  id: serial("id").primaryKey(),
+  queueId: integer("queue_id").notNull(),
+  userId: integer("user_id"),
+  oldStatus: text("old_status"),
+  newStatus: text("new_status"),
+  oldAmount: text("old_amount"),
+  newAmount: text("new_amount"),
+  attempts: integer("attempts"),
+  errorMessage: text("error_message"),
+  changedAt: timestamp("changed_at").notNull().defaultNow(),
 });
 
 export const systemSettingsTable = pgTable("system_settings", {
@@ -42,3 +71,5 @@ export const notificationHistoryTable = pgTable("notification_history", {
 export type AdminLog = typeof adminLogsTable.$inferSelect;
 export type SystemSetting = typeof systemSettingsTable.$inferSelect;
 export type NotificationHistory = typeof notificationHistoryTable.$inferSelect;
+export type WalletBalanceAudit = typeof walletBalanceAuditTable.$inferSelect;
+export type CardQueueAudit = typeof cardQueueAuditTable.$inferSelect;

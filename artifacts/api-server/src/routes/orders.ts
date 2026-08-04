@@ -21,17 +21,19 @@ async function getOrCreateWallet(userId: number) {
   return wallet;
 }
 
-async function freezeSellerUsdt(sellerId: number, amountUsdt: string) {
-  const wallet = await getOrCreateWallet(sellerId);
-  const available = parseFloat(wallet.availableBalance);
-  const frozen = parseFloat(wallet.frozenBalance);
+async function freezeSellerUsdt(sellerId: number, amountUsdt: string): Promise<boolean> {
   const amount = parseFloat(amountUsdt);
-  if (available >= amount) {
-    await db.update(walletsTable).set({
-      availableBalance: (available - amount).toFixed(4),
-      frozenBalance: (frozen + amount).toFixed(4),
-    }).where(eq(walletsTable.userId, sellerId));
-  }
+  // Atomic single-statement UPDATE — prevents race conditions on concurrent order creation
+  const result = await db.execute(sql`
+    UPDATE wallets
+    SET available_balance = (available_balance::numeric - ${amount})::text,
+        frozen_balance    = (frozen_balance::numeric + ${amount})::text,
+        updated_at        = NOW()
+    WHERE user_id = ${sellerId}
+      AND available_balance::numeric >= ${amount}
+    RETURNING id
+  `);
+  return result.rows != null && result.rows.length > 0;
 }
 
 async function returnUsdtToSeller(sellerId: number, amountUsdt: string) {
@@ -230,7 +232,11 @@ router.post("/", async (req, res) => {
 
     // If selling to a buy ad, freeze the seller's USDT now (escrow per order)
     if (!isBuying) {
-      await freezeSellerUsdt(sellerId, amountUsdt);
+      const froze = await freezeSellerUsdt(sellerId, amountUsdt);
+      if (!froze) {
+        await db.delete(ordersTable).where(eq(ordersTable.id, order.id));
+        return res.status(400).json({ message: "Insufficient USDT balance to create this sell order" });
+      }
     }
 
     const newAvailable = Math.max(0, available - usdt);

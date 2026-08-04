@@ -129,8 +129,22 @@ export async function processCardQueue() {
 
   console.log(`[Queue] Processing ${pending.length} pending item(s)...`);
 
+  const MAX_QUEUE_ATTEMPTS = 5;
+
   for (const item of pending) {
     try {
+      // Stop items that have already exceeded the max retry limit
+      if ((item.attempts ?? 0) + 1 > MAX_QUEUE_ATTEMPTS) {
+        await db.update(cardQueueTable).set({
+          status: "failed",
+          attempts: (item.attempts ?? 0) + 1,
+          errorMessage: `Exceeded max retry attempts (${MAX_QUEUE_ATTEMPTS}) — stopped automatically for safety`,
+          updatedAt: new Date(),
+        }).where(eq(cardQueueTable.id, item.id));
+        console.log(`[Queue] Item #${item.id} exceeded MAX_QUEUE_ATTEMPTS (${MAX_QUEUE_ATTEMPTS}) — marked failed`);
+        continue;
+      }
+
       await db.update(cardQueueTable).set({
         status: "processing",
         attempts: (item.attempts ?? 0) + 1,

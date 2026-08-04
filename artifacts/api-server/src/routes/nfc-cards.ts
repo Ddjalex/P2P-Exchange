@@ -9,7 +9,7 @@ import {
   transactionsTable,
   systemSettingsTable,
 } from "@workspace/db";
-import { eq, or, and, like, gte, inArray } from "drizzle-orm";
+import { eq, or, and, like, gte, inArray, sql } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { userAuth } from "../middleware/user-auth";
 import { enqueueCardFund, enqueueCardCreate } from "../lib/card-queue.js";
@@ -271,7 +271,7 @@ router.post("/create", userAuth, async (req: any, res) => {
     } catch (fetchErr) {
       console.error("[Card] StroWallet fetch error:", fetchErr);
       await db.update(walletsTable).set({ availableBalance: avail.toFixed(6), updatedAt: new Date() }).where(eq(walletsTable.userId, userId));
-      return res.status(502).json({ error: `Could not reach card service. Your $${creationFee.toFixed(2)} fee has been refunded.` });
+      return res.status(503).json({ error: `Could not reach card service. Your $${creationFee.toFixed(2)} fee has been refunded.` });
     }
 
     if (!stroOk) {
@@ -568,9 +568,19 @@ router.post("/fund", userAuth, async (req: any, res) => {
       return res.status(400).json({ error: `Insufficient balance. Available: $${avail.toFixed(2)} USDT` });
     }
 
-    // Deduct from platform first
+    // Atomically deduct from platform — prevents race conditions on concurrent top-up requests
+    const debitResult = await db.execute(sql`
+      UPDATE wallets
+      SET available_balance = (available_balance::numeric - ${amount})::text,
+          updated_at        = NOW()
+      WHERE user_id = ${userId}
+        AND available_balance::numeric >= ${amount}
+      RETURNING id
+    `);
+    if (!debitResult.rows || debitResult.rows.length === 0) {
+      return res.status(400).json({ error: `Insufficient balance. Available: $${avail.toFixed(2)} USDT` });
+    }
     const newWalletBal = (avail - amount).toFixed(6);
-    await db.update(walletsTable).set({ availableBalance: newWalletBal, updatedAt: new Date() }).where(eq(walletsTable.userId, userId));
 
     // Call StroWallet via query params (not body)
     const url = stroBaseUrl("fund-withdraw-nfccard");
@@ -586,7 +596,7 @@ router.post("/fund", userAuth, async (req: any, res) => {
     } catch (e) {
       // Refund on network error
       await db.update(walletsTable).set({ availableBalance: avail.toFixed(6), updatedAt: new Date() }).where(eq(walletsTable.userId, userId));
-      return res.status(502).json({ error: "Could not reach card service. Balance refunded." });
+      return res.status(503).json({ error: "Could not reach card service. Balance refunded." });
     }
 
     if (!stroRes?.success) {
@@ -627,7 +637,7 @@ router.post("/fund", userAuth, async (req: any, res) => {
       const userMsg = isConfigError
         ? "Card service is temporarily unavailable. Your balance has been refunded. Please try again later."
         : rawMsg || "Card top-up failed. Your balance has been refunded.";
-      return res.status(502).json({ error: userMsg });
+      return res.status(503).json({ error: userMsg });
     }
 
     await db.insert(transactionsTable).values({ userId, type: "withdraw", amount: String(amount), status: "completed", note: "Funded Xendrx card" });
@@ -697,11 +707,11 @@ router.post("/withdraw", userAuth, async (_req: any, res) => {
       stroRes = await response.json();
       console.log("[Card] StroWallet withdraw response:", JSON.stringify(stroRes));
     } catch (e) {
-      return res.status(502).json({ error: "Could not reach card service. Please try again." });
+      return res.status(503).json({ error: "Could not reach card service. Please try again." });
     }
 
     if (!stroRes?.success) {
-      return res.status(502).json({ error: stroErrMsg(stroRes, "Card withdrawal failed. Please try again.") });
+      return res.status(503).json({ error: stroErrMsg(stroRes, "Card withdrawal failed. Please try again.") });
     }
 
     const wallet = await getOrCreateWallet(userId);
@@ -872,7 +882,7 @@ router.post("/freeze", userAuth, async (req: any, res) => {
     }
 
     console.log("[Card] All 3 methods failed for freeze");
-    return res.status(502).json({ error: "Could not reach card service — check server logs for details" });
+    return res.status(503).json({ error: "Could not reach card service — check server logs for details" });
   } catch (err) {
     console.error("[Card] Freeze error:", err);
     return res.status(500).json({ error: "Internal server error" });

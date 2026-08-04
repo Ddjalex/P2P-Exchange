@@ -66,8 +66,15 @@ function adminAuth(req: any, res: any, next: any) {
 
 // ─── Audit logger ────────────────────────────────────────────────────────────
 
-async function log(adminEmail: string, action: string, targetType?: string, targetId?: number, note?: string) {
-  await db.insert(adminLogsTable).values({ adminEmail, action, targetType, targetId, note }).catch(() => {});
+async function log(adminEmail: string, action: string, targetType?: string, targetId?: number, note?: string, req?: any) {
+  const ipAddress = req
+    ? (req.headers["cf-connecting-ip"] ||
+       req.headers["x-forwarded-for"]?.split(",")[0]?.trim() ||
+       req.ip ||
+       req.socket?.remoteAddress ||
+       null)
+    : null;
+  await db.insert(adminLogsTable).values({ adminEmail, action, targetType, targetId, note, ipAddress }).catch(() => {});
 }
 
 // ─── AUTH ────────────────────────────────────────────────────────────────────
@@ -1077,7 +1084,7 @@ router.put("/wallet/transactions/:id/approve", adminAuth, async (req: any, res) 
         .set({ status: "pending" })
         .where(eq(transactionsTable.id, id));
       await log(req.adminEmail, "approve_withdrawal_failed", "transaction", id, broadcastErr?.message ?? "Broadcast error");
-      return res.status(502).json({ error: "Blockchain broadcast failed — withdrawal kept as pending", detail: broadcastErr?.message });
+      return res.status(503).json({ error: "Blockchain broadcast failed — withdrawal kept as pending", detail: broadcastErr?.message });
     }
   } catch (err) {
     req.log.error({ err }, "Admin approve withdrawal failed");
@@ -1093,15 +1100,39 @@ router.put("/wallet/transactions/:id/reject", adminAuth, async (req: any, res) =
     const tx = await db.select().from(transactionsTable).where(eq(transactionsTable.id, id)).then(r => r[0]);
     if (tx) {
       await db.update(transactionsTable).set({ status: "failed" }).where(eq(transactionsTable.id, id));
-      const wallet = await db.select().from(walletsTable).where(and(eq(walletsTable.userId, tx.userId), eq(walletsTable.asset, "USDT"))).then(r => r[0]);
-      if (wallet) {
-        const newBalance = (parseFloat(wallet.availableBalance) + parseFloat(tx.amount)).toFixed(6);
-        await db.update(walletsTable).set({ availableBalance: newBalance }).where(eq(walletsTable.id, wallet.id));
+
+      // Verify a matching deduction exists before refunding
+      let refunded = false;
+      try {
+        const verifyResult = await db.execute(sql`
+          SELECT id FROM wallet_balance_audit
+          WHERE user_id = ${tx.userId}
+            AND (old_available - new_available) = ${parseFloat(tx.amount)}
+            AND changed_at > NOW() - INTERVAL '24 hours'
+            AND consumed_by_queue_id IS NULL
+          LIMIT 1
+        `);
+        if (verifyResult.rows && verifyResult.rows.length > 0) {
+          const auditRowId = (verifyResult.rows[0] as any).id;
+          const wallet = await db.select().from(walletsTable).where(and(eq(walletsTable.userId, tx.userId), eq(walletsTable.asset, "USDT"))).then(r => r[0]);
+          if (wallet) {
+            const newBalance = (parseFloat(wallet.availableBalance) + parseFloat(tx.amount)).toFixed(6);
+            await db.update(walletsTable).set({ availableBalance: newBalance, updatedAt: new Date() }).where(eq(walletsTable.id, wallet.id));
+            await db.execute(sql`UPDATE wallet_balance_audit SET consumed_by_queue_id = ${id} WHERE id = ${auditRowId}`);
+            refunded = true;
+          }
+        }
+      } catch (verifyErr) {
+        console.error(`[SECURITY] Refund verification failed for rejection #${id}:`, verifyErr);
       }
+
       PushNotify.withdrawalRejected(tx.userId, tx.amount, rejectReason).catch(console.error);
       TelegramNotify.withdrawalRejected(tx.userId, tx.amount, rejectReason).catch(console.error);
+      if (!refunded) {
+        console.error(`[SECURITY] Withdrawal rejection #${id}: no matching audit deduction found — NOT refunded`);
+      }
     }
-    await log(req.adminEmail, "reject_withdrawal", "transaction", id, rejectReason);
+    await log(req.adminEmail, "reject_withdrawal", "transaction", id, rejectReason, req);
     res.json({ success: true });
   } catch (err) {
     req.log.error({ err }, "Admin reject withdrawal failed");
@@ -1109,7 +1140,7 @@ router.put("/wallet/transactions/:id/reject", adminAuth, async (req: any, res) =
   }
 });
 
-// Cancel pending withdrawal — refunds frozen balance to available
+// Cancel pending withdrawal — verified refund to available balance
 router.put("/wallet/transactions/:id/cancel", adminAuth, async (req: any, res) => {
   try {
     const id = parseInt(req.params.id);
@@ -1120,59 +1151,101 @@ router.put("/wallet/transactions/:id/cancel", adminAuth, async (req: any, res) =
 
     await db.update(transactionsTable).set({ status: "failed" }).where(eq(transactionsTable.id, id));
 
-    const wallet = await db.select().from(walletsTable)
-      .where(and(eq(walletsTable.userId, tx.userId), eq(walletsTable.asset, "USDT")))
-      .then(r => r[0]);
-    if (wallet) {
-      const newAvailable = (parseFloat(wallet.availableBalance) + parseFloat(tx.amount)).toFixed(6);
-      const newFrozen = Math.max(0, parseFloat(wallet.frozenBalance) - parseFloat(tx.amount)).toFixed(6);
-      await db.update(walletsTable)
-        .set({ availableBalance: newAvailable, frozenBalance: newFrozen })
-        .where(eq(walletsTable.id, wallet.id));
+    // Verify a matching deduction exists before refunding
+    let refunded = false;
+    try {
+      const verifyResult = await db.execute(sql`
+        SELECT id FROM wallet_balance_audit
+        WHERE user_id = ${tx.userId}
+          AND (old_available - new_available) = ${parseFloat(tx.amount)}
+          AND changed_at > NOW() - INTERVAL '24 hours'
+          AND consumed_by_queue_id IS NULL
+        LIMIT 1
+      `);
+      if (verifyResult.rows && verifyResult.rows.length > 0) {
+        const auditRowId = (verifyResult.rows[0] as any).id;
+        const wallet = await db.select().from(walletsTable)
+          .where(and(eq(walletsTable.userId, tx.userId), eq(walletsTable.asset, "USDT")))
+          .then(r => r[0]);
+        if (wallet) {
+          const newAvailable = (parseFloat(wallet.availableBalance) + parseFloat(tx.amount)).toFixed(6);
+          const newFrozen = Math.max(0, parseFloat(wallet.frozenBalance) - parseFloat(tx.amount)).toFixed(6);
+          await db.update(walletsTable)
+            .set({ availableBalance: newAvailable, frozenBalance: newFrozen, updatedAt: new Date() })
+            .where(eq(walletsTable.id, wallet.id));
+          await db.execute(sql`UPDATE wallet_balance_audit SET consumed_by_queue_id = ${id} WHERE id = ${auditRowId}`);
+          refunded = true;
+        }
+      }
+    } catch (verifyErr) {
+      console.error(`[SECURITY] Refund verification failed for cancellation #${id}:`, verifyErr);
+    }
+
+    if (!refunded) {
+      console.error(`[SECURITY] Withdrawal cancellation #${id}: no matching audit deduction found — NOT refunded`);
     }
 
     PushNotify.withdrawalRejected(tx.userId, tx.amount, "Cancelled by admin").catch(console.error);
-    await log(req.adminEmail, "cancel_withdrawal", "transaction", id, "Cancelled by admin");
-    res.json({ success: true });
+    await log(req.adminEmail, "cancel_withdrawal", "transaction", id, "Cancelled by admin", req);
+    res.json({ success: true, refunded });
   } catch (err) {
     req.log.error({ err }, "Admin cancel withdrawal failed");
     res.status(500).json({ error: "Internal server error" });
   }
 });
 
-// Cancel pending card queue item — refunds amount to user wallet
+// Cancel pending card queue item — verified refund via wallet_balance_audit
 router.put("/cards/queue/:id/cancel", adminAuth, async (req: any, res) => {
   try {
-    const id = parseInt(req.params.id);
-    const item = await db.select().from(cardQueueTable).where(eq(cardQueueTable.id, id)).then(r => r[0]);
+    const id2 = parseInt(req.params.id);
+    const item = await db.select().from(cardQueueTable).where(eq(cardQueueTable.id, id2)).then(r => r[0]);
     if (!item) return res.status(404).json({ error: "Queue item not found" });
     if (item.status !== "pending" && item.status !== "processing") return res.status(400).json({ error: "Only pending or processing queue items can be cancelled" });
 
     await db.update(cardQueueTable)
       .set({ status: "failed", errorMessage: "Cancelled by admin", updatedAt: new Date() })
-      .where(eq(cardQueueTable.id, id));
+      .where(eq(cardQueueTable.id, id2));
 
+    let refunded = false;
     if (item.userId && item.amount) {
-      const wallet = await db.select().from(walletsTable)
-        .where(and(eq(walletsTable.userId, item.userId), eq(walletsTable.asset, "USDT")))
-        .then(r => r[0]);
-      if (wallet) {
-        const newAvailable = (parseFloat(wallet.availableBalance) + parseFloat(item.amount)).toFixed(6);
-        await db.update(walletsTable)
-          .set({ availableBalance: newAvailable })
-          .where(eq(walletsTable.id, wallet.id));
-        await db.insert(transactionsTable).values({
-          userId: item.userId,
-          type: "deposit",
-          amount: item.amount,
-          status: "completed",
-          note: `Card ${item.type} request cancelled by admin — refunded`,
-        });
+      try {
+        // Verify a matching real deduction exists before refunding
+        const verifyResult = await db.execute(sql`
+          SELECT id FROM wallet_balance_audit
+          WHERE user_id = ${item.userId}
+            AND (old_available - new_available) = ${parseFloat(item.amount)}
+            AND changed_at > NOW() - INTERVAL '24 hours'
+            AND consumed_by_queue_id IS NULL
+          LIMIT 1
+        `);
+        if (verifyResult.rows && verifyResult.rows.length > 0) {
+          const auditRowId = (verifyResult.rows[0] as any).id;
+          const wallet = await db.select().from(walletsTable)
+            .where(and(eq(walletsTable.userId, item.userId), eq(walletsTable.asset, "USDT")))
+            .then(r => r[0]);
+          if (wallet) {
+            const newAvailable = (parseFloat(wallet.availableBalance) + parseFloat(item.amount)).toFixed(6);
+            await db.update(walletsTable)
+              .set({ availableBalance: newAvailable, updatedAt: new Date() })
+              .where(eq(walletsTable.id, wallet.id));
+            await db.execute(sql`UPDATE wallet_balance_audit SET consumed_by_queue_id = ${id2} WHERE id = ${auditRowId}`);
+            await db.insert(transactionsTable).values({
+              userId: item.userId,
+              type: "deposit",
+              amount: item.amount,
+              status: "completed",
+              note: "Card fund request cancelled by admin — verified refund (matched original deduction)",
+            });
+            refunded = true;
+          }
+        }
+      } catch (verifyErr) {
+        console.error(`[SECURITY] Refund verification failed for queue #${id2}:`, verifyErr);
       }
     }
 
-    await log(req.adminEmail, "cancel_card_queue", "card_queue", id, `Cancelled card queue #${id} for user ${item.userId}`);
-    res.json({ success: true });
+    await log(req.adminEmail, "cancel_card_queue", "card_queue", id2, `Cancelled card queue #${id2} for user ${item.userId}${refunded ? " (verified refund issued)" : " (NOT refunded - no matching deduction found)"}`, req);
+    res.json({ success: true, refunded });
   } catch (err) {
     req.log.error({ err }, "Admin cancel card queue failed");
     res.status(500).json({ error: "Internal server error" });
@@ -1189,7 +1262,7 @@ router.delete("/cards/queue/:id", adminAuth, async (req: any, res) => {
       return res.status(400).json({ error: "Cannot delete pending/processing items — cancel them first" });
     }
     await db.delete(cardQueueTable).where(eq(cardQueueTable.id, id));
-    await log(req.adminEmail, "delete_card_queue", "card_queue", id, `Deleted card queue #${id} (${item.status}) for user ${item.userId}`);
+    await log(req.adminEmail, "delete_card_queue", "card_queue", id, `Deleted card queue #${id} (${item.status}) for user ${item.userId}`, req);
     res.json({ success: true });
   } catch (err) {
     req.log.error({ err }, "Admin delete card queue failed");
@@ -1331,9 +1404,22 @@ router.get("/telegram/stats", adminAuth, async (req, res) => {
   }
 });
 
+// In-memory dedupe map — prevents duplicate broadcasts from rapid double-clicks
+const recentBroadcasts = new Map<string, number>();
+
 router.post("/notifications/send", adminAuth, async (req: any, res) => {
   try {
     const { target, channel, title, message } = req.body ?? {};
+
+    // Deduplicate rapid identical broadcasts (15-second window)
+    const dedupeKey = `${target}::${channel}::${title}::${message}`;
+    const lastSent = recentBroadcasts.get(dedupeKey);
+    if (lastSent && Date.now() - lastSent < 15000) {
+      return res.status(429).json({ error: "This exact broadcast was just sent. Please wait a few seconds before sending again." });
+    }
+    recentBroadcasts.set(dedupeKey, Date.now());
+    // Purge stale entries older than 60s
+    for (const [k, v] of recentBroadcasts) { if (Date.now() - v > 60000) recentBroadcasts.delete(k); }
     if (!title || !message) return res.status(400).json({ error: "Title and message required" });
 
     let users: any[] = [];
@@ -2424,7 +2510,7 @@ router.get("/cards/merchant-balance", adminAuth, async (req, res) => {
     });
   } catch (err) {
     req.log.error({ err }, "Admin merchant-balance failed");
-    res.status(502).json({ error: "Could not fetch merchant balance" });
+    res.status(503).json({ error: "Could not fetch merchant balance" });
   }
 });
 

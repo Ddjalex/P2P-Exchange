@@ -2,7 +2,7 @@ import { Router } from "express";
 import bcrypt from "bcryptjs";
 import { db } from "@workspace/db";
 import { walletsTable, transactionsTable, systemSettingsTable, usersTable, internalTransfersTable, notificationsTable } from "@workspace/db";
-import { eq, and, desc, or } from "drizzle-orm";
+import { eq, and, desc, or, sql } from "drizzle-orm";
 import { depositVerificationsTable } from "@workspace/db";
 import { getBscUsdtTx, getBscUsdtBalance, sendUsdtBsc } from "../lib/bsc.js";
 import { emitToUser } from "../lib/sse.js";
@@ -195,8 +195,6 @@ router.post("/withdraw", async (req, res) => {
     if (!addrCheck.allowed) return res.status(400).json({ error: addrCheck.reason });
 
     const wallet = await getOrCreateWallet(userId);
-    const avail = parseFloat(wallet.availableBalance);
-    if (amt > avail) return res.status(400).json({ error: "Insufficient balance" });
 
     const privateKey = process.env["BSC_HOT_WALLET_PRIVATE_KEY"];
     if (!privateKey) {
@@ -207,11 +205,19 @@ router.post("/withdraw", async (req, res) => {
     if (amt <= fee) return res.status(400).json({ error: `Amount must be greater than the withdrawal fee (${fee} USDT)` });
     const netAmount = amt - fee;
 
-    // Deduct user balance BEFORE broadcast to prevent double-spend
-    const newBalance = (avail - amt).toFixed(6);
-    await db.update(walletsTable)
-      .set({ availableBalance: newBalance, updatedAt: new Date() })
-      .where(eq(walletsTable.id, wallet.id));
+    // Atomically deduct balance — single UPDATE with WHERE available_balance >= amt
+    // prevents race conditions on concurrent withdrawal requests
+    const debitResult = await db.execute(sql`
+      UPDATE wallets
+      SET available_balance = (available_balance::numeric - ${amt})::text,
+          updated_at        = NOW()
+      WHERE id = ${wallet.id}
+        AND available_balance::numeric >= ${amt}
+      RETURNING id
+    `);
+    if (!debitResult.rows || debitResult.rows.length === 0) {
+      return res.status(400).json({ error: "Insufficient balance" });
+    }
 
     // Create pending tx record
     const [tx] = await db.insert(transactionsTable).values({
