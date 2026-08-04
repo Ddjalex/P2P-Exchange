@@ -27,6 +27,7 @@ interface KenoWallet {
 interface KenoRound {
   id: number;
   mode: string;
+  batchId: number | null;
   picks: number[];
   drawnNumbers: number[];
   betAmount: string;
@@ -891,25 +892,58 @@ export default function KenoPage() {
                   {history.length === 0 && (
                     <div className="rounded-lg border border-dashed border-white/10 px-3 py-8 text-center text-xs text-slate-500">No rounds played yet.</div>
                   )}
-                  {history.map((round, index) => (
-                    <div key={round.id} data-testid={`card-keno-ticket-${round.id}`} className="rounded-lg border border-white/5 bg-[#222c2d] p-2.5">
-                      <div className="mb-2 flex items-center justify-between">
-                        <span className="text-xs font-bold text-emerald-300">Ticket {history.length - index}</span>
-                        <span className={`text-[10px] font-bold ${parseFloat(round.payoutAmount) > 0 ? "text-emerald-300" : "text-slate-500"}`}>
-                          {parseFloat(round.payoutAmount) > 0 ? `+${parseFloat(round.payoutAmount).toFixed(2)}` : "No win"}
-                        </span>
-                      </div>
-                      <div className="flex flex-wrap gap-1">
-                        {round.picks.map(pick => (
-                          <span key={pick} className={`flex h-6 min-w-6 items-center justify-center rounded bg-[#334043] px-1 text-[10px] font-bold ${round.drawnNumbers.includes(pick) ? "bg-emerald-500 text-[#10221c]" : "text-slate-300"}`}>{pick}</span>
-                        ))}
-                      </div>
-                      <div className="mt-2 flex items-center justify-between border-t border-white/5 pt-2 text-[10px] text-slate-500">
-                        <span>Bet {parseFloat(round.betAmount).toFixed(2)}</span>
-                        <span>{round.hitCount}/{round.picks.length} hits</span>
-                      </div>
-                    </div>
-                  ))}
+                  {(() => {
+                    // Group tickets by batchId; null batchId = one group per ticket
+                    const groups: { key: string; rounds: KenoRound[] }[] = [];
+                    const seen = new Map<string, KenoRound[]>();
+                    for (const round of history) {
+                      const key = round.batchId != null ? `batch-${round.batchId}` : `solo-${round.id}`;
+                      if (!seen.has(key)) { seen.set(key, []); groups.push({ key, rounds: seen.get(key)! }); }
+                      seen.get(key)!.push(round);
+                    }
+                    return groups.map((group, gi) => {
+                      const drawn = group.rounds[0].drawnNumbers;
+                      const totalPayout = group.rounds.reduce((s, r) => s + parseFloat(r.payoutAmount), 0);
+                      const totalBet = group.rounds.reduce((s, r) => s + parseFloat(r.betAmount), 0);
+                      const roundNum = groups.length - gi;
+                      return (
+                        <div key={group.key} className="rounded-lg border border-white/5 bg-[#222c2d] p-2.5 space-y-2">
+                          {/* Round header */}
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-emerald-300">Round #{roundNum}</span>
+                            <span className={`text-[10px] font-bold ${totalPayout > 0 ? "text-emerald-300" : "text-slate-500"}`}>
+                              {totalPayout > 0 ? `+${totalPayout.toFixed(2)}` : "No win"}
+                            </span>
+                          </div>
+                          {/* Drawn numbers as small balls */}
+                          <div className="flex flex-wrap gap-1">
+                            {drawn.slice(0, 20).map(n => (
+                              <span key={n} className="flex h-5 w-5 items-center justify-center rounded-full bg-gradient-to-b from-gray-200 to-gray-400 text-[8px] font-black text-gray-900">{n}</span>
+                            ))}
+                          </div>
+                          {/* Tickets in this round */}
+                          {group.rounds.map((round, ti) => (
+                            <div key={round.id} data-testid={`card-keno-ticket-${round.id}`} className="rounded border border-white/5 bg-[#1b2526] p-2">
+                              <div className="mb-1.5 flex items-center justify-between text-[10px]">
+                                <span className="font-bold text-slate-300">Ticket {group.rounds.length > 1 ? ti + 1 : ""}</span>
+                                <span className="text-slate-500">{round.hitCount}/{round.picks.length} hits · {parseFloat(round.betAmount).toFixed(2)} USDT</span>
+                              </div>
+                              <div className="flex flex-wrap gap-1">
+                                {round.picks.map(pick => (
+                                  <span key={pick} className={`flex h-6 min-w-[22px] items-center justify-center rounded px-1 text-[10px] font-bold ${round.drawnNumbers.includes(pick) ? "bg-yellow-400 text-gray-900" : "bg-[#2e3b3d] text-slate-300"}`}>{pick}</span>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                          {/* Round footer */}
+                          <div className="flex items-center justify-between border-t border-white/5 pt-1.5 text-[10px] text-slate-500">
+                            <span>{group.rounds.length} ticket{group.rounds.length !== 1 ? "s" : ""} · {totalBet.toFixed(2)} USDT staked</span>
+                            <span>{new Date(group.rounds[0].createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                          </div>
+                        </div>
+                      );
+                    });
+                  })()}
                 </>
               )}
             </div>
@@ -1049,9 +1083,9 @@ export default function KenoPage() {
                       disabled={animating}
                       className={`relative aspect-square rounded-md text-xs font-bold transition-all sm:rounded-lg sm:text-sm
                         ${isHit
-                          ? "bg-yellow-400 text-gray-900 shadow-md shadow-yellow-400/30 ring-2 ring-emerald-500 ring-offset-1 ring-offset-[#1b2324]"
+                          ? "bg-yellow-400 text-gray-900 shadow-md shadow-yellow-400/30 ring-2 ring-yellow-400 ring-offset-1 ring-offset-[#1b2324]"
                           : isSelected
-                          ? "bg-emerald-600/30 text-emerald-200 ring-2 ring-emerald-500 ring-offset-1 ring-offset-[#1b2324]"
+                          ? "bg-yellow-400 text-gray-900 shadow-md shadow-yellow-400/20 ring-2 ring-yellow-300 ring-offset-1 ring-offset-[#1b2324]"
                           : isDrawn
                           ? "bg-[#222b2d] text-slate-600"
                           : "bg-[#2a3436] text-slate-400 hover:bg-[#344143] hover:text-white"
