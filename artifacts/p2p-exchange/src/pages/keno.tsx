@@ -528,6 +528,12 @@ export default function KenoPage() {
       tickets: { picks: number[]; betAmount: string; hitCount?: number; multiplier?: number; payout?: number }[];
       totalPayout?: number; newBalance?: number;
     } | null;
+    // Provably fair fields
+    serverHash: string | null;
+    seedTimestamp: number | null;
+    serverSeedRevealed: string | null;
+    drawTimestamp: number | null;
+    status: string | null;
   } | null>(null);
   // How many tickets the user has placed in the current round (resets each draw)
   const [ticketsThisRound, setTicketsThisRound] = useState(0);
@@ -624,10 +630,10 @@ export default function KenoPage() {
         setRevealedNums(prev => [...prev, drawn[i]]);
         setActiveDrawNumber(drawn[i]);
         setDrawProgress(i + 1);
-        await new Promise<void>(r => setTimeout(r, 420));
+        await new Promise<void>(r => setTimeout(r, 110)); // 110 ms active pulse
         if (animCancelledRef.current) return;
         setActiveDrawNumber(null);
-        await new Promise<void>(r => setTimeout(r, 80));
+        await new Promise<void>(r => setTimeout(r, 40));  //  40 ms gap = 150 ms/ball total
       }
 
       if (animCancelledRef.current) return;
@@ -957,6 +963,38 @@ export default function KenoPage() {
           </aside>
 
           <main className="min-w-0">
+            {/* ── Provably Fair commitment badge ────────────────────────── */}
+            {roundState?.serverHash && !animating && roundState.phase === "betting" && (
+              <div className="mb-3 rounded-xl border border-cyan-400/20 bg-cyan-400/5 px-4 py-2.5 flex items-center gap-2.5">
+                <div className="flex-shrink-0 h-6 w-6 rounded-full bg-cyan-400/15 flex items-center justify-center">
+                  <svg className="h-3.5 w-3.5 text-cyan-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[9px] font-black uppercase tracking-widest text-cyan-400">Provably Fair — Round #{roundState.roundId}</p>
+                  <p className="truncate font-mono text-[10px] text-slate-400 mt-0.5" title={roundState.serverHash}>
+                    Hash: {roundState.serverHash.slice(0, 16)}…{roundState.serverHash.slice(-8)}
+                  </p>
+                </div>
+                <span className="flex-shrink-0 rounded-full bg-emerald-400/10 px-2 py-0.5 text-[9px] font-bold text-emerald-400">COMMITTED</span>
+              </div>
+            )}
+
+            {/* ── Seed reveal after draw ────────────────────────────────── */}
+            {roundState?.serverSeedRevealed && roundState.phase === "drawing" && (
+              <div className="mb-3 rounded-xl border border-purple-400/20 bg-purple-400/5 px-4 py-2.5">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <svg className="h-3.5 w-3.5 text-purple-400 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                  <span className="text-[9px] font-black uppercase tracking-widest text-purple-400">Seed Revealed — Verify Draw</span>
+                </div>
+                <p className="font-mono text-[10px] text-slate-300 break-all leading-relaxed">
+                  <span className="text-slate-500">seed: </span>{roundState.serverSeedRevealed}
+                </p>
+                <p className="mt-1 text-[9px] text-slate-500">
+                  Verify: SHA-256(seed | {roundState.roundId} | {roundState.seedTimestamp}) = {roundState.serverHash?.slice(0, 12)}…
+                </p>
+              </div>
+            )}
+
             {/* ── Drawn numbers — shown before the betting banner ───────── */}
             {(animating || revealedNums.length > 0) && (
               <div className="mb-3 rounded-xl border border-white/10 bg-[#1b2324] px-4 py-3">

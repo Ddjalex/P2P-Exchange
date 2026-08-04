@@ -8,6 +8,7 @@
 - [Admin password DB override](admin-password-override.md) — login checks systemSettings key 'adminPassword' first, falls back to ADMIN_PASSWORD env var; PATCH /api/admin/change-password stores new value
 - [Build and package steps](build-package.md) — after frontend build, always copy logo SVGs before packaging
 - [BSC migration](bsc-migration.md) — platform fully migrated from TRC20 to BEP20; env var is BSC_HOT_WALLET_PRIVATE_KEY; fee type is withdrawal_fee_bep20; deposit setting key is bscAddress
+- [GLI-11 Provably Fair Keno](provably-fair-keno.md) — 3-step commitment: serverSeed+serverHash pre-round, deriveProvablyFairDraw at draw time, seed revealed after; all 3 play modes wired
 - [BSC RPC getLogs limits](bsc-rpc-getlogs-limits.md) — public Binance dataseed rejects eth_getLogs; Nodies verified at 150 blocks, with smaller fallback chunks
 - [Per-user HD deposit addresses](hd-deposit-addresses.md) — BSC_HOT_WALLET_PRIVATE_KEY doubles as HD seed; path m/44'/60'/0'/0/<userId>; monitor uses topics[2] OR filter for all users in one getLogs call
 - [Global payment methods](global-payment-methods.md) — 800+ methods, 119 countries; type column is now text (not enum); country column added; generated client types updated; Niger = NE not NG

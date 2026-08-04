@@ -144,17 +144,24 @@
   }
 }
 
-/* ── Keno: grid cell active flash ─────────────────────────────────────── */
+/* ── Keno: grid cell active flash (150 ms draw rhythm) ───────────────── */
 @keyframes keno-cell-flash {
-  0%   { box-shadow: 0 0 0 3px rgba(250,204,21,.9), 0 0 22px rgba(250,204,21,.6); transform: scale(1.18); }
-  60%  { box-shadow: 0 0 0 2px rgba(250,204,21,.5), 0 0 10px rgba(250,204,21,.3); transform: scale(1.06); }
+  0%   { box-shadow: 0 0 0 4px rgba(250,204,21,1), 0 0 28px rgba(250,204,21,.8), 0 0 56px rgba(250,204,21,.4); transform: scale(1.22); }
+  50%  { box-shadow: 0 0 0 2px rgba(250,204,21,.5), 0 0 12px rgba(250,204,21,.3); transform: scale(1.08); }
   100% { box-shadow: 0 0 0 0 rgba(250,204,21,0);   transform: scale(1); }
 }
 
-/* ── Keno: ball slides into tray from right ───────────────────────────── */
+/* ── Keno: burst ring that radiates outward when a ball lands ─────────── */
+@keyframes keno-ball-burst {
+  0%   { opacity: .9; transform: scale(.8); }
+  60%  { opacity: .4; transform: scale(1.9); }
+  100% { opacity: 0;  transform: scale(2.6); }
+}
+
+/* ── Keno: ball slides into tray ─────────────────────────────────────── */
 @keyframes keno-ball-drop {
-  0%   { opacity: 0; transform: translateX(28px) scale(.7); }
-  55%  { opacity: 1; transform: translateX(-3px) scale(1.08); }
+  0%   { opacity: 0; transform: translateX(28px) scale(.65); }
+  55%  { opacity: 1; transform: translateX(-3px) scale(1.10); }
   100% { opacity: 1; transform: translateX(0)    scale(1); }
 }
 
@@ -165,12 +172,22 @@
 }
 
 .keno-cell-flash {
-  animation: keno-cell-flash .55s cubic-bezier(.2,.8,.2,1) both;
+  animation: keno-cell-flash .14s cubic-bezier(.2,.8,.2,1) both;
   z-index: 2;
 }
 
+.keno-cell-flash::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  border: 2px solid rgba(250,204,21,.8);
+  animation: keno-ball-burst .14s ease-out both;
+  pointer-events: none;
+}
+
 .keno-ball-drop {
-  animation: keno-ball-drop .45s cubic-bezier(.25,.8,.25,1) both;
+  animation: keno-ball-drop .13s cubic-bezier(.25,.8,.25,1) both;
 }
 
 .keno-status-pulse {
