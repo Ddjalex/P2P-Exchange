@@ -494,7 +494,7 @@ export default function KenoPage() {
   const [wallet, setWallet] = useState<KenoWallet | null>(null);
   const [paytable, setPaytable] = useState<PaytableEntry[]>([]);
   const [history, setHistory] = useState<KenoRound[]>([]);
-  const [globalRounds, setGlobalRounds] = useState<{ drawnNumbers: number[]; drawnAt: string }[]>([]);
+  const [globalRounds, setGlobalRounds] = useState<{ roundId: number; drawnNumbers: number[]; drawnAt: string }[]>([]);
 
   // ── Per-ticket state ──────────────────────────────────────────────────────
   // currentPicks / currentBetAmount = what the user is picking RIGHT NOW
@@ -911,7 +911,7 @@ export default function KenoPage() {
                   {globalRounds.map((round, idx) => (
                     <div key={idx} className="rounded-lg border border-white/5 bg-[#222c2d] p-2.5 space-y-1.5">
                       <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-bold text-emerald-300">Draw #{globalRounds.length - idx}</span>
+                        <span className="text-[10px] font-bold text-emerald-300">Draw #{round.roundId}</span>
                         <span className="text-[10px] text-slate-500">{new Date(round.drawnAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
                       </div>
                       <div className="flex flex-wrap gap-1">
@@ -1166,7 +1166,7 @@ export default function KenoPage() {
               {globalRounds.map((round, idx) => (
                 <div key={idx} data-testid={`row-keno-result-${idx}`} className="mb-1 rounded-lg bg-[#273335] p-2">
                   <div className="flex items-center justify-between text-[10px]">
-                    <span className="flex items-center gap-1 font-semibold text-emerald-300"><Check className="h-3 w-3" /> Draw #{globalRounds.length - idx}</span>
+                    <span className="flex items-center gap-1 font-semibold text-emerald-300"><Check className="h-3 w-3" /> Draw #{round.roundId}</span>
                     <span className="text-slate-500">{new Date(round.drawnAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
                   </div>
                   <div className="mt-1 grid grid-cols-5 gap-1">

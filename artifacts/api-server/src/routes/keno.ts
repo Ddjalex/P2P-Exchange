@@ -1448,17 +1448,25 @@ kenoRouter.get("/history", async (req, res) => {
 kenoRouter.get("/rounds", async (req, res) => {
   try {
     const limit = Math.min(parseInt(req.query.limit as string || "20"), 50);
-    // One row per distinct draw set, most recent first
+    // One row per distinct multiplayer round, ordered by round_id descending so
+    // the displayed "Draw #N" exactly matches the in-game round counter.
     const rows = await db.execute(sql`
-      SELECT drawn_numbers, MAX(created_at) AS drawn_at
-      FROM keno_rounds
-      GROUP BY drawn_numbers::text, drawn_numbers
-      ORDER BY drawn_at DESC
+      SELECT
+        round_id,
+        drawn_numbers,
+        MAX(settled_at) AS drawn_at
+      FROM keno_batches
+      WHERE round_id IS NOT NULL
+        AND status = 'settled'
+        AND drawn_numbers IS NOT NULL
+      GROUP BY round_id, drawn_numbers
+      ORDER BY round_id DESC
       LIMIT ${limit}
     `);
     res.json(rows.rows.map((r: any) => ({
+      roundId:      r.round_id as number,
       drawnNumbers: r.drawn_numbers as number[],
-      drawnAt: r.drawn_at,
+      drawnAt:      r.drawn_at,
     })));
   } catch (err) {
     req.log?.error({ err }, "keno/rounds error");
