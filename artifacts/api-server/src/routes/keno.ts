@@ -1438,23 +1438,93 @@ kenoRouter.post("/play-batch", async (req, res) => {
 kenoRouter.get("/history", async (req, res) => {
   try {
     const userId = (req as any).userId;
-    const limit = Math.min(parseInt(req.query.limit as string || "20"), 50);
+    const limit = Math.min(parseInt(req.query.limit as string || "50"), 100);
     const mode = req.query.mode as string | undefined;
 
-    const conditions = [eq(kenoRoundsTable.userId, userId)];
-    if (mode === "demo" || mode === "real") {
-      conditions.push(eq(kenoRoundsTable.mode, mode));
-    }
+    const modeFilter = (mode === "demo" || mode === "real")
+      ? sql`AND kr.mode = ${mode}`
+      : sql``;
 
-    const rounds = await db.select()
-      .from(kenoRoundsTable)
-      .where(conditions.length === 1 ? conditions[0] : sql`${conditions[0]} AND ${conditions[1]}`)
-      .orderBy(desc(kenoRoundsTable.createdAt))
-      .limit(limit);
+    // Join with keno_batches so each ticket carries its multiplayer round_id
+    const rows = await db.execute(sql`
+      SELECT
+        kr.id, kr.mode, kr.batch_id, kr.picks, kr.drawn_numbers,
+        kr.bet_amount, kr.hit_count, kr.multiplier, kr.payout_amount, kr.created_at,
+        kb.round_id
+      FROM keno_rounds kr
+      LEFT JOIN keno_batches kb ON kr.batch_id = kb.id
+      WHERE kr.user_id = ${userId} ${modeFilter}
+      ORDER BY kr.created_at DESC
+      LIMIT ${limit}
+    `);
 
-    res.json(rounds);
+    res.json(rows.rows.map((r: any) => ({
+      id:           r.id,
+      mode:         r.mode,
+      batchId:      r.batch_id,
+      roundId:      r.round_id ?? null,
+      picks:        r.picks,
+      drawnNumbers: r.drawn_numbers,
+      betAmount:    r.bet_amount,
+      hitCount:     r.hit_count,
+      multiplier:   r.multiplier,
+      payoutAmount: r.payout_amount,
+      createdAt:    r.created_at,
+    })));
   } catch (err) {
     req.log?.error({ err }, "keno/history error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// GET /api/games/keno/stats — number frequency from last 200 draws (no auth needed)
+kenoRouter.get("/stats", async (req, res) => {
+  try {
+    const rows = await db
+      .select({ drawnNumbers: kenoDrawsTable.drawnNumbers })
+      .from(kenoDrawsTable)
+      .orderBy(desc(kenoDrawsTable.roundId))
+      .limit(200);
+
+    const freq: Record<number, number> = {};
+    for (let i = 1; i <= 80; i++) freq[i] = 0;
+    for (const row of rows) {
+      for (const n of (row.drawnNumbers as number[])) {
+        freq[n] = (freq[n] || 0) + 1;
+      }
+    }
+    res.json({ totalRounds: rows.length, frequency: freq });
+  } catch (err) {
+    req.log?.error({ err }, "keno/stats error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// GET /api/games/keno/leaders — top 10 real-money players by net profit (no auth needed)
+kenoRouter.get("/leaders", async (req, res) => {
+  try {
+    const rows = await db.execute(sql`
+      SELECT
+        u.username,
+        COUNT(kr.id)::int                                               AS games_played,
+        SUM(kr.payout_amount::numeric)::numeric(14,2)                  AS total_payout,
+        SUM(kr.bet_amount::numeric)::numeric(14,2)                     AS total_staked,
+        (SUM(kr.payout_amount::numeric) - SUM(kr.bet_amount::numeric))::numeric(14,2) AS net_profit
+      FROM keno_rounds kr
+      JOIN users u ON kr.user_id = u.id
+      WHERE kr.mode = 'real'
+      GROUP BY u.id, u.username
+      ORDER BY net_profit DESC
+      LIMIT 10
+    `);
+    res.json(rows.rows.map((r: any) => ({
+      username:    r.username,
+      gamesPlayed: r.games_played,
+      totalPayout: r.total_payout,
+      netProfit:   r.net_profit,
+    })));
+  } catch (err) {
+    req.log?.error({ err }, "keno/leaders error");
     res.status(500).json({ error: "Internal server error" });
   }
 });
