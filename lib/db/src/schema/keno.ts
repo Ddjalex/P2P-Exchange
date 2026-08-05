@@ -1,4 +1,4 @@
-import { pgTable, serial, integer, text, timestamp, numeric, jsonb, unique } from "drizzle-orm/pg-core";
+import { pgTable, serial, integer, text, timestamp, numeric, jsonb, unique, boolean } from "drizzle-orm/pg-core";
 
 // ─── Keno Game Wallet ─────────────────────────────────────────────────────────
 export const kenoWalletsTable = pgTable("keno_wallets", {
@@ -68,6 +68,21 @@ export const kenoRoundsTable = pgTable("keno_rounds", {
   multiplier: numeric("multiplier", { precision: 10, scale: 4 }).notNull(),
   payoutAmount: numeric("payout_amount", { precision: 12, scale: 2 }).notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// ─── Global draw log — one row per completed multiplayer round ────────────────
+// Persisted regardless of whether any user placed a bet.
+// This is the source of truth for the Results / drawn-numbers history UI.
+export const kenoDrawsTable = pgTable("keno_draws", {
+  id:                 serial("id").primaryKey(),
+  roundId:            integer("round_id").notNull().unique(),
+  drawnNumbers:       jsonb("drawn_numbers").$type<number[]>().notNull(),
+  serverSeed:         text("server_seed").notNull(),         // revealed after draw
+  serverHash:         text("server_hash").notNull(),         // committed before betting
+  seedTimestamp:      timestamp("seed_timestamp").notNull(),
+  drawTimestamp:      timestamp("draw_timestamp").notNull(),
+  participantCount:   integer("participant_count").notNull().default(0),
+  createdAt:          timestamp("created_at").notNull().defaultNow(),
 });
 
 // ─── Game settings (min_bet, max_bet, game_enabled, min_topup, max_topup) ────

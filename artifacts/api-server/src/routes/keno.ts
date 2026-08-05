@@ -23,6 +23,7 @@ import {
   kenoRoundsTable,
   kenoSettingsTable,
   kenoBatchesTable,
+  kenoDrawsTable,
   walletsTable,
   transactionsTable,
   usersTable,
@@ -429,6 +430,20 @@ async function advanceRound() {
   activeRound.phase         = "drawing";
   activeRound.drawnNumbers  = drawn;
   activeRound.drawingEndsAt = Date.now() + DRAWING_MS;
+
+  // Persist every round to keno_draws regardless of whether anyone bet
+  const snapshot = activeRound;
+  db.insert(kenoDrawsTable).values({
+    roundId:          snapshot.roundId,
+    drawnNumbers:     drawn,
+    serverSeed:       snapshot.serverSeed,
+    serverHash:       snapshot.serverHash,
+    seedTimestamp:    new Date(snapshot.seedTimestamp),
+    drawTimestamp:    new Date(drawTimestamp),
+    participantCount: batches.length,
+  }).catch((err: unknown) => {
+    console.error("[Keno] Failed to persist round", snapshot.roundId, err);
+  });
 
   // Start next betting round after the drawing window closes
   setTimeout(() => {
@@ -1445,29 +1460,21 @@ kenoRouter.get("/history", async (req, res) => {
 });
 
 // GET /api/games/keno/rounds  — global draw history (all users, no auth needed)
+// Sourced from keno_draws which records every completed round (even empty ones).
 kenoRouter.get("/rounds", async (req, res) => {
   try {
     const limit = Math.min(parseInt(req.query.limit as string || "20"), 50);
-    // One row per distinct multiplayer round, ordered by round_id descending so
-    // the displayed "Draw #N" exactly matches the in-game round counter.
-    const rows = await db.execute(sql`
-      SELECT
-        round_id,
-        drawn_numbers,
-        MAX(settled_at) AS drawn_at
-      FROM keno_batches
-      WHERE round_id IS NOT NULL
-        AND status = 'settled'
-        AND drawn_numbers IS NOT NULL
-      GROUP BY round_id, drawn_numbers
-      ORDER BY round_id DESC
-      LIMIT ${limit}
-    `);
-    res.json(rows.rows.map((r: any) => ({
-      roundId:      r.round_id as number,
-      drawnNumbers: r.drawn_numbers as number[],
-      drawnAt:      r.drawn_at,
-    })));
+    const rows = await db
+      .select({
+        roundId:          kenoDrawsTable.roundId,
+        drawnNumbers:     kenoDrawsTable.drawnNumbers,
+        drawnAt:          kenoDrawsTable.drawTimestamp,
+        participantCount: kenoDrawsTable.participantCount,
+      })
+      .from(kenoDrawsTable)
+      .orderBy(desc(kenoDrawsTable.roundId))
+      .limit(limit);
+    res.json(rows);
   } catch (err) {
     req.log?.error({ err }, "keno/rounds error");
     res.status(500).json({ error: "Internal server error" });

@@ -688,6 +688,8 @@ export default function KenoPage() {
       lastRoundIdRef.current = roundState.roundId;
       setTicketsThisRound(0);
       setPlacedTickets([]);
+      // Reload results now that the previous round has been saved to the DB
+      loadGlobalRounds();
     }
   }, [roundState?.roundId, roundState?.phase]);
 
