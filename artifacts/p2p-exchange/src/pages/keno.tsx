@@ -405,6 +405,13 @@ interface TicketResult {
   payout: number;
 }
 
+interface CompletedRoundResult {
+  roundId: number;
+  drawn: number[];
+  tickets: TicketResult[];
+  totalPayout: number;
+}
+
 function ResultOverlay({
   drawn,
   tickets,
@@ -480,7 +487,7 @@ function ResultOverlay({
         )}
 
         <button onClick={onClose} className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-sm transition-colors">
-          Play Again
+          Try Again
         </button>
       </div>
     </div>
@@ -524,7 +531,11 @@ export default function KenoPage() {
   const [activeDrawNumber, setActiveDrawNumber] = useState<number | null>(null);
   const [drawProgress, setDrawProgress] = useState(0);
 
-  const [batchResult, setBatchResult] = useState<{ drawn: number[]; tickets: TicketResult[]; totalPayout: number } | null>(null);
+  const [batchResult, setBatchResult] = useState<CompletedRoundResult | null>(null);
+  // Keep the settled ticket in the game view until the next betting phase.
+  // This is intentionally separate from batchResult because the modal can be
+  // dismissed while the player still needs to inspect the round result.
+  const [completedRoundResult, setCompletedRoundResult] = useState<CompletedRoundResult | null>(null);
   const [showTopUp, setShowTopUp] = useState(false);
   const [showWithdraw, setShowWithdraw] = useState(false);
   const [showPaytable, setShowPaytable] = useState(false);
@@ -636,7 +647,7 @@ export default function KenoPage() {
   // ── Smooth local countdown ────────────────────────────────────────────────
   useEffect(() => {
     if (!roundState) return;
-    setCountdown(roundState.phase === "betting" ? roundState.secondsLeft : 0);
+    setCountdown(roundState.secondsLeft);
   }, [roundState?.roundId, roundState?.phase, roundState?.secondsLeft]);
 
   useEffect(() => {
@@ -668,24 +679,31 @@ export default function KenoPage() {
         setRevealedNums(prev => [...prev, drawn[i]]);
         setActiveDrawNumber(drawn[i]);
         setDrawProgress(i + 1);
-        await new Promise<void>(r => setTimeout(r, 350)); // 350 ms active pulse
+        await new Promise<void>(r => setTimeout(r, 180)); // Keep the 8-second result window visible after the draw
         if (animCancelledRef.current) return;
         setActiveDrawNumber(null);
-        await new Promise<void>(r => setTimeout(r, 150)); // 150 ms gap = 500 ms/ball total
+        await new Promise<void>(r => setTimeout(r, 80)); // 260 ms/ball total
       }
 
       if (animCancelledRef.current) return;
       await new Promise<void>(r => setTimeout(r, 400));
       setActiveDrawNumber(null);
-      setRevealedNums([]);
       setDrawProgress(0);
       setAnimating(false);
-      setTicketsThisRound(0);
-      setPlacedTickets([]);
 
-      // Show batch result overlay if this user had tickets
-      if (myBatchSnap && myBatchSnap.totalPayout !== undefined && myBatchSnap.tickets.every(t => t.hitCount !== undefined)) {
-        setBatchResult({
+      // Keep the final numbers visible while the server holds the round open.
+      // The settled snapshot was captured below before the animation started.
+      if (snapshotResult) {
+        setBatchResult(snapshotResult);
+      }
+
+      await loadHistory();
+      await loadGlobalRounds();
+    }
+
+    const snapshotResult = myBatchSnap && myBatchSnap.totalPayout !== undefined && myBatchSnap.tickets.every(t => t.hitCount !== undefined)
+      ? {
+          roundId: roundState.roundId,
           drawn,
           tickets: myBatchSnap.tickets.map(t => ({
             picks:      t.picks,
@@ -695,16 +713,19 @@ export default function KenoPage() {
             payout:     t.payout!,
           })),
           totalPayout: myBatchSnap.totalPayout,
-        });
-        if (currentMode === "real") {
-          setWallet(prev => prev ? { ...prev, realBalance: String(myBatchSnap.newBalance) } : prev);
-        } else {
-          setWallet(prev => prev ? { ...prev, demoBalance: String(myBatchSnap.newBalance) } : prev);
         }
-      }
+      : null;
 
-      await loadHistory();
-      await loadGlobalRounds();
+    // Settlement is complete before the drawing phase is sent to clients.
+    // Publish it immediately so the ticket/result is not lost between the
+    // animation and the next betting round.
+    if (snapshotResult) {
+      setCompletedRoundResult(snapshotResult);
+      if (currentMode === "real") {
+        setWallet(prev => prev ? { ...prev, realBalance: String(myBatchSnap!.newBalance) } : prev);
+      } else {
+        setWallet(prev => prev ? { ...prev, demoBalance: String(myBatchSnap!.newBalance) } : prev);
+      }
     }
 
     animate();
@@ -717,6 +738,9 @@ export default function KenoPage() {
       lastRoundIdRef.current = roundState.roundId;
       setTicketsThisRound(0);
       setPlacedTickets([]);
+      setCompletedRoundResult(null);
+      setBatchResult(null);
+      setRevealedNums([]);
       // Reload results + user history now that the previous round is saved to DB
       loadGlobalRounds();
       loadHistory();
@@ -898,10 +922,26 @@ export default function KenoPage() {
                   )}
                   {placedTickets.length > 0 && (
                     <div className="space-y-2">
-                      {!animating && (
+                      {!animating && !completedRoundResult && (
                         <p className="px-1 text-[10px] font-bold uppercase tracking-wider text-emerald-400">
                           {placedTickets.length} ticket{placedTickets.length !== 1 ? "s" : ""} placed · waiting for draw…
                         </p>
+                      )}
+                      {!animating && completedRoundResult && (
+                        <div className={`rounded-lg border px-2 py-2 text-[10px] ${
+                          completedRoundResult.totalPayout > 0
+                            ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-300"
+                            : "border-amber-400/30 bg-amber-400/10 text-amber-300"
+                        }`}>
+                          <p className="font-black uppercase tracking-wider">
+                            Round #{completedRoundResult.roundId} settled
+                          </p>
+                          <p className="mt-0.5 font-bold">
+                            {completedRoundResult.totalPayout > 0
+                              ? `Won +${completedRoundResult.totalPayout.toFixed(2)} USDT`
+                              : "No win — try again next round"}
+                          </p>
+                        </div>
                       )}
                       {placedTickets.map((ticket, idx) => (
                         <div key={idx} className="rounded-lg border border-white/5 bg-[#222c2d] p-2.5">
@@ -1020,6 +1060,38 @@ export default function KenoPage() {
               </div>
             )}
 
+            {completedRoundResult && !animating && roundState?.phase === "drawing" && (
+              <div className={`mb-3 rounded-xl border px-5 py-4 ${
+                completedRoundResult.totalPayout > 0
+                  ? "border-emerald-400/40 bg-emerald-400/10"
+                  : "border-amber-400/30 bg-amber-400/10"
+              }`}>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className={`text-[10px] font-black uppercase tracking-[0.2em] ${
+                      completedRoundResult.totalPayout > 0 ? "text-emerald-300" : "text-amber-300"
+                    }`}>
+                      Round #{completedRoundResult.roundId} result
+                    </p>
+                    <p className="mt-1 text-lg font-black text-white">
+                      {completedRoundResult.totalPayout > 0
+                        ? `You won +${completedRoundResult.totalPayout.toFixed(2)} USDT`
+                        : "No win this round — try again"}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-300">
+                      {completedRoundResult.tickets.length} ticket{completedRoundResult.tickets.length !== 1 ? "s" : ""} ·{" "}
+                      {completedRoundResult.tickets.reduce((sum, ticket) => sum + ticket.hitCount, 0)} total hit{completedRoundResult.tickets.reduce((sum, ticket) => sum + ticket.hitCount, 0) !== 1 ? "s" : ""}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-right">
+                    <p className="text-[9px] uppercase tracking-wider text-slate-400">Next round</p>
+                    <p className="text-sm font-bold text-white">Starts after results</p>
+                    <p className="text-[10px] text-slate-400">{countdown}s remaining</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="mb-3 overflow-hidden rounded-xl border border-white/10 bg-[#273335]">
               {/* ── Countdown bar ───────────────────────────────────────── */}
               {!animating && roundState?.phase === "betting" && (
@@ -1053,17 +1125,29 @@ export default function KenoPage() {
                 )}
                 <div className="relative z-20">
                   <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-300">
-                    {animating
-                      ? "Drawing numbers — shared draw!"
+                      {animating
+                        ? "Drawing numbers — shared draw!"
+                        : completedRoundResult && roundState?.phase === "drawing"
+                        ? completedRoundResult.totalPayout > 0
+                          ? "Round complete — winnings added to your balance"
+                          : "Round complete — try again next round"
                       : ticketsThisRound > 0
                       ? `${ticketsThisRound} bet${ticketsThisRound !== 1 ? "s" : ""} placed ✓ — keep picking or wait for draw…`
                       : roundState?.phase === "drawing"
                       ? "Drawing numbers…"
                       : "Betting open — place your numbers!"}
                   </p>
-                  <h2 className="text-xl font-black text-white sm:text-2xl">Choose up to 10 numbers</h2>
+                    <h2 className="text-xl font-black text-white sm:text-2xl">
+                      {completedRoundResult && !animating && roundState?.phase === "drawing"
+                        ? completedRoundResult.totalPayout > 0
+                          ? `+${completedRoundResult.totalPayout.toFixed(2)} USDT won`
+                          : "No winning numbers this round"
+                        : "Choose up to 10 numbers"}
+                    </h2>
                   <p className="mt-1 text-sm font-semibold text-cyan-300">
-                    From 1 to 80 · {currentPicks.length} selected
+                      {completedRoundResult && !animating && roundState?.phase === "drawing"
+                        ? `${completedRoundResult.tickets.reduce((sum, ticket) => sum + ticket.hitCount, 0)} number${completedRoundResult.tickets.reduce((sum, ticket) => sum + ticket.hitCount, 0) !== 1 ? "s" : ""} matched · ticket saved in History`
+                        : `From 1 to 80 · ${currentPicks.length} selected`}
                     {(roundState?.totalBets ?? 0) > 0 && !animating && (
                       <span className="ml-2 text-slate-400">· {roundState!.totalBets} player{roundState!.totalBets !== 1 ? "s" : ""} betting</span>
                     )}
@@ -1335,7 +1419,7 @@ export default function KenoPage() {
           drawn={batchResult.drawn}
           tickets={batchResult.tickets}
           totalPayout={batchResult.totalPayout}
-          onClose={() => { setBatchResult(null); setRevealedNums([]); resetAllTickets(); }}
+          onClose={() => { setBatchResult(null); }}
         />
       )}
 

@@ -40,7 +40,9 @@ UI badges injected above the ball-tray area:
 
 ### Animation timing
 
-`DRAWING_MS = 7000` (was 14500). Per-ball: 110 ms active → `setActiveDrawNumber(null)` → 40 ms gap = 150 ms total per ball.
+The shared round keeps the settled ticket and result visible for `DRAWING_MS = 8000`.
+The client reveals 20 balls at 180 ms active + 80 ms gap, then leaves the final
+numbers/result visible until the next betting round starts.
 
 ### CSS (`artifacts/p2p-exchange/src/index.css`)
 

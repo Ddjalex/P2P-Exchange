@@ -416,7 +416,7 @@ function deriveProvablyFairDraw(serverSeed: string, roundId: number, drawTimesta
 // command after evaluation.
 
 const BETTING_MS = 30_000;  // 30-second betting window
-const DRAWING_MS =  7_000;  // 20 balls × 150 ms animation + ~4 s result display
+const DRAWING_MS =  8_000;  // Keep the settled ticket/result visible for 8 seconds
 
 // ── Batch / ticket types ──────────────────────────────────────────────────────
 
@@ -526,6 +526,22 @@ function makeRound(): GameRound {
 }
 
 let activeRound: GameRound = makeRound();
+
+async function initializeRoundCounter() {
+  try {
+    const result = await db.execute(sql`
+      SELECT COALESCE(MAX(round_id), 0) + 1 AS next_round_id
+      FROM keno_draws
+    `);
+    const nextRoundId = Number((result.rows?.[0] as any)?.next_round_id);
+    if (Number.isSafeInteger(nextRoundId) && nextRoundId > 0) {
+      _roundCounter = nextRoundId;
+      activeRound = makeRound();
+    }
+  } catch (err) {
+    console.error("[Keno] Failed to restore round counter; starting from 1", err);
+  }
+}
 
 async function advanceRound() {
   if (activeRound.phase !== "betting") return;
@@ -653,8 +669,11 @@ async function settleUserBatch(batch: PendingBatch, drawn: number[]): Promise<vo
   });
 }
 
-// Kick off the first round immediately on server start
-setTimeout(advanceRound, BETTING_MS);
+// Restore the persisted sequence before starting the first round. This keeps
+// round IDs unique across API restarts and prevents duplicate global history.
+void initializeRoundCounter().then(() => {
+  setTimeout(advanceRound, BETTING_MS);
+});
 
 // ─── ─────────────────────────────────────────────────────────────────────────
 // PLAYER ROUTES
@@ -897,7 +916,7 @@ kenoRouter.get("/state", (req, res) => {
 
     const secondsLeft = round.phase === "betting"
       ? Math.max(0, Math.ceil((round.bettingEndsAt - now) / 1000))
-      : 0;
+      : Math.max(0, Math.ceil(((round.drawingEndsAt ?? now) - now) / 1000));
 
     const betKeyDemo = `${userId}:demo`;
     const betKeyReal = `${userId}:real`;
