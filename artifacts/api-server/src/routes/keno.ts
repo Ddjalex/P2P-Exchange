@@ -137,7 +137,116 @@ const DEFAULT_SETTINGS: Array<{ key: string; value: string }> = [
   { key: "max_bet",      value: "100.00" },
   { key: "min_topup",    value: "1.00" },
   { key: "max_topup",    value: "1000.00" },
+  { key: "house_edge",   value: "0.20" }, // 20% house edge → 80% RTP
 ];
+
+// ─── Base (fair / 0% margin) paytable ────────────────────────────────────────
+//
+// Actuarially fair multipliers = 1 / P(hits | picks, pool=80, drawn=20).
+// DEFAULT_PAYTABLE targets 80% RTP, so:
+//   BASE_PAYTABLE_FAIR[i] = DEFAULT_PAYTABLE[i].multiplier / (1 − 0.20)
+//
+// Active multiplier at runtime:
+//   ACTIVE = round(BASE_FAIR * (1 − house_edge), 4)
+//
+// Example: (picks=3, hits=3) fair=31.875x; at 20% edge → 31.875 * 0.80 = 25.5x ✓
+
+const BASE_PAYTABLE_FAIR: Array<{ picks: number; hits: number; multiplier: string }> = [
+  // Pick 1  — P(1|1) = 0.25 → fair = 4.0x
+  { picks: 1, hits: 0, multiplier: "0" },
+  { picks: 1, hits: 1, multiplier: "4.0000" },
+  // Pick 2
+  { picks: 2, hits: 0, multiplier: "0" },
+  { picks: 2, hits: 1, multiplier: "0" },
+  { picks: 2, hits: 2, multiplier: "16.6375" },
+  // Pick 3
+  { picks: 3, hits: 0, multiplier: "0" },
+  { picks: 3, hits: 1, multiplier: "0" },
+  { picks: 3, hits: 2, multiplier: "4.0000" },
+  { picks: 3, hits: 3, multiplier: "31.8750" },
+  // Pick 4
+  { picks: 4, hits: 0, multiplier: "0" },
+  { picks: 4, hits: 1, multiplier: "0" },
+  { picks: 4, hits: 2, multiplier: "2.1000" },
+  { picks: 4, hits: 3, multiplier: "8.3750" },
+  { picks: 4, hits: 4, multiplier: "62.8125" },
+  // Pick 5
+  { picks: 5, hits: 0, multiplier: "0" },
+  { picks: 5, hits: 1, multiplier: "0" },
+  { picks: 5, hits: 2, multiplier: "0" },
+  { picks: 5, hits: 3, multiplier: "5.6625" },
+  { picks: 5, hits: 4, multiplier: "28.3125" },
+  { picks: 5, hits: 5, multiplier: "283.1250" },
+  // Pick 6
+  { picks: 6, hits: 0, multiplier: "0" },
+  { picks: 6, hits: 1, multiplier: "0" },
+  { picks: 6, hits: 2, multiplier: "0" },
+  { picks: 6, hits: 3, multiplier: "2.3250" },
+  { picks: 6, hits: 4, multiplier: "11.6375" },
+  { picks: 6, hits: 5, multiplier: "69.7500" },
+  { picks: 6, hits: 6, multiplier: "1162.5000" },
+  // Pick 7
+  { picks: 7, hits: 0, multiplier: "0" },
+  { picks: 7, hits: 1, multiplier: "0" },
+  { picks: 7, hits: 2, multiplier: "0" },
+  { picks: 7, hits: 3, multiplier: "0" },
+  { picks: 7, hits: 4, multiplier: "7.0500" },
+  { picks: 7, hits: 5, multiplier: "35.2500" },
+  { picks: 7, hits: 6, multiplier: "211.2500" },
+  { picks: 7, hits: 7, multiplier: "7056.2500" },
+  // Pick 8
+  { picks: 8, hits: 0, multiplier: "0" },
+  { picks: 8, hits: 1, multiplier: "0" },
+  { picks: 8, hits: 2, multiplier: "0" },
+  { picks: 8, hits: 3, multiplier: "0" },
+  { picks: 8, hits: 4, multiplier: "3.5000" },
+  { picks: 8, hits: 5, multiplier: "17.5000" },
+  { picks: 8, hits: 6, multiplier: "87.3750" },
+  { picks: 8, hits: 7, multiplier: "698.7500" },
+  { picks: 8, hits: 8, multiplier: "17481.2500" },
+  // Pick 9
+  { picks: 9, hits: 0, multiplier: "0" },
+  { picks: 9, hits: 1, multiplier: "0" },
+  { picks: 9, hits: 2, multiplier: "0" },
+  { picks: 9, hits: 3, multiplier: "0" },
+  { picks: 9, hits: 4, multiplier: "0" },
+  { picks: 9, hits: 5, multiplier: "10.5875" },
+  { picks: 9, hits: 6, multiplier: "52.8750" },
+  { picks: 9, hits: 7, multiplier: "317.5000" },
+  { picks: 9, hits: 8, multiplier: "3175.0000" },
+  { picks: 9, hits: 9, multiplier: "84650.0000" },
+  // Pick 10
+  { picks: 10, hits: 0, multiplier: "0" },
+  { picks: 10, hits: 1, multiplier: "0" },
+  { picks: 10, hits: 2, multiplier: "0" },
+  { picks: 10, hits: 3, multiplier: "0" },
+  { picks: 10, hits: 4, multiplier: "0" },
+  { picks: 10, hits: 5, multiplier: "9.0500" },
+  { picks: 10, hits: 6, multiplier: "27.1500" },
+  { picks: 10, hits: 7, multiplier: "90.5000" },
+  { picks: 10, hits: 8, multiplier: "452.5000" },
+  { picks: 10, hits: 9, multiplier: "1810.0000" },
+  { picks: 10, hits: 10, multiplier: "45250.0000" },
+];
+
+// ─── Paytable computation helpers ────────────────────────────────────────────
+
+/**
+ * Derive active multipliers from BASE_PAYTABLE_FAIR given a house_edge (0 – <1).
+ * ACTIVE_MULTIPLIER = round(BASE_FAIR × (1 − house_edge), 4)
+ *
+ * Example: (picks=3, hits=3) fair=31.875x; house_edge=0.20 → 31.875×0.80 = 25.5x
+ */
+function computeActivePaytable(
+  houseEdge: number,
+): Array<{ picks: number; hits: number; multiplier: string }> {
+  const rtpFactor = 1 - Math.max(0, Math.min(houseEdge, 0.99));
+  return BASE_PAYTABLE_FAIR.map(row => {
+    const base = parseFloat(row.multiplier);
+    const active = base === 0 ? 0 : parseFloat((base * rtpFactor).toFixed(4));
+    return { picks: row.picks, hits: row.hits, multiplier: String(active) };
+  });
+}
 
 // ─── Seed helpers ────────────────────────────────────────────────────────────
 
@@ -147,15 +256,22 @@ async function ensureSeeded() {
   if (_seeded) return;
   _seeded = true;
 
-  // Paytable
-  const existing = await db.select({ id: kenoPaytableTable.id }).from(kenoPaytableTable).limit(1);
-  if (existing.length === 0) {
-    await db.insert(kenoPaytableTable).values(DEFAULT_PAYTABLE).onConflictDoNothing();
-  }
-
-  // Settings
+  // Settings first — house_edge must exist before we compute the active paytable
   for (const s of DEFAULT_SETTINGS) {
     await db.insert(kenoSettingsTable).values(s).onConflictDoNothing();
+  }
+
+  // Paytable: seed using the persisted house_edge (or default 0.20)
+  const existing = await db.select({ id: kenoPaytableTable.id }).from(kenoPaytableTable).limit(1);
+  if (existing.length === 0) {
+    const edgeRow = await db
+      .select()
+      .from(kenoSettingsTable)
+      .where(eq(kenoSettingsTable.key, "house_edge"))
+      .then(r => r[0]);
+    const houseEdge = parseFloat(edgeRow?.value ?? "0.20");
+    const activePaytable = computeActivePaytable(houseEdge);
+    await db.insert(kenoPaytableTable).values(activePaytable).onConflictDoNothing();
   }
 }
 
@@ -1221,19 +1337,27 @@ kenoRouter.post("/play", async (req, res) => {
     if ("error" in result) return res.status(400).json({ error: result.error });
 
     res.json({
-      roundId:           result.round?.id,
-      serverHash:        instantHash,
+      roundId:            result.round?.id,
+      serverHash:         instantHash,
       serverSeedRevealed: instantSeed,
-      drawTimestamp:     instantTimestamp,
-      status:            "SETTLED",
+      drawTimestamp:      instantTimestamp,
+      status:             "SETTLED",
       drawnNumbers: result.drawn,
       tickets: [{
+        // Snake_case fields (spec-compliant)
+        ticket_id:            result.round?.id,
+        picks_count:          (picks as number[]).length,
+        hits_count:           result.hitCount,
+        bet_amount:           parseFloat(bet.toFixed(2)),
+        multiplier:           result.multiplier,
+        winning_amount:       result.payout,
+        updated_user_balance: result.newBalance,
+        // camelCase aliases for frontend compatibility
         ticketId:   result.round?.id,
         picks,
         matches,
         hitCount:   result.hitCount,
         betAmount:  parseFloat(bet.toFixed(2)),
-        multiplier: result.multiplier,
         payout:     result.payout,
         isWin:      result.payout > 0,
       }],
@@ -1242,6 +1366,16 @@ kenoRouter.post("/play", async (req, res) => {
         totalWinnings: parseFloat(result.payout.toFixed(2)),
         netChange:     parseFloat((result.payout - bet).toFixed(2)),
         newBalance:    result.newBalance,
+      },
+      // Flat settlement block — convenience for single-ticket consumers
+      settlement: {
+        ticket_id:            result.round?.id,
+        picks_count:          (picks as number[]).length,
+        hits_count:           result.hitCount,
+        bet_amount:           parseFloat(bet.toFixed(2)),
+        multiplier:           result.multiplier,
+        winning_amount:       result.payout,
+        updated_user_balance: result.newBalance,
       },
       mode,
     });
@@ -1412,12 +1546,20 @@ kenoRouter.post("/play-batch", async (req, res) => {
       entropyData:  result.entropyData,
       mode,
       tickets: ticketResults.map((r, i) => ({
+        // Snake_case fields (spec-compliant)
+        ticket_id:            null, // individual IDs not returned in batch; use batchId
+        picks_count:          r.picks.length,
+        hits_count:           r.hitCount,
+        bet_amount:           parseFloat(r.betAmount),
+        multiplier:           r.multiplier,
+        winning_amount:       r.payout,
+        updated_user_balance: result.newBalance,
+        // camelCase aliases for frontend compatibility
         ticketIndex: i + 1,
         picks:       r.picks,
         matches:     r.matches,
         hitCount:    r.hitCount,
         betAmount:   parseFloat(r.betAmount),
-        multiplier:  r.multiplier,
         payout:      r.payout,
         isWin:       r.isWin,
       })),
@@ -1659,6 +1801,8 @@ kenoAdminRouter.get("/keno/paytable", adminAuth, async (req, res) => {
 });
 
 // PUT /api/admin/games/keno/paytable  — body: [{ picks, hits, multiplier }]
+// NOTE: manually overriding individual rows bypasses the house_edge computation.
+// Use PUT /keno/house-edge to recompute all rows from the base paytable.
 kenoAdminRouter.put("/keno/paytable", adminAuth, async (req, res) => {
   try {
     const entries: Array<{ picks: number; hits: number; multiplier: string }> = req.body;
@@ -1671,6 +1815,99 @@ kenoAdminRouter.put("/keno/paytable", adminAuth, async (req, res) => {
     }
     res.json({ success: true });
   } catch (err) {
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// GET /api/admin/games/keno/house-edge
+// Returns current margin, RTP, and preview of what each multiplier computes to.
+kenoAdminRouter.get("/keno/house-edge", adminAuth, async (req, res) => {
+  try {
+    await ensureSeeded();
+    const houseEdge = parseFloat(await getSetting("house_edge", "0.20"));
+    const rtpFactor = parseFloat((1 - houseEdge).toFixed(4));
+    const activePaytable = computeActivePaytable(houseEdge);
+    res.json({
+      house_edge:   houseEdge,
+      rtp:          rtpFactor,
+      description:  `${(houseEdge * 100).toFixed(1)}% house edge / ${(rtpFactor * 100).toFixed(1)}% RTP`,
+      // Only return the paying rows for readability
+      paying_multipliers: activePaytable
+        .filter(r => parseFloat(r.multiplier) > 0)
+        .map(r => ({
+          picks:             r.picks,
+          hits:              r.hits,
+          base_fair:         parseFloat(
+            BASE_PAYTABLE_FAIR.find(b => b.picks === r.picks && b.hits === r.hits)?.multiplier ?? "0",
+          ),
+          active_multiplier: parseFloat(r.multiplier),
+        })),
+    });
+  } catch (err) {
+    console.error("keno get house-edge error", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// PUT /api/admin/games/keno/house-edge  — body: { house_edge: 0.15 }
+//
+// Atomically:
+//   1. Persists the new house_edge in keno_settings.
+//   2. Recomputes ACTIVE_MULTIPLIER = BASE_FAIR × (1 − house_edge) for every row.
+//   3. Overwrites all keno_paytable rows — takes effect for the NEXT bet immediately.
+//
+// Example: house_edge=0.20 → (picks=3, hits=3) = 31.875 × 0.80 = 25.5x
+kenoAdminRouter.put("/keno/house-edge", adminAuth, async (req, res) => {
+  try {
+    await ensureSeeded();
+    const rawEdge = req.body?.house_edge;
+    const houseEdge = parseFloat(rawEdge);
+    if (isNaN(houseEdge) || houseEdge < 0 || houseEdge >= 1)
+      return res.status(400).json({ error: "house_edge must be a number in [0, 1)" });
+
+    const activePaytable = computeActivePaytable(houseEdge);
+
+    // Single transaction: update setting + all paytable rows atomically
+    await db.transaction(async tx => {
+      await tx
+        .insert(kenoSettingsTable)
+        .values({ key: "house_edge", value: String(houseEdge) })
+        .onConflictDoUpdate({
+          target: kenoSettingsTable.key,
+          set: { value: String(houseEdge), updatedAt: new Date() },
+        });
+
+      for (const row of activePaytable) {
+        await tx
+          .update(kenoPaytableTable)
+          .set({ multiplier: parseFloat(row.multiplier).toFixed(4) })
+          .where(
+            and(
+              eq(kenoPaytableTable.picks, row.picks),
+              eq(kenoPaytableTable.hits, row.hits),
+            ),
+          );
+      }
+    });
+
+    res.json({
+      success:           true,
+      house_edge:        houseEdge,
+      rtp:               parseFloat((1 - houseEdge).toFixed(4)),
+      description:       `${(houseEdge * 100).toFixed(1)}% house edge / ${((1 - houseEdge) * 100).toFixed(1)}% RTP`,
+      updated_multipliers: activePaytable
+        .filter(r => parseFloat(r.multiplier) > 0)
+        .map(r => ({
+          picks:             r.picks,
+          hits:              r.hits,
+          base_fair:         parseFloat(
+            BASE_PAYTABLE_FAIR.find(b => b.picks === r.picks && b.hits === r.hits)?.multiplier ?? "0",
+          ),
+          active_multiplier: parseFloat(r.multiplier),
+        })),
+    });
+  } catch (err) {
+    console.error("keno house-edge update error", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -1735,6 +1972,8 @@ kenoAdminRouter.post("/keno/merge-profit", adminAuth, async (req, res) => {
 kenoAdminRouter.put("/keno/settings", adminAuth, async (req, res) => {
   try {
     const updates: Record<string, string> = req.body;
+    // house_edge is NOT in this list — it has side-effects (recomputes the full paytable).
+    // Use PUT /api/admin/games/keno/house-edge instead.
     const allowed = ["game_enabled", "min_bet", "max_bet", "min_topup", "max_topup"];
     for (const [key, value] of Object.entries(updates)) {
       if (!allowed.includes(key)) continue;
