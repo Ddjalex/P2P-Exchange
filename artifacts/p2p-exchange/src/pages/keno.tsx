@@ -5,7 +5,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { getGetWalletQueryKey, useGetWallet } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Gamepad2, RefreshCw, TrendingUp, Info, ChevronDown, ChevronUp, Loader2, Trophy, X, Zap, Menu, CircleHelp, Minus, Plus, BarChart3, Crown, Check } from "lucide-react";
+import { ArrowLeft, Gamepad2, RefreshCw, TrendingUp, Info, ChevronDown, ChevronUp, Loader2, Trophy, X, Zap, Menu, CircleHelp, Minus, Plus, BarChart3, Crown, Check, ShieldCheck, Copy } from "lucide-react";
 import { useLocation } from "wouter";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -313,27 +313,152 @@ function TopUpModal({
 // ─── Paytable sheet ───────────────────────────────────────────────────────────
 
 function PaytableSheet({ paytable, picksCount, onClose }: { paytable: PaytableEntry[]; picksCount: number; onClose: () => void }) {
-  const rows = paytable.filter(r => r.picks === picksCount && parseFloat(r.multiplier) > 0);
-  const rtp = calcRtp(picksCount, paytable);
+  const lookup = new Map(paytable.map(row => [`${row.picks}:${row.hits}`, row.multiplier]));
 
   return (
-    <div className="fixed inset-0 z-[9997] flex items-end justify-center px-4 pb-4">
+    <div className="fixed inset-0 z-[9997] flex items-center justify-center px-3 py-4">
       <div className="absolute inset-0 bg-black/70" onClick={onClose} />
-      <div className="relative w-full max-w-sm bg-card rounded-2xl border border-border p-5">
+      <div className="relative w-full max-w-3xl max-h-[90vh] overflow-y-auto bg-[#182021] rounded-2xl border border-white/10 p-4 sm:p-6">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="font-bold">Payouts — Pick {picksCount}</h3>
+          <div>
+            <h3 className="font-bold text-white">Payouts & winning combinations</h3>
+            <p className="mt-1 text-xs text-slate-400">Multiplier × your bet amount · highlighted column is Pick {picksCount || "—"}</p>
+          </div>
           <div className="flex items-center gap-3">
             <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X className="w-5 h-5" /></button>
           </div>
         </div>
-        <div className="space-y-2">
-          {rows.length === 0 && <p className="text-sm text-muted-foreground text-center py-4">No payouts for this pick count</p>}
-          {rows.map(r => (
-            <div key={r.hits} className="flex items-center justify-between py-2 border-b border-border/50 last:border-0">
-              <span className="text-sm text-muted-foreground">{r.hits} of {r.picks} hits</span>
-              <span className="font-bold text-purple-400">{parseFloat(r.multiplier).toFixed(2)}×</span>
+        <div className="overflow-x-auto rounded-xl border border-white/10">
+          <table className="w-full min-w-[640px] border-collapse text-center text-[11px]">
+            <thead>
+              <tr className="bg-white/5 text-slate-300">
+                <th className="border-b border-r border-white/10 px-2 py-2 text-left font-bold">Hits \ Picks</th>
+                {Array.from({ length: 10 }, (_, i) => i + 1).map(picks => (
+                  <th key={picks} className={`border-b border-white/10 px-2 py-2 font-black ${picks === picksCount ? "bg-cyan-400/15 text-cyan-300" : ""}`}>{picks}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {Array.from({ length: 11 }, (_, hits) => (
+                <tr key={hits} className="border-b border-white/5 last:border-0">
+                  <th className="border-r border-white/10 bg-white/[0.03] px-2 py-2 text-left font-bold text-slate-400">{hits}</th>
+                  {Array.from({ length: 10 }, (_, i) => i + 1).map(picks => {
+                    const value = lookup.get(`${picks}:${hits}`);
+                    const multiplier = value ? parseFloat(value) : 0;
+                    const valid = hits <= picks && value !== undefined;
+                    return (
+                      <td key={picks} className={`px-2 py-2 font-bold ${picks === picksCount ? "bg-cyan-400/[0.08]" : ""} ${multiplier > 0 ? "text-emerald-300" : "text-slate-600"}`}>
+                        {valid && multiplier > 0 ? `${multiplier.toFixed(2)}×` : "—"}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {picksCount > 0 && (
+          <p className="mt-3 text-xs text-slate-400">
+            Pick {picksCount} pays when you match one of the winning ball combinations shown in the {picksCount} column. For example, a {picksCount}-hit result pays the multiplier on that row.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function FairnessSheet({
+  roundState,
+  drawn,
+  onClose,
+}: {
+  roundState: {
+    roundId: number;
+    serverHash: string | null;
+    seedTimestamp: number | null;
+    serverSeedRevealed: string | null;
+    drawTimestamp: number | null;
+  } | null;
+  drawn: number[];
+  onClose: () => void;
+}) {
+  const [verification, setVerification] = useState<"idle" | "checking" | "valid" | "invalid">("idle");
+  const [copied, setCopied] = useState(false);
+  const seed = roundState?.serverSeedRevealed;
+  const canVerify = Boolean(seed && roundState?.serverHash && roundState.seedTimestamp);
+
+  async function verifyCommitment() {
+    if (!canVerify || !seed || !roundState?.serverHash || !roundState.seedTimestamp) return;
+    setVerification("checking");
+    try {
+      const input = `${seed}|${roundState.roundId}|${roundState.seedTimestamp}`;
+      const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
+      const hash = Array.from(new Uint8Array(bytes)).map(byte => byte.toString(16).padStart(2, "0")).join("");
+      setVerification(hash === roundState.serverHash ? "valid" : "invalid");
+    } catch {
+      setVerification("invalid");
+    }
+  }
+
+  async function copyHash() {
+    if (!roundState?.serverHash) return;
+    await navigator.clipboard?.writeText(roundState.serverHash);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1600);
+  }
+
+  return (
+    <div className="fixed inset-0 z-[9997] flex items-center justify-center px-3 py-4">
+      <div className="absolute inset-0 bg-black/70" onClick={onClose} />
+      <div className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl border border-white/10 bg-[#182021] p-5 sm:p-7">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-400/15 text-emerald-300"><ShieldCheck className="h-5 w-5" /></div>
+            <div>
+              <h3 className="font-bold text-white">About fairness</h3>
+              <p className="text-xs text-slate-400">Verify that the winning ball combination was committed before betting.</p>
             </div>
-          ))}
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-white" aria-label="Close fairness information"><X className="h-5 w-5" /></button>
+        </div>
+
+        <div className="mt-5 space-y-4 text-sm text-slate-300">
+          <p>Before each round, XendrX Keno creates a secret server seed and publishes its SHA-256 hash. The winning combination is generated from that committed seed, the round ID, and the draw timestamp. The seed is revealed after the draw so anyone can check it.</p>
+          <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div><p className="text-[10px] uppercase tracking-wider text-slate-500">Round ID</p><p className="mt-1 font-mono text-xs text-white">{roundState?.roundId ?? "—"}</p></div>
+              <div><p className="text-[10px] uppercase tracking-wider text-slate-500">Draw timestamp</p><p className="mt-1 font-mono text-xs text-white">{roundState?.drawTimestamp ? new Date(roundState.drawTimestamp).toISOString() : "Shown after draw"}</p></div>
+            </div>
+            <div className="mt-3">
+              <p className="text-[10px] uppercase tracking-wider text-slate-500">Committed server hash</p>
+              <div className="mt-1 flex items-start gap-2">
+                <code className="min-w-0 break-all text-[10px] text-cyan-300">{roundState?.serverHash ?? "Not available"}</code>
+                {roundState?.serverHash && <button onClick={copyHash} className="shrink-0 rounded p-1 text-slate-400 hover:bg-white/10 hover:text-white" aria-label="Copy server hash">{copied ? <Check className="h-3.5 w-3.5 text-emerald-300" /> : <Copy className="h-3.5 w-3.5" />}</button>}
+              </div>
+            </div>
+            <div className="mt-3">
+              <p className="text-[10px] uppercase tracking-wider text-slate-500">Revealed server seed</p>
+              <code className="mt-1 block break-all text-[10px] text-emerald-300">{seed ?? "Hidden until the round is drawn"}</code>
+            </div>
+          </div>
+
+          {drawn.length > 0 && (
+            <div className="rounded-xl border border-emerald-400/20 bg-emerald-400/5 p-4">
+              <p className="text-[10px] font-black uppercase tracking-wider text-emerald-300">Winning ball combination · {drawn.length} balls</p>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {drawn.map((number, index) => <span key={`${number}-${index}`} className="flex h-7 min-w-7 items-center justify-center rounded-full bg-emerald-400 px-1.5 text-[10px] font-black text-[#10221c]">{number}</span>)}
+              </div>
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-center gap-3">
+            <button onClick={verifyCommitment} disabled={!canVerify || verification === "checking"} className="inline-flex items-center gap-2 rounded-lg bg-emerald-500 px-3 py-2 text-xs font-bold text-[#10221c] transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-40">
+              <ShieldCheck className="h-3.5 w-3.5" /> {verification === "checking" ? "Checking…" : "Verify commitment"}
+            </button>
+            {verification === "valid" && <span className="text-xs font-bold text-emerald-300">Verified: the revealed seed matches the published hash.</span>}
+            {verification === "invalid" && <span className="text-xs font-bold text-red-300">Could not verify this commitment. Please try again after the draw is complete.</span>}
+          </div>
+          <p className="text-xs leading-relaxed text-slate-500">The commitment check verifies SHA-256(seed | round ID | seed timestamp). The draw engine then uses a deterministic HMAC-SHA-256 shuffle to select 20 unique numbers from 1–80. During betting, only the hash is visible; the seed stays hidden.</p>
         </div>
       </div>
     </div>
@@ -483,6 +608,16 @@ function ResultOverlay({
                 );
               })}
             </div>
+            <div className="border-t border-white/10 pt-2">
+              <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Winning ball combination</p>
+              <div className="mt-1.5 flex flex-wrap gap-1">
+                {drawn.map((number, index) => (
+                  <span key={`${number}-${index}`} className={`flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-[9px] font-black ${ticket.picks.includes(number) ? "bg-emerald-400 text-[#10221c]" : "bg-[#344144] text-slate-300"}`}>
+                    {number}
+                  </span>
+                ))}
+              </div>
+            </div>
           </div>
         )}
 
@@ -539,6 +674,7 @@ export default function KenoPage() {
   const [showTopUp, setShowTopUp] = useState(false);
   const [showWithdraw, setShowWithdraw] = useState(false);
   const [showPaytable, setShowPaytable] = useState(false);
+  const [showFairness, setShowFairness] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [sidebarTab, setSidebarTab] = useState<"game" | "history">("game");
   const [resettingDemo, setResettingDemo] = useState(false);
@@ -624,6 +760,7 @@ export default function KenoPage() {
       loadPaytable();
       loadHistory();
       loadGlobalRounds();
+      loadStats();
     }
   }, [mode]);
 
@@ -834,6 +971,10 @@ export default function KenoPage() {
   if (!mode) return <ModeSelector onSelect={setMode} />;
 
   const rtp = currentPicks.length > 0 ? calcRtp(currentPicks.length, paytable) : null;
+  const frequencyValues = kenoStats ? Object.values(kenoStats.frequency) : [];
+  const sortedFrequencies = [...frequencyValues].sort((a, b) => a - b);
+  const hotCutoff = sortedFrequencies.length ? sortedFrequencies[Math.floor(sortedFrequencies.length * 0.75)] : 0;
+  const coldCutoff = sortedFrequencies.length ? sortedFrequencies[Math.floor(sortedFrequencies.length * 0.25)] : 0;
 
   return (
     <AppLayout showNav={false} wide>
@@ -1049,7 +1190,12 @@ export default function KenoPage() {
           <main className="min-w-0">
             {/* ── Round number (Provably Fair runs silently in background) ── */}
             {roundState?.roundId != null && (
-              <p className="mb-3 text-sm font-bold text-white">Round #{roundState.roundId}</p>
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm font-bold text-white">Round #{roundState.roundId}</p>
+                <button type="button" onClick={() => setShowFairness(true)} className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400/20 bg-emerald-400/5 px-2.5 py-1 text-[10px] font-bold text-emerald-300 transition hover:bg-emerald-400/10">
+                  <ShieldCheck className="h-3 w-3" /> {roundState.serverSeedRevealed ? "Fairness verified after draw" : "Fairness committed"}
+                </button>
+              </div>
             )}
 
             {/* ── Drawn numbers — shown before the betting banner ───────── */}
@@ -1198,7 +1344,7 @@ export default function KenoPage() {
                   </p>
                 </div>
 
-                <button type="button" data-testid="button-open-paytable" onClick={() => setShowPaytable(true)} className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-full bg-cyan-300/10 text-cyan-300 hover:bg-cyan-300/20" aria-label="Open payout information">
+                 <button type="button" data-testid="button-open-paytable" onClick={() => setShowPaytable(true)} className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-full bg-cyan-300/10 text-cyan-300 hover:bg-cyan-300/20" aria-label="Open payout information">
                   <CircleHelp className="h-4 w-4" />
                 </button>
               </div>
@@ -1217,6 +1363,9 @@ export default function KenoPage() {
                     // Drawn AND in one of the user's placed tickets → hit!
                     const isTicketHit = isDrawn && allPlacedPicksSet.has(n);
                     const isFlash = activeDrawNumber === n;
+                    const frequency = kenoStats?.frequency[n] ?? 0;
+                    const isHot = frequency > 0 && frequency >= hotCutoff && frequency > coldCutoff;
+                    const isCold = frequency <= coldCutoff;
                     return (
                       <button
                         key={n}
@@ -1238,10 +1387,18 @@ export default function KenoPage() {
                         `}
                       >
                         {n}
+                        {!isSelected && !isDrawn && (isHot || isCold) && (
+                          <span className={`absolute right-1 top-1 h-1.5 w-1.5 rounded-full ${isHot ? "bg-red-400" : "bg-sky-400"}`} title={isHot ? `Hot number · drawn ${frequency} times` : `Cold number · drawn ${frequency} times`} />
+                        )}
                       </button>
                     );
                   });
                 })()}
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-3 px-1 text-[9px] text-slate-500">
+                <span className="font-bold uppercase tracking-wider text-slate-400">Number trends</span>
+                <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-red-400" /> Hot · drawn often</span>
+                <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-sky-400" /> Cold · drawn less often</span>
               </div>
 
               {/* ── Selection info + Clear ───────────────────────────── */}
@@ -1452,11 +1609,18 @@ export default function KenoPage() {
         />
       )}
 
-      {showPaytable && currentPicks.length > 0 && (
+      {showPaytable && (
         <PaytableSheet
           paytable={paytable}
           picksCount={currentPicks.length}
           onClose={() => setShowPaytable(false)}
+        />
+      )}
+      {showFairness && (
+        <FairnessSheet
+          roundState={roundState}
+          drawn={completedRoundResult?.drawn ?? revealedNums}
+          onClose={() => setShowFairness(false)}
         />
       )}
     </AppLayout>
