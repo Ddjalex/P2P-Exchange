@@ -20,6 +20,14 @@ Two workflows must be running:
 
 Both start automatically via the **Project** run button.
 
+## Database connection
+
+The project uses the attached Neon PostgreSQL database through the
+`NEON_DATABASE_URL` secret. The Drizzle database configuration also accepts
+Replit's managed `DATABASE_URL` for environments where that variable is
+provided. The current schema has been applied with the non-destructive Drizzle
+push command.
+
 ## Required secrets
 
 | Secret | Purpose |
