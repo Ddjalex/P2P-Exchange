@@ -801,6 +801,7 @@ export default function KenoPage() {
     if (lastAnimatedRoundRef.current === roundState.roundId) return;
 
     lastAnimatedRoundRef.current = roundState.roundId;
+    // Preserve the backend's draw order so highlights jump across the grid.
     const drawn        = roundState.drawnNumbers;
     const myBatchSnap  = roundState.myBatch;
     const currentMode  = mode;
@@ -816,10 +817,7 @@ export default function KenoPage() {
         setRevealedNums(prev => [...prev, drawn[i]]);
         setActiveDrawNumber(drawn[i]);
         setDrawProgress(i + 1);
-        await new Promise<void>(r => setTimeout(r, 180)); // Keep the 8-second result window visible after the draw
-        if (animCancelledRef.current) return;
-        setActiveDrawNumber(null);
-        await new Promise<void>(r => setTimeout(r, 80)); // 260 ms/ball total
+        await new Promise<void>(r => setTimeout(r, 150));
       }
 
       if (animCancelledRef.current) return;
