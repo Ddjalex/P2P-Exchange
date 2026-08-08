@@ -47,6 +47,64 @@ export function get_multiplier(picks_count: number, hits_count: number): number 
   return PAYTABLE[`${picks_count},${hits_count}`] ?? 0.0;
 }
 
+export interface SettlementTicket {
+  picks: number[];
+  bet_amount: number | string;
+  mode?: "demo" | "real";
+}
+
+export interface SettlementUser {
+  id: number;
+  balance: number | string;
+}
+
+export async function settle_ticket(
+  ticket: SettlementTicket,
+  drawn_20_numbers: number[],
+  user: SettlementUser,
+) {
+  const hits = new Set(
+    ticket.picks.filter(pick => new Set(drawn_20_numbers).has(pick)),
+  ).size;
+  const multiplier = get_multiplier(ticket.picks.length, hits);
+  const win_amount = Math.round(Number(ticket.bet_amount) * multiplier * 100) / 100;
+
+  const settlement = await db.transaction(async tx => {
+    const locked = await tx.execute(
+      sql`SELECT balance FROM users WHERE id = ${user.id} FOR UPDATE`,
+    ) as any;
+    const row = locked.rows?.[0];
+    if (!row) throw new Error("User not found");
+
+    const currentBalance = Number(row.balance ?? 0);
+    const newBalance = win_amount > 0
+      ? Math.round((currentBalance + win_amount) * 100) / 100
+      : currentBalance;
+
+    if (win_amount > 0) {
+      await tx.update(usersTable)
+        .set({ balance: String(newBalance) })
+        .where(eq(usersTable.id, user.id));
+    }
+
+    await tx.insert(kenoRoundsTable).values({
+      userId: user.id,
+      mode: ticket.mode ?? "real",
+      picks: ticket.picks,
+      drawnNumbers: drawn_20_numbers,
+      betAmount: Number(ticket.bet_amount).toFixed(2),
+      hitCount: hits,
+      multiplier: multiplier.toFixed(4),
+      payoutAmount: win_amount.toFixed(2),
+    });
+
+    return { newBalance };
+  });
+
+  user.balance = settlement.newBalance;
+  return { ...ticket, hits, multiplier, win_amount };
+}
+
 // ─── Hypergeometric paytable seed ────────────────────────────────────────────
 //
 // P(k hits | draws=20, pool=80, picks=n) = C(20,k) * C(60, n-k) / C(80, n)
