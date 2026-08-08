@@ -541,7 +541,7 @@ interface GameRound {
 //
 // Evaluates every ticket in a batch against the already-drawn numbers.
 // Returns per-ticket results; does NOT touch the database (pure computation +
-// paytable lookup).
+// PAYTABLE lookup).
 
 async function evaluateUserBatch(
   tickets: PendingTicket[],
@@ -549,25 +549,21 @@ async function evaluateUserBatch(
 ): Promise<SettledTicketResult[]> {
   const drawnSet = new Set(drawn);
 
-  // Fetch all required paytable entries in a single query to avoid N round-trips
-  const paytableRows = await db.select({
-    picks: kenoPaytableTable.picks,
-    hits:  kenoPaytableTable.hits,
-    multiplier: kenoPaytableTable.multiplier,
-  }).from(kenoPaytableTable);
-
-  const ptMap = new Map<string, number>();
-  for (const row of paytableRows) {
-    ptMap.set(`${row.picks}:${row.hits}`, parseFloat(row.multiplier));
-  }
-
   return tickets.map(ticket => {
     const betAmt   = parseFloat(ticket.betAmount);
     const matches  = ticket.picks.filter(n => drawnSet.has(n));
     const hitCount = matches.length;
-    const multiplier = ptMap.get(`${ticket.picks.length}:${hitCount}`) ?? 0;
-    const payout     = parseFloat((betAmt * multiplier).toFixed(2));
-    return { picks: ticket.picks, betAmount: ticket.betAmount, matches, hitCount, multiplier, payout, isWin: payout > 0 };
+    const multiplier = get_multiplier(ticket.picks.length, hitCount);
+    const win_amount = parseFloat((betAmt * multiplier).toFixed(2));
+    return {
+      picks: ticket.picks,
+      betAmount: ticket.betAmount,
+      matches,
+      hitCount,
+      multiplier,
+      payout: win_amount,
+      isWin: win_amount > 0,
+    };
   });
 }
 
