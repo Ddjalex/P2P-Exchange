@@ -29,6 +29,13 @@
       "when": 1783366111520,
       "tag": "0003_cute_cloak",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1786186054835,
+      "tag": "0006_balance_audit_tables",
+      "breakpoints": true
     }
   ]
 }

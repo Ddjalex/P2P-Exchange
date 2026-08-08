@@ -110,7 +110,7 @@ router.patch("/change-password", adminAuth, async (req: any, res) => {
     // Store new password
     await db.insert(systemSettingsTable).values({ key: "adminPassword", value: newPassword, updatedAt: new Date() })
       .onConflictDoUpdate({ target: systemSettingsTable.key, set: { value: newPassword, updatedAt: new Date() } });
-    await log(req.adminEmail, "change_password", "admin", undefined, "Admin password changed");
+    await log(req.adminEmail, "change_password", "admin", undefined, "Admin password changed", req);
     res.json({ success: true });
   } catch (err) {
     req.log.error({ err }, "Admin change password failed");
@@ -235,7 +235,7 @@ router.put("/users/:id/suspend", adminAuth, async (req: any, res) => {
     for (const order of activeOrders) {
       await db.update(ordersTable).set({ status: "cancelled", cancelReason: "Account suspended" }).where(eq(ordersTable.id, order.id));
     }
-    await log(req.adminEmail, "suspend_user", "user", id, `${reason} (${duration ?? "permanent"})`);
+    await log(req.adminEmail, "suspend_user", "user", id, `${reason} (${duration ?? "permanent"})`, req);
     res.json({ success: true });
   } catch (err) {
     req.log.error({ err }, "Admin suspend user failed");
@@ -247,7 +247,7 @@ router.put("/users/:id/unsuspend", adminAuth, async (req: any, res) => {
   try {
     const id = parseInt(req.params.id);
     await db.update(usersTable).set({ isSuspended: false, suspensionReason: null, suspendedUntil: null as any }).where(eq(usersTable.id, id));
-    await log(req.adminEmail, "unsuspend_user", "user", id);
+    await log(req.adminEmail, "unsuspend_user", "user", id, undefined, req);
     res.json({ success: true });
   } catch (err) {
     req.log.error({ err }, "Admin unsuspend user failed");
@@ -264,7 +264,7 @@ router.put("/users/:id/withdrawal-suspend", adminAuth, async (req: any, res) => 
       withdrawalSuspended: !!suspended,
       withdrawalSuspendReason: suspended ? (reason ?? null) : null,
     }).where(eq(usersTable.id, id));
-    await log(req.adminEmail, suspended ? "withdrawal_suspend" : "withdrawal_unsuspend", "user", id, reason);
+    await log(req.adminEmail, suspended ? "withdrawal_suspend" : "withdrawal_unsuspend", "user", id, reason, req);
     res.json({ success: true });
   } catch (err) {
     req.log.error({ err }, "Admin withdrawal suspend failed");
@@ -283,7 +283,7 @@ router.put("/users/:id/flag", adminAuth, async (req: any, res) => {
       flaggedBy: "admin",
     });
     await db.update(usersTable).set({ flagCount: sql`${usersTable.flagCount} + 1` }).where(eq(usersTable.id, id));
-    await log(req.adminEmail, "flag_user", "user", id, `${flagType}: ${description}`);
+    await log(req.adminEmail, "flag_user", "user", id, `${flagType}: ${description}`, req);
     res.json({ success: true });
   } catch (err) {
     req.log.error({ err }, "Admin flag user failed");
@@ -296,7 +296,7 @@ router.put("/users/:id/merchant", adminAuth, async (req: any, res) => {
     const id = parseInt(req.params.id);
     const { isMerchant } = req.body ?? {};
     await db.update(usersTable).set({ isMerchant: !!isMerchant }).where(eq(usersTable.id, id));
-    await log(req.adminEmail, isMerchant ? "grant_merchant" : "revoke_merchant", "user", id);
+    await log(req.adminEmail, isMerchant ? "grant_merchant" : "revoke_merchant", "user", id, undefined, req);
     res.json({ success: true });
   } catch (err) {
     req.log.error({ err }, "Admin toggle merchant failed");
@@ -309,7 +309,7 @@ router.put("/users/:id/verify", adminAuth, async (req: any, res) => {
     const id = parseInt(req.params.id);
     await db.update(usersTable).set({ kycStatus: "verified" }).where(eq(usersTable.id, id));
     await db.update(kycSubmissionsTable).set({ status: "verified" as any, reviewedAt: new Date() }).where(eq(kycSubmissionsTable.userId, id));
-    await log(req.adminEmail, "manual_verify_user", "user", id);
+    await log(req.adminEmail, "manual_verify_user", "user", id, undefined, req);
     res.json({ success: true });
   } catch (err) {
     req.log.error({ err }, "Admin verify user failed");
@@ -320,7 +320,7 @@ router.put("/users/:id/verify", adminAuth, async (req: any, res) => {
 router.delete("/users/:id", adminAuth, async (req: any, res) => {
   try {
     const id = parseInt(req.params.id);
-    await log(req.adminEmail, "delete_user", "user", id);
+    await log(req.adminEmail, "delete_user", "user", id, undefined, req);
     await db.delete(usersTable).where(eq(usersTable.id, id));
     res.json({ success: true });
   } catch (err) {
@@ -502,7 +502,7 @@ router.post("/kyc/:userId/review", adminAuth, async (req: any, res) => {
     const newStatus = decision === "verified" ? "verified" : decision === "rejected" ? "rejected" : "more_info_required";
     await db.update(kycSubmissionsTable).set({ status: newStatus as any, rejectionReason: rejectionReason ?? null, adminMessage: adminMessage ?? null, reviewedAt: new Date() }).where(eq(kycSubmissionsTable.userId, userId));
     await db.update(usersTable).set({ kycStatus: newStatus as any }).where(eq(usersTable.id, userId));
-    await log(req.adminEmail, `kyc_${newStatus}`, "kyc", userId, rejectionReason);
+    await log(req.adminEmail, `kyc_${newStatus}`, "kyc", userId, rejectionReason, req);
     emitToUser(userId, "kyc_update", {
       status: newStatus,
       rejectionReason: rejectionReason ?? null,
@@ -564,7 +564,7 @@ router.put("/ads/:id/suspend", adminAuth, async (req: any, res) => {
   try {
     const id = parseInt(req.params.id);
     await db.update(adsTable).set({ status: "offline" }).where(eq(adsTable.id, id));
-    await log(req.adminEmail, "suspend_ad", "ad", id);
+    await log(req.adminEmail, "suspend_ad", "ad", id, undefined, req);
     res.json({ success: true });
   } catch (err) {
     req.log.error({ err }, "Admin suspend ad failed");
@@ -576,7 +576,7 @@ router.put("/ads/:id/reactivate", adminAuth, async (req: any, res) => {
   try {
     const id = parseInt(req.params.id);
     await db.update(adsTable).set({ status: "online", pauseReason: null } as any).where(eq(adsTable.id, id));
-    await log(req.adminEmail, "reactivate_ad", "ad", id);
+    await log(req.adminEmail, "reactivate_ad", "ad", id, undefined, req);
     res.json({ success: true });
   } catch (err) {
     req.log.error({ err }, "Admin reactivate ad failed");
@@ -587,7 +587,7 @@ router.put("/ads/:id/reactivate", adminAuth, async (req: any, res) => {
 router.delete("/ads/:id", adminAuth, async (req: any, res) => {
   try {
     const id = parseInt(req.params.id);
-    await log(req.adminEmail, "delete_ad", "ad", id);
+    await log(req.adminEmail, "delete_ad", "ad", id, undefined, req);
     await db.delete(adsTable).where(eq(adsTable.id, id));
     res.json({ success: true });
   } catch (err) {
@@ -708,7 +708,7 @@ router.put("/orders/:id/force-complete", adminAuth, async (req: any, res) => {
       ]);
     });
 
-    await log(req.adminEmail, "force_complete_order", "order", id, note);
+    await log(req.adminEmail, "force_complete_order", "order", id, note, req);
     res.json({ success: true });
   } catch (err) {
     req.log.error({ err }, "Admin force complete failed");
@@ -721,7 +721,7 @@ router.put("/orders/:id/force-cancel", adminAuth, async (req: any, res) => {
     const id = parseInt(req.params.id);
     const { note } = req.body ?? {};
     await db.update(ordersTable).set({ status: "cancelled", cancelReason: note ?? "Admin cancelled" }).where(eq(ordersTable.id, id));
-    await log(req.adminEmail, "force_cancel_order", "order", id, note);
+    await log(req.adminEmail, "force_cancel_order", "order", id, note, req);
     res.json({ success: true });
   } catch (err) {
     req.log.error({ err }, "Admin force cancel failed");
@@ -735,7 +735,7 @@ router.put("/orders/:id/add-note", adminAuth, async (req: any, res) => {
     const { note } = req.body ?? {};
     if (!note?.trim()) return res.status(400).json({ error: "Note is required" });
     await db.update(ordersTable).set({ adminNote: note.trim() }).where(eq(ordersTable.id, id));
-    await log(req.adminEmail, "add_order_note", "order", id, note);
+    await log(req.adminEmail, "add_order_note", "order", id, note, req);
     res.json({ success: true });
   } catch (err) {
     req.log.error({ err }, "Admin add order note failed");
@@ -901,7 +901,7 @@ router.put("/disputes/:id/resolve", adminAuth, async (req: any, res) => {
         .where(eq(ordersTable.id, appeal.orderId));
     }
 
-    await log(req.adminEmail, "resolve_dispute", "appeal", id, `${decision}: ${adminNote}`);
+    await log(req.adminEmail, "resolve_dispute", "appeal", id, `${decision}: ${adminNote}`, req);
     if (order) {
       const buyerWins = decision === "buyer_wins";
       PushNotify.appealResolved(order.buyerId, order.id, buyerWins).catch(console.error);
@@ -956,7 +956,7 @@ router.post("/wallet/recalculate-frozen", adminAuth, async (req: any, res) => {
       }
     }
 
-    await log(req.adminEmail, "recalculate_frozen", "system", 0, `Fixed ${results.length} wallets`);
+    await log(req.adminEmail, "recalculate_frozen", "system", 0, `Fixed ${results.length} wallets`, req);
     res.json({ fixed: results.length, results });
   } catch (err) {
     req.log.error({ err }, "Recalculate frozen failed");
@@ -1072,7 +1072,7 @@ router.put("/wallet/transactions/:id/approve", adminAuth, async (req: any, res) 
       await db.update(transactionsTable)
         .set({ status: "completed", txid })
         .where(eq(transactionsTable.id, id));
-      await log(req.adminEmail, "approve_withdrawal", "transaction", id, `Broadcast OK — txid: ${txid}`);
+      await log(req.adminEmail, "approve_withdrawal", "transaction", id, `Broadcast OK — txid: ${txid}`, req);
       console.log("[Withdraw] Broadcast successful, txid:", txid);
       PushNotify.withdrawalApproved(approvedTx.userId, approvedTx.amount).catch(console.error);
       TelegramNotify.withdrawalApproved(approvedTx.userId, approvedTx.amount).catch(console.error);
@@ -1083,7 +1083,7 @@ router.put("/wallet/transactions/:id/approve", adminAuth, async (req: any, res) 
       await db.update(transactionsTable)
         .set({ status: "pending" })
         .where(eq(transactionsTable.id, id));
-      await log(req.adminEmail, "approve_withdrawal_failed", "transaction", id, broadcastErr?.message ?? "Broadcast error");
+      await log(req.adminEmail, "approve_withdrawal_failed", "transaction", id, broadcastErr?.message ?? "Broadcast error", req);
       return res.status(503).json({ error: "Blockchain broadcast failed — withdrawal kept as pending", detail: broadcastErr?.message });
     }
   } catch (err) {
@@ -1511,7 +1511,7 @@ router.post("/notifications/send", adminAuth, async (req: any, res) => {
     const [history] = await db.insert(notificationHistoryTable).values({
       title, message, target, channel, recipientCount, status: "sent",
     }).returning();
-    await log(req.adminEmail, "send_notification", "notification", history.id, `${target} via ${channel}`);
+    await log(req.adminEmail, "send_notification", "notification", history.id, `${target} via ${channel}`, req);
     res.json({ success: true, recipientCount, telegramCount, emailCount });
   } catch (err) {
     req.log.error({ err }, "Admin send notification failed");
@@ -1564,7 +1564,7 @@ router.put("/settings", adminAuth, async (req: any, res) => {
       await db.insert(systemSettingsTable).values({ key, value: String(value), updatedAt: new Date() })
         .onConflictDoUpdate({ target: systemSettingsTable.key, set: { value: String(value), updatedAt: new Date() } });
     }
-    await log(req.adminEmail, "update_settings", "settings", undefined, Object.keys(updates).join(", "));
+    await log(req.adminEmail, "update_settings", "settings", undefined, Object.keys(updates).join(", "), req);
     res.json({ success: true });
   } catch (err) {
     req.log.error({ err }, "Admin settings update failed");
@@ -1597,7 +1597,7 @@ router.post("/telegram/apply-token", adminAuth, async (req: any, res) => {
         .onConflictDoUpdate({ target: systemSettingsTable.key, set: { value: channelId.trim(), updatedAt: new Date() } });
     }
 
-    await log(req.adminEmail, "update_telegram_bot", "settings", undefined, `@${info.username}`);
+    await log(req.adminEmail, "update_telegram_bot", "settings", undefined, `@${info.username}`, req);
     res.json({ success: true, username: info.username });
   } catch (err: any) {
     const msg = err?.message ?? "Failed to start bot";
@@ -1771,7 +1771,7 @@ router.post("/deposits/verifications/:id/approve", adminAuth, async (req: any, r
       .set({ status: "approved", reviewedAt: new Date(), reviewedBy: req.adminEmail, adminNote: note ?? null })
       .where(eq(depositVerificationsTable.id, id));
 
-    await log(req.adminEmail, "deposit_approved", "deposit_verification", id, `Approved ${v.amount} USDT — txid: ${v.txid}`);
+    await log(req.adminEmail, "deposit_approved", "deposit_verification", id, `Approved ${v.amount} USDT — txid: ${v.txid}`, req);
     res.json({ ok: true, newBalance });
   } catch (err) {
     req.log.error({ err }, "Admin deposit approve failed");
@@ -1791,7 +1791,7 @@ router.post("/deposits/verifications/:id/reject", adminAuth, async (req: any, re
       .set({ status: "rejected", reviewedAt: new Date(), reviewedBy: req.adminEmail, adminNote: note ?? null })
       .where(eq(depositVerificationsTable.id, id));
 
-    await log(req.adminEmail, "deposit_rejected", "deposit_verification", id, note ?? "No reason given");
+    await log(req.adminEmail, "deposit_rejected", "deposit_verification", id, note ?? "No reason given", req);
     res.json({ ok: true });
   } catch (err) {
     req.log.error({ err }, "Admin deposit reject failed");
@@ -1845,7 +1845,7 @@ router.post("/deposits/verifications/:id/assign", adminAuth, async (req: any, re
       })
       .where(eq(depositVerificationsTable.id, id));
 
-    await log(req.adminEmail, "deposit_assigned", "deposit_verification", id, `Assigned ${v.amount} USDT to user ${assignUserId}`);
+    await log(req.adminEmail, "deposit_assigned", "deposit_verification", id, `Assigned ${v.amount} USDT to user ${assignUserId}`, req);
     res.json({ ok: true, newBalance });
   } catch (err) {
     req.log.error({ err }, "Admin deposit assign failed");
@@ -1896,7 +1896,7 @@ router.post("/wallets/:userId/adjust", adminAuth, async (req: any, res) => {
       address: `admin:${type}:${req.adminEmail}`,
     });
 
-    await log(req.adminEmail, `manual_wallet_${type}`, "user", userId, `${type} ${amt} USDT — ${note || "no note"}`);
+    await log(req.adminEmail, `manual_wallet_${type}`, "user", userId, `${type} ${amt} USDT — ${note || "no note"}`, req);
 
     res.json({ ok: true, newBalance, type, amount: amt.toFixed(6) });
   } catch (err) {
@@ -1981,7 +1981,7 @@ router.patch("/fees", adminAuth, async (req, res) => {
         set: { value: String(value), updatedAt: new Date() },
       });
 
-    await log(req.adminEmail, "update_fee", "fee_settings", undefined, `Updated ${feeType} to ${value}`);
+    await log(req.adminEmail, "update_fee", "fee_settings", undefined, `Updated ${feeType} to ${value}`, req);
 
     return res.json({ message: "Fee updated successfully" });
   } catch (err) {
@@ -2047,7 +2047,7 @@ router.patch("/address-verifications/:id/approve", adminAuth, async (req, res) =
       isRead: false,
     });
 
-    await log((req as any).adminEmail, "approve_address", "address_verifications", id, `Approved address for user ${submission.userId}`);
+    await log((req as any).adminEmail, "approve_address", "address_verifications", id, `Approved address for user ${submission.userId}`, req);
     return res.json({ success: true });
   } catch (err) {
     req.log.error({ err }, "Admin address approve failed");
@@ -2075,7 +2075,7 @@ router.patch("/address-verifications/:id/reject", adminAuth, async (req, res) =>
       isRead: false,
     });
 
-    await log((req as any).adminEmail, "reject_address", "address_verifications", id, `Rejected address for user ${submission.userId}: ${reason}`);
+    await log((req as any).adminEmail, "reject_address", "address_verifications", id, `Rejected address for user ${submission.userId}: ${reason}`, req);
     return res.json({ success: true });
   } catch (err) {
     req.log.error({ err }, "Admin address reject failed");
@@ -2145,7 +2145,8 @@ router.post("/deposits/credit-missed", adminAuth, async (req: any, res) => {
       "manual_deposit_credit",
       "wallet",
       userId,
-      `Manually credited ${amountStr} USDT for TX ${txid} at ${depositAddress}`
+      `Manually credited ${amountStr} USDT for TX ${txid} at ${depositAddress}`,
+      req
     );
 
     console.log(`[Admin] Manual credit: user ${userId} +${amountStr} USDT txid ${txid}`);
@@ -2283,7 +2284,7 @@ router.post("/email/send", adminAuth, async (req: any, res) => {
       })
     );
 
-    await log(req.adminEmail, "send_user_email", "email", null, `${sent} sent, ${failed} failed — subject: ${subject.trim().slice(0, 80)}`);
+    await log(req.adminEmail, "send_user_email", "email", null, `${sent} sent, ${failed} failed — subject: ${subject.trim().slice(0, 80)}`, req);
     const allFailed = sent === 0 && failed > 0;
     res.json({
       success: !allFailed,
@@ -2352,7 +2353,7 @@ router.put("/cards/settings", adminAuth, async (req, res) => {
       await db.insert(systemSettingsTable).values({ key, value, updatedAt: new Date() })
         .onConflictDoUpdate({ target: systemSettingsTable.key, set: { value, updatedAt: new Date() } });
     }
-    await log(req.adminEmail, "update_card_settings", "system", null, JSON.stringify(updates));
+    await log(req.adminEmail, "update_card_settings", "system", null, JSON.stringify(updates), req);
     res.json(await getCardSettingsAdmin());
   } catch (err) {
     req.log.error({ err }, "Admin card settings update failed");
@@ -2448,7 +2449,7 @@ router.post("/cards/link", adminAuth, async (req, res) => {
     }).returning();
 
     await log(req.adminEmail, "link_card", "card", uid,
-      `Linked card_id=${cardId} to user ${uid} (${user.email})`);
+      `Linked card_id=${cardId} to user ${uid} (${user.email})`, req);
 
     res.json({ success: true, card: saved });
   } catch (err) {
@@ -2620,7 +2621,7 @@ router.post("/security/freeze/:userId", adminAuth, async (req, res) => {
     await db.update(usersTable)
       .set({ isFrozen: true, freezeReason: reason ?? "Frozen by admin", frozenAt: new Date() })
       .where(eq(usersTable.id, userId));
-    await log(req.adminEmail, "freeze_account", "user", userId, reason);
+    await log(req.adminEmail, "freeze_account", "user", userId, reason, req);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: "Internal server error" });
@@ -2633,7 +2634,7 @@ router.post("/security/unfreeze/:userId", adminAuth, async (req, res) => {
     await db.update(usersTable)
       .set({ isFrozen: false, freezeReason: null, frozenAt: null })
       .where(eq(usersTable.id, userId));
-    await log(req.adminEmail, "unfreeze_account", "user", userId);
+    await log(req.adminEmail, "unfreeze_account", "user", userId, undefined, req);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: "Internal server error" });
@@ -2647,7 +2648,7 @@ router.post("/security/ban/:userId", adminAuth, async (req, res) => {
     await db.update(usersTable)
       .set({ isBanned: true, isFrozen: true, freezeReason: reason ?? "Banned by admin", frozenAt: new Date() })
       .where(eq(usersTable.id, userId));
-    await log(req.adminEmail, "ban_user", "user", userId, reason);
+    await log(req.adminEmail, "ban_user", "user", userId, reason, req);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: "Internal server error" });
@@ -2781,7 +2782,7 @@ router.post("/sweep-stuck-funds", adminAuth, async (req, res) => {
   try {
     const result = await sweepAllStuckFunds();
     await log(req.adminEmail, "sweep_stuck_funds", "system", null,
-      `Manual sweep triggered — swept: ${result.swept}, failed: ${result.failed}`);
+      `Manual sweep triggered — swept: ${result.swept}, failed: ${result.failed}`, req);
     res.json({ success: true, ...result });
   } catch (err) {
     req.log.error({ err }, "Admin sweep-stuck-funds failed");
@@ -2857,7 +2858,7 @@ router.post("/wallet/sweep-stuck-funds", adminAuth, async (req: any, res) => {
   try {
     const result = await sweepAllStuckFunds();
     await log(req.adminEmail, "sweep_stuck_funds", "system", null,
-      `Manual sweep triggered — swept: ${result.swept}, failed: ${result.failed}`);
+      `Manual sweep triggered — swept: ${result.swept}, failed: ${result.failed}`, req);
     res.json({ success: true, ...result });
   } catch (err) {
     req.log.error({ err }, "wallet/sweep-stuck-funds failed");
