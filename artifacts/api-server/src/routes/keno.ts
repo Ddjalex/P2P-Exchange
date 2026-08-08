@@ -36,6 +36,17 @@ import { eq, and, desc, sql } from "drizzle-orm";
 export const kenoRouter = Router();       // mounted at /api/games/keno
 export const kenoAdminRouter = Router();  // mounted at /api/admin/games
 
+export const PAYTABLE: Record<string, number> = {
+  "1,1": 3.5, "2,1": 1.0, "2,2": 10.0, "3,2": 2.0, "3,3": 50.0,
+  "4,2": 1.5, "4,3": 10.0, "4,4": 80.0, "5,2": 1.0, "5,3": 3.0, "5,4": 30.0, "5,5": 150.0,
+  "6,3": 2.0, "6,4": 15.0, "6,5": 60.0, "6,6": 500.0, "7,0": 1.0, "7,3": 2.0, "7,7": 1000.0,
+  "8,0": 1.0, "8,8": 2000.0, "9,0": 2.0, "9,9": 5000.0, "10,0": 2.0, "10,10": 10000.0,
+};
+
+export function get_multiplier(picks_count: number, hits_count: number): number {
+  return PAYTABLE[`${picks_count},${hits_count}`] ?? 0.0;
+}
+
 // ─── Hypergeometric paytable seed ────────────────────────────────────────────
 //
 // P(k hits | draws=20, pool=80, picks=n) = C(20,k) * C(60, n-k) / C(80, n)
