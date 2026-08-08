@@ -535,17 +535,23 @@ interface CompletedRoundResult {
   drawn: number[];
   tickets: TicketResult[];
   totalPayout: number;
+  updatedBalance: number;
+  mode: "demo" | "real";
 }
 
 function ResultOverlay({
   drawn,
   tickets,
   totalPayout,
+  updatedBalance,
+  mode,
   onClose,
 }: {
   drawn: number[];
   tickets: TicketResult[];
   totalPayout: number;
+  updatedBalance: number;
+  mode: "demo" | "real";
   onClose: () => void;
 }) {
   const [activeIdx, setActiveIdx] = useState(0);
@@ -566,6 +572,19 @@ function ResultOverlay({
             {totalPayout > 0 ? `+${totalPayout.toFixed(2)}` : "0.00"} <span className="text-base font-medium text-emerald-400/70">USDT</span>
           </p>
           <p className="text-xs text-slate-500 mt-0.5">{tickets.length} ticket{tickets.length !== 1 ? "s" : ""} played</p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 text-left">
+          <div className="rounded-lg border border-white/10 bg-white/5 p-2.5">
+            <p className="text-[9px] font-black uppercase tracking-wider text-slate-500">Win Amount ($)</p>
+            <p className="mt-1 text-base font-black text-emerald-300">${totalPayout.toFixed(2)}</p>
+          </div>
+          <div className="rounded-lg border border-white/10 bg-white/5 p-2.5">
+            <p className="text-[9px] font-black uppercase tracking-wider text-slate-500">
+              Updated {mode === "demo" ? "Demo " : ""}Balance
+            </p>
+            <p className="mt-1 text-base font-black text-white">${updatedBalance.toFixed(2)}</p>
+          </div>
         </div>
 
         {/* Ticket tabs */}
@@ -595,8 +614,37 @@ function ResultOverlay({
             <div className="flex justify-between text-xs">
               <span className="text-slate-400">Ticket {activeIdx + 1}</span>
               <span className={ticket.payout > 0 ? "text-emerald-400 font-bold" : "text-slate-500"}>
-                {ticket.hitCount} hit{ticket.hitCount !== 1 ? "s" : ""} · {ticket.multiplier}× · {ticket.payout > 0 ? `+${ticket.payout.toFixed(2)}` : "no win"}
+                {ticket.hitCount} hit{ticket.hitCount !== 1 ? "s" : ""} · {ticket.multiplier}× · {ticket.payout > 0 ? `+$${ticket.payout.toFixed(2)}` : "no win"}
               </span>
+            </div>
+            <div className="grid grid-cols-3 gap-1.5 text-center">
+              <div className="rounded-lg bg-white/5 px-1.5 py-2">
+                <p className="text-[9px] font-black uppercase tracking-wider text-slate-500">Hits Matched</p>
+                <p className="mt-1 text-sm font-black text-white">{ticket.hitCount}/{ticket.picks.length}</p>
+              </div>
+              <div className="rounded-lg bg-white/5 px-1.5 py-2">
+                <p className="text-[9px] font-black uppercase tracking-wider text-slate-500">Multiplier</p>
+                <p className="mt-1 text-sm font-black text-cyan-300">{ticket.multiplier}x</p>
+              </div>
+              <div className="rounded-lg bg-white/5 px-1.5 py-2">
+                <p className="text-[9px] font-black uppercase tracking-wider text-slate-500">Win Amount ($)</p>
+                <p className="mt-1 text-sm font-black text-emerald-300">${ticket.payout.toFixed(2)}</p>
+              </div>
+            </div>
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Selected Numbers</p>
+              <div className="mt-1.5 flex flex-wrap gap-1">
+                {ticket.picks.map(number => (
+                  <span
+                    key={number}
+                    className={`flex h-7 min-w-7 items-center justify-center rounded-full px-1.5 text-[10px] font-black ${
+                      drawn.includes(number) ? "bg-emerald-400 text-[#10221c]" : "bg-[#344144] text-slate-200"
+                    }`}
+                  >
+                    {number}
+                  </span>
+                ))}
+              </div>
             </div>
             <div className="grid grid-cols-10 gap-1">
               {[...drawn].sort((a, b) => a - b).map(n => {
@@ -848,6 +896,8 @@ export default function KenoPage() {
             payout:     t.payout!,
           })),
           totalPayout: myBatchSnap.totalPayout,
+          updatedBalance: myBatchSnap.newBalance!,
+          mode: currentMode!,
         }
       : null;
 
@@ -1226,6 +1276,24 @@ export default function KenoPage() {
                       {completedRoundResult.tickets.length} ticket{completedRoundResult.tickets.length !== 1 ? "s" : ""} ·{" "}
                       {completedRoundResult.tickets.reduce((sum, ticket) => sum + ticket.hitCount, 0)} total hit{completedRoundResult.tickets.reduce((sum, ticket) => sum + ticket.hitCount, 0) !== 1 ? "s" : ""}
                     </p>
+                    <div className="mt-2 grid gap-1.5 text-[11px] text-slate-300 sm:grid-cols-2">
+                      {completedRoundResult.tickets.map((ticket, index) => (
+                        <div key={index} className="rounded-lg border border-white/10 bg-black/20 px-2.5 py-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-bold text-white">Selected Numbers</span>
+                            <span className="text-cyan-300">{ticket.multiplier}x</span>
+                          </div>
+                          <p className="mt-1 break-words text-[10px] text-slate-400">{ticket.picks.join(", ")}</p>
+                          <p className="mt-1">
+                            <span className="text-slate-400">Hits Matched:</span> {ticket.hitCount}/{ticket.picks.length}
+                            <span className="ml-2 text-slate-400">Win Amount:</span> <span className="font-bold text-emerald-300">${ticket.payout.toFixed(2)}</span>
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="mt-2 text-xs font-bold text-white">
+                      Updated {completedRoundResult.mode === "demo" ? "Demo " : ""}Balance: ${completedRoundResult.updatedBalance.toFixed(2)}
+                    </p>
                   </div>
                   <div className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-right">
                     <p className="text-[9px] uppercase tracking-wider text-slate-400">Next round</p>
@@ -1574,6 +1642,8 @@ export default function KenoPage() {
           drawn={batchResult.drawn}
           tickets={batchResult.tickets}
           totalPayout={batchResult.totalPayout}
+          updatedBalance={batchResult.updatedBalance}
+          mode={batchResult.mode}
           onClose={() => { setBatchResult(null); }}
         />
       )}
