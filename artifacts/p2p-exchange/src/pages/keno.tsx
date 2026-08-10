@@ -938,8 +938,8 @@ export default function KenoPage() {
     if (animating) return;
     setCurrentPicks(prev => {
       if (prev.includes(n)) return prev.filter(x => x !== n);
-      if (prev.length >= 10) {
-        toast({ description: "Maximum 10 numbers per ticket", variant: "destructive" });
+      if (prev.length >= 20) {
+        toast({ description: "Maximum 20 numbers per ticket", variant: "destructive" });
         return prev;
       }
       return [...prev, n].sort((a, b) => a - b);
@@ -969,7 +969,7 @@ export default function KenoPage() {
     ticketsThisRound < MAX_TICKETS_PER_ROUND &&
     roundState?.phase === "betting" &&
     (roundState?.secondsLeft ?? 0) > 0 &&
-    currentPicks.length >= 1 &&
+    currentPicks.length === 20 &&
     !isNaN(activeBet) && activeBet > 0 &&
     activeBet <= balance &&
     (!settings || (activeBet >= parseFloat(settings.minBet) && activeBet <= parseFloat(settings.maxBet))) &&
@@ -1364,7 +1364,7 @@ export default function KenoPage() {
                         ? completedRoundResult.totalPayout > 0
                           ? `+${completedRoundResult.totalPayout.toFixed(2)} USDT won`
                           : "No winning numbers this round"
-                        : "Choose up to 10 numbers"}
+                        : "Choose exactly 20 numbers"}
                     </h2>
                   <p className="mt-1 text-sm font-semibold text-cyan-300">
                       {completedRoundResult && !animating
@@ -1480,7 +1480,7 @@ export default function KenoPage() {
               {/* ── Selection info + Clear ───────────────────────────── */}
               <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-white/10 pt-3">
                 <div className="flex items-center gap-2 text-xs text-slate-500">
-                  <span className="font-bold text-slate-200">{currentPicks.length}/10</span> selected
+                  <span className="font-bold text-slate-200">{currentPicks.length}/20</span> selected
                 </div>
                 <div className="flex items-center gap-3">
                   <button type="button" data-testid="button-clear-keno-selection" onClick={() => setCurrentPicks([])} disabled={currentPicks.length === 0 || animating} className="text-xs font-bold text-slate-500 hover:text-white disabled:opacity-30">Clear</button>

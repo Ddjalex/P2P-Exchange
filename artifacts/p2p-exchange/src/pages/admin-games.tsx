@@ -277,139 +277,182 @@ function PlayersTab() {
 
 // ─── Paytable tab ─────────────────────────────────────────────────────────────
 
-function PaytableTab() {
-  const [paytable, setPaytable] = useState<PaytableEntry[]>([]);
+interface RoundPoolPreview {
+  round_id: number;
+  phase: string;
+  confirmed_entries: number;
+  house_margin_percent: number;
+  gross_pool: number;
+  owner_profit_allocation: number;
+  prize_budget: number;
+}
+interface RoundHistoryEntry {
+  round_id: number;
+  confirmed_entries: number | null;
+  house_margin_percent: number | null;
+  gross_pool: number | null;
+  owner_profit_allocation: number | null;
+  prize_budget: number | null;
+  total_prizes_paid: number | null;
+  unclaimed_amount: number | null;
+  created_at: string;
+}
+function PoolFinancialsTab() {
+  const [marginPercent, setMarginPercent] = useState("20");
+  const [savedMargin, setSavedMargin] = useState<number | null>(null);
+  const [applying, setApplying] = useState(false);
+  const [applied, setApplied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [preview, setPreview] = useState<RoundPoolPreview | null>(null);
+  const [history, setHistory] = useState<RoundHistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [editedPick, setEditedPick] = useState(1);
-  const [drafts, setDrafts] = useState<Record<string, string>>({});
-  const [targetRtp, setTargetRtp] = useState<string>("80");
-  const [applyingRtp, setApplyingRtp] = useState(false);
-  const [rtpApplied, setRtpApplied] = useState(false);
-  const [rtpError, setRtpError] = useState<string | null>(null);
 
-  async function applyTargetRtp() {
-    setApplyingRtp(true);
-    setRtpApplied(false);
-    setRtpError(null);
+  async function loadAll() {
     try {
-      const rtpNum = parseFloat(targetRtp);
-      if (isNaN(rtpNum) || rtpNum < 0 || rtpNum > 100) {
-        setRtpError("Target RTP must be a number between 0 and 100");
-        return;
-      }
-      const houseEdge = (100 - rtpNum) / 100;
-      const res = await adminFetch("/games/keno/house-edge", {
-        method: "PUT",
-        body: JSON.stringify({ house_edge: houseEdge }),
-      });
-      if (res.ok) {
-        const fresh = await adminGet<PaytableEntry[]>("/games/keno/paytable");
-        setPaytable(fresh);
-        const d: Record<string, string> = {};
-        for (const row of fresh) d[`${row.picks}_${row.hits}`] = row.multiplier;
-        setDrafts(d);
-        setRtpApplied(true);
-      } else {
-        const body = await res.json().catch(() => ({}));
-        setRtpError(body.error || "Failed to apply target RTP");
-      }
+      const [marginRes, previewRes, historyRes] = await Promise.all([
+        adminGet<{ house_margin_percent: number }>("/games/keno/house-margin"),
+        adminGet<RoundPoolPreview>("/games/keno/current-round-pool"),
+        adminGet<RoundHistoryEntry[]>("/games/keno/round-history?limit=20"),
+      ]);
+      setSavedMargin(marginRes.house_margin_percent);
+      setMarginPercent(String(marginRes.house_margin_percent));
+      setPreview(previewRes);
+      setHistory(historyRes);
+    } catch (err) {
+      console.error(err);
     } finally {
-      setApplyingRtp(false);
+      setLoading(false);
     }
   }
 
   useEffect(() => {
-    adminGet<PaytableEntry[]>("/games/keno/paytable")
-      .then(data => {
-        setPaytable(data);
-        const d: Record<string, string> = {};
-        for (const row of data) d[`${row.picks}_${row.hits}`] = row.multiplier;
-        setDrafts(d);
-      })
-      .catch(console.error)
-      .finally(() => setLoading(false));
+    loadAll();
+    const interval = setInterval(() => {
+      adminGet<RoundPoolPreview>("/games/keno/current-round-pool").then(setPreview).catch(console.error);
+    }, 5000);
+    return () => clearInterval(interval);
   }, []);
 
-  function handleChange(picks: number, hits: number, val: string) {
-    setDrafts(prev => ({ ...prev, [`${picks}_${hits}`]: val }));
-    setSaved(false);
-  }
+  const draftMarginNum = parseFloat(marginPercent);
+  const livePreview = preview && !isNaN(draftMarginNum) ? {
+    grossPool: preview.gross_pool,
+    ownerProfit: parseFloat((preview.gross_pool * (draftMarginNum / 100)).toFixed(2)),
+    prizeBudget: parseFloat((preview.gross_pool * (1 - draftMarginNum / 100)).toFixed(2)),
+  } : null;
 
-  async function save() {
-    setSaving(true);
-    const entries = paytable.map(r => ({
-      picks: r.picks,
-      hits: r.hits,
-      multiplier: drafts[`${r.picks}_${r.hits}`] ?? r.multiplier,
-    }));
+  async function applyMargin() {
+    setApplying(true);
+    setApplied(false);
+    setError(null);
     try {
-      const res = await adminFetch("/games/keno/paytable", {
+      const num = parseFloat(marginPercent);
+      if (isNaN(num) || num < 0 || num > 100) {
+        setError("Margin must be a number between 0 and 100");
+        return;
+      }
+      const res = await adminFetch("/games/keno/house-margin", {
         method: "PUT",
-        body: JSON.stringify(entries),
+        body: JSON.stringify({ house_margin_percent: num }),
       });
       if (res.ok) {
-        setSaved(true);
-        // Update local paytable for live RTP recalculation
-        setPaytable(prev => prev.map(r => ({
-          ...r,
-          multiplier: drafts[`${r.picks}_${r.hits}`] ?? r.multiplier,
-        })));
+        setSavedMargin(num);
+        setApplied(true);
+      } else {
+        const body = await res.json().catch(() => ({}));
+        setError(body.error || "Failed to apply margin");
       }
     } finally {
-      setSaving(false);
+      setApplying(false);
     }
   }
 
-  // Build a live paytable from drafts for RTP calculation
-  const livePt: PaytableEntry[] = paytable.map(r => ({
-    ...r,
-    multiplier: drafts[`${r.picks}_${r.hits}`] ?? r.multiplier,
-  }));
-
   if (loading) return <div className="text-center py-8 text-muted-foreground text-sm">Loading…</div>;
-
-  const pickRows = paytable.filter(r => r.picks === editedPick);
-  const rtp = calcRtp(editedPick, livePt);
-  const rtpColor = rtp >= 0.75 && rtp <= 0.95 ? "text-green-400" : "text-amber-400";
 
   return (
     <div className="space-y-4">
-      {/* Target RTP / House Edge control */}
+      {/* House Margin control */}
       <div className="rounded-xl border border-purple-500/30 bg-purple-500/5 p-4 space-y-3">
         <div className="flex items-center gap-2">
           <BarChart2 className="w-4 h-4 text-purple-400" />
-          <span className="text-sm font-semibold">Target RTP (auto-scales all multipliers)</span>
+          <span className="text-sm font-semibold">House Profit Margin</span>
         </div>
         <p className="text-xs text-muted-foreground">
-          Set a single target RTP percentage and every multiplier below is automatically recalculated proportionally. The draw itself always stays 100% random — only payout amounts change.
+          All confirmed bets in a round form a shared pool. This margin is the owner's share; the rest is split among winners. Changing this only affects future rounds — the current round already locked its margin. The draw itself always stays 100% random.
         </p>
         <div className="flex items-center gap-2">
           <input
             type="number"
-            min="1"
-            max="99"
+            min="0"
+            max="100"
             step="0.1"
-            value={targetRtp}
-            onChange={e => { setTargetRtp(e.target.value); setRtpApplied(false); }}
+            value={marginPercent}
+            onChange={e => { setMarginPercent(e.target.value); setApplied(false); }}
             className="flex-1 bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-500"
           />
-          <span className="text-sm text-muted-foreground">% RTP</span>
+          <span className="text-sm text-muted-foreground">% margin</span>
           <button
-            onClick={applyTargetRtp}
-            disabled={applyingRtp}
+            onClick={applyMargin}
+            disabled={applying}
             className="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-sm font-semibold flex items-center gap-1.5 disabled:opacity-50 flex-shrink-0"
           >
-            {applyingRtp ? <RefreshCw className="w-4 h-4 animate-spin" /> : rtpApplied ? <CheckCircle className="w-4 h-4" /> : null}
-            {applyingRtp ? "Applying…" : rtpApplied ? "Applied!" : "Apply"}
+            {applying ? <RefreshCw className="w-4 h-4 animate-spin" /> : applied ? <CheckCircle className="w-4 h-4" /> : null}
+            {applying ? "Applying…" : applied ? "Applied!" : "Apply"}
           </button>
         </div>
-        {rtpError && <p className="text-xs text-red-400">{rtpError}</p>}
+        {error && <p className="text-xs text-red-400">{error}</p>}
+        {savedMargin !== null && (
+          <p className="text-xs text-muted-foreground">Currently active for new rounds: <span className="font-semibold text-foreground">{savedMargin}%</span></p>
+        )}
       </div>
 
-    </div>
+      {livePreview && preview && (
+        <div className="rounded-xl border border-border bg-secondary/30 p-4 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-muted-foreground">Current Round #{preview.round_id} ({preview.phase})</span>
+            <span className="text-xs text-muted-foreground">{preview.confirmed_entries} confirmed entries</span>
+          </div>
+          <div className="grid grid-cols-3 gap-2 pt-1">
+            <div className="text-center">
+              <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Gross Pool</div>
+              <div className="text-sm font-bold">{livePreview.grossPool.toFixed(2)}</div>
+            </div>
+            <div className="text-center">
+              <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Owner Profit</div>
+              <div className="text-sm font-bold text-purple-400">{livePreview.ownerProfit.toFixed(2)}</div>
+            </div>
+            <div className="text-center">
+              <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Prize Budget</div>
+              <div className="text-sm font-bold text-green-400">{livePreview.prizeBudget.toFixed(2)}</div>
+            </div>
+          </div>
+        </div>
+      )}
 
+      <div className="space-y-2">
+        <div className="flex items-center gap-2 px-1">
+          <TrendingUp className="w-4 h-4 text-muted-foreground" />
+          <span className="text-sm font-semibold">Round Financial History</span>
+        </div>
+        {history.length === 0 && (
+          <p className="text-xs text-muted-foreground px-1">No completed rounds with financial data yet.</p>
+        )}
+        {history.map(r => (
+          <div key={r.round_id} className="rounded-xl bg-secondary/50 border border-border px-4 py-3 space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-semibold">Round #{r.round_id}</span>
+              <span className="text-xs text-muted-foreground">{r.confirmed_entries ?? 0} entries · {r.house_margin_percent !== null ? (r.house_margin_percent + "% margin") : "—"}</span>
+            </div>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+              <div className="flex justify-between"><span className="text-muted-foreground">Gross Pool</span><span>{r.gross_pool !== null ? r.gross_pool.toFixed(2) : "—"}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Owner Profit</span><span>{r.owner_profit_allocation !== null ? r.owner_profit_allocation.toFixed(2) : "—"}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Prize Budget</span><span>{r.prize_budget !== null ? r.prize_budget.toFixed(2) : "—"}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Prizes Paid</span><span>{r.total_prizes_paid !== null ? r.total_prizes_paid.toFixed(2) : "—"}</span></div>
+              <div className="flex justify-between col-span-2"><span className="text-muted-foreground">Unclaimed</span><span>{r.unclaimed_amount !== null ? r.unclaimed_amount.toFixed(2) : "—"}</span></div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -528,7 +571,7 @@ export default function AdminGamesPage() {
   const tabs: { id: Tab; label: string; icon: React.FC<any> }[] = [
     { id: "overview", label: "Overview", icon: BarChart2 },
     { id: "players", label: "Players", icon: Users },
-    { id: "paytable", label: "Paytable", icon: TrendingUp },
+    { id: "paytable", label: "Financials", icon: TrendingUp },
     { id: "settings", label: "Settings", icon: Settings },
   ];
 
@@ -565,7 +608,7 @@ export default function AdminGamesPage() {
               .finally(() => setStatsLoading(false));
           }} />}
           {tab === "players" && <PlayersTab />}
-          {tab === "paytable" && <PaytableTab />}
+          {tab === "paytable" && <PoolFinancialsTab />}
           {tab === "settings" && <SettingsTab />}
         </div>
       </AdminLayout>

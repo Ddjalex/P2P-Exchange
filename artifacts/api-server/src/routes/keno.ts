@@ -369,6 +369,103 @@ export function poolRawEntitlement(hits: number, betAmount: number): number {
   return betAmount * (1 / p);
 }
 
+// ─── Pool/pari-mutuel round settlement (round-wide, computed once per draw) ──
+
+interface PoolTicketResult extends SettledTicketResult {}
+
+interface RoundPoolSettlement {
+  houseMarginPercent: number;
+  grossPool:          number;
+  ownerProfitAllocation: number;
+  prizeBudget:        number;
+  totalPrizesPaid:    number;
+  unclaimedAmount:    number;
+  confirmedEntries:   number;
+  scalingFactor:      number;
+  batchResults:       Map<string, PoolTicketResult[]>; // same key as activeRound.bets: `${userId}:${mode}`
+}
+
+/**
+ * Computes the full pool/pari-mutuel settlement for one completed round.
+ * MUST be called once, for the whole round, BEFORE any individual wallet is touched.
+ * Does NOT write to the database or touch any balance — pure computation only.
+ *
+ * Formula (matches the admin-configured spec exactly):
+ *   gross_pool          = sum of all confirmed bet amounts this round
+ *   owner_profit         = gross_pool * (house_margin_percent / 100)
+ *   prize_budget         = gross_pool - owner_profit
+ *   raw_entitlement(t)   = poolRawEntitlement(hits, betAmount)   [0 below POOL_MIN_WINNING_HITS]
+ *   scaling_factor       = prize_budget / sum(raw_entitlements)  [capped at 1 — never scales UP]
+ *   final_payout(t)      = round(raw_entitlement(t) * scaling_factor, 2)
+ *
+ * The draw itself (which numbers matched) is never touched here — only the
+ * payout math. This function receives the already-drawn numbers as input.
+ */
+async function computeRoundPoolSettlement(
+  bets: Map<string, PendingBatch>,
+  drawn: number[],
+): Promise<RoundPoolSettlement> {
+  const drawnSet = new Set(drawn);
+  const houseMarginPercent = parseFloat(await getSetting("house_margin_percent", "20"));
+
+  // Pass 1: gross pool + per-ticket hit counts (no wallet access, pure computation)
+  let grossPool = 0;
+  const perBatch = new Map<string, { picks: number[]; matches: number[]; hits: number; betAmount: number; betAmountStr: string }[]>();
+  for (const [key, batch] of bets.entries()) {
+    grossPool += parseFloat(batch.totalStaked);
+    const ticketData = batch.tickets.map(t => {
+      const betAmount = parseFloat(t.betAmount);
+      const matches = t.picks.filter(n => drawnSet.has(n));
+      return { picks: t.picks, matches, hits: matches.length, betAmount, betAmountStr: t.betAmount };
+    });
+    perBatch.set(key, ticketData);
+  }
+  grossPool = parseFloat(grossPool.toFixed(2));
+  const ownerProfitAllocation = parseFloat((grossPool * (houseMarginPercent / 100)).toFixed(2));
+  const prizeBudget = parseFloat((grossPool - ownerProfitAllocation).toFixed(2));
+
+  // Pass 2: raw entitlements (before scaling)
+  let sumEntitlements = 0;
+  for (const ticketData of perBatch.values()) {
+    for (const t of ticketData) sumEntitlements += poolRawEntitlement(t.hits, t.betAmount);
+  }
+  // Scaling factor NEVER exceeds 1 — if the raw entitlements are less than the
+  // budget, winners simply get their full raw share and the rest goes unclaimed.
+  const scalingFactor = sumEntitlements > 0 && sumEntitlements > prizeBudget
+    ? prizeBudget / sumEntitlements
+    : 1;
+
+  // Pass 3: final payouts
+  let totalPrizesPaid = 0;
+  let confirmedEntries = 0;
+  const batchResults = new Map<string, PoolTicketResult[]>();
+  for (const [key, ticketData] of perBatch.entries()) {
+    const results: PoolTicketResult[] = ticketData.map(t => {
+      confirmedEntries++;
+      const raw = poolRawEntitlement(t.hits, t.betAmount);
+      const payout = parseFloat((raw * scalingFactor).toFixed(2));
+      totalPrizesPaid += payout;
+      return {
+        picks:      t.picks,
+        betAmount:  t.betAmountStr,
+        matches:    t.matches,
+        hitCount:   t.hits,
+        multiplier: t.betAmount > 0 ? parseFloat((payout / t.betAmount).toFixed(4)) : 0,
+        payout,
+        isWin:      payout > 0,
+      };
+    });
+    batchResults.set(key, results);
+  }
+  totalPrizesPaid = parseFloat(totalPrizesPaid.toFixed(2));
+  const unclaimedAmount = parseFloat((prizeBudget - totalPrizesPaid).toFixed(2));
+
+  return {
+    houseMarginPercent, grossPool, ownerProfitAllocation, prizeBudget,
+    totalPrizesPaid, unclaimedAmount, confirmedEntries, scalingFactor, batchResults,
+  };
+}
+
 // ─── Seed helpers ────────────────────────────────────────────────────────────
 
 let _seeded = false;
@@ -679,10 +776,18 @@ async function advanceRound() {
   activeRound.drawTimestamp = drawTimestamp;
   const drawn = deriveProvablyFairDraw(activeRound.serverSeed, activeRound.roundId, drawTimestamp);
 
+  // ── Pool/pari-mutuel settlement: compute round-wide totals BEFORE touching
+  // any individual wallet. Must happen once, for the whole round.
+  const batches = Array.from(activeRound.bets.values());
+  const poolSettlement = await computeRoundPoolSettlement(activeRound.bets, drawn);
+
   // Settle every pending batch BEFORE flipping to "drawing" so the first
   // client poll that sees phase==="drawing" already has results.
-  const batches = Array.from(activeRound.bets.values());
-  await Promise.allSettled(batches.map(batch => settleUserBatch(batch, drawn)));
+  await Promise.allSettled(
+    Array.from(activeRound.bets.entries()).map(([key, batch]) =>
+      settleUserBatch(batch, drawn, poolSettlement.batchResults.get(key) ?? [])
+    )
+  );
 
   // Reveal the server seed now that the draw is locked in
   activeRound.serverSeedRevealed = activeRound.serverSeed;
@@ -701,6 +806,13 @@ async function advanceRound() {
     seedTimestamp:    new Date(snapshot.seedTimestamp),
     drawTimestamp:    new Date(drawTimestamp),
     participantCount: batches.length,
+    houseMarginPercent:    poolSettlement.houseMarginPercent.toFixed(2),
+    grossPool:             poolSettlement.grossPool.toFixed(2),
+    ownerProfitAllocation: poolSettlement.ownerProfitAllocation.toFixed(2),
+    prizeBudget:           poolSettlement.prizeBudget.toFixed(2),
+    totalPrizesPaid:       poolSettlement.totalPrizesPaid.toFixed(2),
+    unclaimedAmount:       poolSettlement.unclaimedAmount.toFixed(2),
+    confirmedEntries:      poolSettlement.confirmedEntries,
   }).catch((err: unknown) => {
     console.error("[Keno] Failed to persist round", snapshot.roundId, err);
   });
@@ -719,11 +831,12 @@ async function advanceRound() {
 //   • Credits TOTAL_PAYOUT in ONE atomic SQL UPDATE (SELECT … FOR UPDATE)
 //   • Inserts one keno_batches row + N keno_rounds rows + one keno_transactions row
 
-async function settleUserBatch(batch: PendingBatch, drawn: number[]): Promise<void> {
+async function settleUserBatch(batch: PendingBatch, drawn: number[], precomputedResults: PoolTicketResult[]): Promise<void> {
   const { userId, tickets, totalStaked, mode } = batch;
 
-  // Evaluate all tickets against the draw (pure computation + paytable lookup)
-  const ticketResults = await evaluateUserBatch(tickets, drawn);
+  // Pool model: use the round-wide precomputed, scaled results — do NOT
+  // re-evaluate independently, since payouts depend on the whole rounds pool.
+  const ticketResults = precomputedResults;
   const totalPayout = parseFloat(
     ticketResults.reduce((sum, r) => sum + r.payout, 0).toFixed(2),
   );
@@ -1182,8 +1295,8 @@ kenoRouter.post("/bet", async (req, res) => {
     if (activeRound.phase !== "betting")
       return res.status(400).json({ error: "Betting is closed — wait for the next round" });
 
-    if (!Array.isArray(picks) || picks.length < 1 || picks.length > 10)
-      return res.status(400).json({ error: "Select 1–10 numbers" });
+    if (!Array.isArray(picks) || picks.length !== 20)
+      return res.status(400).json({ error: "Select exactly 20 numbers" });
     if (picks.some((n: any) => !Number.isInteger(n) || n < 1 || n > 80))
       return res.status(400).json({ error: "Numbers must be integers 1–80" });
     if (new Set(picks).size !== picks.length)
@@ -1319,8 +1432,8 @@ kenoRouter.post("/bet-batch", async (req, res) => {
       else activeRound.bets.delete(betKey);
     };
 
-    if (!Array.isArray(picks) || picks.length < 1 || picks.length > 10) {
-      restore(); return res.status(400).json({ error: "Select 1–10 numbers per ticket" });
+    if (!Array.isArray(picks) || picks.length !== 20) {
+      restore(); return res.status(400).json({ error: "Select exactly 20 numbers per ticket" });
     }
     if (picks.some((n: any) => !Number.isInteger(n) || n < 1 || n > 80)) {
       restore(); return res.status(400).json({ error: "Numbers must be integers 1–80" });
@@ -1394,8 +1507,8 @@ kenoRouter.post("/play", async (req, res) => {
     const { picks, betAmount, mode } = req.body;
 
     // ── Validate inputs ──────────────────────────────────────────────────────
-    if (!Array.isArray(picks) || picks.length < 1 || picks.length > 10)
-      return res.status(400).json({ error: "Select 1–10 numbers" });
+    if (!Array.isArray(picks) || picks.length !== 20)
+      return res.status(400).json({ error: "Select exactly 20 numbers" });
     if (picks.some((n: any) => !Number.isInteger(n) || n < 1 || n > 80))
       return res.status(400).json({ error: "Numbers must be integers between 1 and 80" });
     if (new Set(picks).size !== picks.length)
@@ -1584,8 +1697,8 @@ kenoRouter.post("/play-batch", async (req, res) => {
     for (const [i, raw] of (tickets as any[]).entries()) {
       try {
         const { picks, betAmount: rawBet } = raw ?? {};
-        if (!Array.isArray(picks) || picks.length < 1 || picks.length > 10)
-          return res.status(400).json({ error: `Ticket ${i + 1}: select 1–10 numbers` });
+        if (!Array.isArray(picks) || picks.length !== 20)
+          return res.status(400).json({ error: `Ticket ${i + 1}: select exactly 20 numbers` });
         if (picks.some((n: any) => !Number.isInteger(n) || n < 1 || n > 80))
           return res.status(400).json({ error: `Ticket ${i + 1}: numbers must be integers 1–80` });
         if (new Set(picks).size !== picks.length)
@@ -2068,6 +2181,102 @@ kenoAdminRouter.put("/keno/house-edge", adminAuth, async (req, res) => {
     });
   } catch (err) {
     console.error("keno house-edge update error", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// GET /api/admin/games/keno/house-margin
+kenoAdminRouter.get("/keno/house-margin", adminAuth, async (req, res) => {
+  try {
+    await ensureSeeded();
+    const marginPercent = parseFloat(await getSetting("house_margin_percent", "20"));
+    res.json({ house_margin_percent: marginPercent });
+  } catch (err) {
+    console.error("keno get house-margin error", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// PUT /api/admin/games/keno/house-margin — body: { house_margin_percent: 20 }
+// Only affects FUTURE rounds — the currently active round already locked
+// its own margin snapshot when computeRoundPoolSettlement last ran.
+kenoAdminRouter.put("/keno/house-margin", adminAuth, async (req, res) => {
+  try {
+    await ensureSeeded();
+    const raw = req.body?.house_margin_percent;
+    const marginPercent = parseFloat(raw);
+    if (isNaN(marginPercent) || marginPercent < 0 || marginPercent > 100) {
+      return res.status(400).json({ error: "house_margin_percent must be a number between 0 and 100" });
+    }
+    await db
+      .insert(kenoSettingsTable)
+      .values({ key: "house_margin_percent", value: String(marginPercent) })
+      .onConflictDoUpdate({
+        target: kenoSettingsTable.key,
+        set: { value: String(marginPercent), updatedAt: new Date() },
+      });
+    res.json({ success: true, house_margin_percent: marginPercent });
+  } catch (err) {
+    console.error("keno set house-margin error", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// GET /api/admin/games/keno/current-round-pool
+// Live preview of the CURRENT active round's pool, computed from confirmed
+// bets already placed. Does not touch anything — read-only.
+kenoAdminRouter.get("/keno/current-round-pool", adminAuth, async (req, res) => {
+  try {
+    const marginPercent = parseFloat(await getSetting("house_margin_percent", "20"));
+    const batches = Array.from(activeRound.bets.values());
+    let confirmedEntries = 0;
+    let grossPool = 0;
+    for (const batch of batches) {
+      confirmedEntries += batch.tickets.length;
+      grossPool += parseFloat(batch.totalStaked);
+    }
+    grossPool = parseFloat(grossPool.toFixed(2));
+    const ownerProfitAllocation = parseFloat((grossPool * (marginPercent / 100)).toFixed(2));
+    const prizeBudget = parseFloat((grossPool - ownerProfitAllocation).toFixed(2));
+    res.json({
+      round_id: activeRound.roundId,
+      phase: activeRound.phase,
+      confirmed_entries: confirmedEntries,
+      house_margin_percent: marginPercent,
+      gross_pool: grossPool,
+      owner_profit_allocation: ownerProfitAllocation,
+      prize_budget: prizeBudget,
+    });
+  } catch (err) {
+    console.error("keno current-round-pool error", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// GET /api/admin/games/keno/round-history?limit=20
+// Financial summary for completed rounds, most recent first.
+kenoAdminRouter.get("/keno/round-history", adminAuth, async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(String(req.query.limit ?? "20"), 10) || 20, 100);
+    const rows = await db
+      .select()
+      .from(kenoDrawsTable)
+      .orderBy(desc(kenoDrawsTable.roundId))
+      .limit(limit);
+    res.json(rows.map(r => ({
+      round_id: r.roundId,
+      confirmed_entries: r.confirmedEntries,
+      house_margin_percent: r.houseMarginPercent ? parseFloat(r.houseMarginPercent) : null,
+      gross_pool: r.grossPool ? parseFloat(r.grossPool) : null,
+      owner_profit_allocation: r.ownerProfitAllocation ? parseFloat(r.ownerProfitAllocation) : null,
+      prize_budget: r.prizeBudget ? parseFloat(r.prizeBudget) : null,
+      total_prizes_paid: r.totalPrizesPaid ? parseFloat(r.totalPrizesPaid) : null,
+      unclaimed_amount: r.unclaimedAmount ? parseFloat(r.unclaimedAmount) : null,
+      created_at: r.createdAt,
+      draw_timestamp: r.drawTimestamp,
+    })));
+  } catch (err) {
+    console.error("keno round-history error", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });
