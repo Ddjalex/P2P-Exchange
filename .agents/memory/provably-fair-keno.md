@@ -12,6 +12,13 @@ Every draw must be commit-then-reveal: publish a cryptographic commitment before
 
 ## How to apply
 
+### Payout source of truth
+All settlement paths must read the configured `keno_paytable` rows, including shared multiplayer rounds. Do not use a partial hardcoded payout map for runtime evaluation; it can silently make higher pick counts (5–10) settle as zero.
+
+**Why:** The database paytable supports every pick/hit combination through 10 picks and can be changed by admins; a legacy in-memory map only covered a subset and caused valid wins to disappear.
+
+**How to apply:** When adding or changing a Keno settlement path, use the persisted paytable for `(picks, hits)` and expose the resulting payout in the round result consumed by the frontend.
+
 ### Backend (`artifacts/api-server/src/routes/keno.ts`)
 
 Three functions at the top of the keno draw section:

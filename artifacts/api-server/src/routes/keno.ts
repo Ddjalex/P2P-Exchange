@@ -47,6 +47,19 @@ export function get_multiplier(picks_count: number, hits_count: number): number 
   return PAYTABLE[`${picks_count},${hits_count}`] ?? 0.0;
 }
 
+async function getConfiguredMultiplier(picksCount: number, hitsCount: number): Promise<number> {
+  await ensureSeeded();
+  const row = await db
+    .select({ multiplier: kenoPaytableTable.multiplier })
+    .from(kenoPaytableTable)
+    .where(and(
+      eq(kenoPaytableTable.picks, picksCount),
+      eq(kenoPaytableTable.hits, hitsCount),
+    ))
+    .then(rows => rows[0]);
+  return parseFloat(row?.multiplier ?? "0");
+}
+
 export interface SettlementTicket {
   picks: number[];
   bet_amount: number | string;
@@ -66,7 +79,7 @@ export async function settle_ticket(
   const hits = new Set(
     ticket.picks.filter(pick => new Set(drawn_20_numbers).has(pick)),
   ).size;
-  const multiplier = get_multiplier(ticket.picks.length, hits);
+  const multiplier = await getConfiguredMultiplier(ticket.picks.length, hits);
   const win_amount = Math.round(Number(ticket.bet_amount) * multiplier * 100) / 100;
 
   const settlement = await db.transaction(async tx => {
@@ -547,13 +560,24 @@ async function evaluateUserBatch(
   tickets: PendingTicket[],
   drawn: number[],
 ): Promise<SettledTicketResult[]> {
+  await ensureSeeded();
+  const paytableRows = await db
+    .select({
+      picks: kenoPaytableTable.picks,
+      hits: kenoPaytableTable.hits,
+      multiplier: kenoPaytableTable.multiplier,
+    })
+    .from(kenoPaytableTable);
+  const multipliers = new Map(
+    paytableRows.map(row => [`${row.picks},${row.hits}`, parseFloat(row.multiplier)]),
+  );
   const drawnSet = new Set(drawn);
 
   return tickets.map(ticket => {
     const betAmt   = parseFloat(ticket.betAmount);
     const matches  = ticket.picks.filter(n => drawnSet.has(n));
     const hitCount = matches.length;
-    const multiplier = get_multiplier(ticket.picks.length, hitCount);
+    const multiplier = multipliers.get(`${ticket.picks.length},${hitCount}`) ?? 0;
     const win_amount = parseFloat((betAmt * multiplier).toFixed(2));
     return {
       picks: ticket.picks,
@@ -983,10 +1007,14 @@ kenoRouter.get("/state", (req, res) => {
       ? Math.max(0, Math.ceil((round.bettingEndsAt - now) / 1000))
       : Math.max(0, Math.ceil(((round.drawingEndsAt ?? now) - now) / 1000));
 
-    const betKeyDemo = `${userId}:demo`;
-    const betKeyReal = `${userId}:real`;
-    const myBatch  = round.bets.get(betKeyDemo) ?? round.bets.get(betKeyReal);
-    const myResult = round.results.get(betKeyDemo) ?? round.results.get(betKeyReal);
+    const requestedMode = req.query.mode === "real" ? "real" : req.query.mode === "demo" ? "demo" : null;
+    const modeKeys = requestedMode
+      ? [`${userId}:${requestedMode}`]
+      : [`${userId}:demo`, `${userId}:real`];
+    const myBatchKey = modeKeys.find(key => round.bets.has(key));
+    const myResultKey = modeKeys.find(key => round.results.has(key));
+    const myBatch  = myBatchKey ? round.bets.get(myBatchKey) : undefined;
+    const myResult = myResultKey ? round.results.get(myResultKey) : undefined;
 
     // Build myBatch response (supports 1–10 tickets per user)
     const myBatchOut = myBatch ? {

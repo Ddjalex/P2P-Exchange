@@ -819,7 +819,7 @@ export default function KenoPage() {
     async function poll() {
       while (!stopped) {
         try {
-          const res = await apiFetch("/api/games/keno/state");
+          const res = await apiFetch(`/api/games/keno/state?mode=${mode}`);
           if (res.ok && !stopped) setRoundState(await res.json());
         } catch { /* ignore */ }
         await new Promise<void>(r => setTimeout(r, 1200));
@@ -1023,6 +1023,7 @@ export default function KenoPage() {
   const sortedFrequencies = [...frequencyValues].sort((a, b) => a - b);
   const hotCutoff = sortedFrequencies.length ? sortedFrequencies[Math.floor(sortedFrequencies.length * 0.75)] : 0;
   const coldCutoff = sortedFrequencies.length ? sortedFrequencies[Math.floor(sortedFrequencies.length * 0.25)] : 0;
+  const currentRoundWin = completedRoundResult?.totalPayout ?? 0;
 
   return (
     <AppLayout showNav={false} wide>
@@ -1059,6 +1060,15 @@ export default function KenoPage() {
               <button type="button" data-testid="button-topup-keno" onClick={() => setShowTopUp(true)} className="hidden rounded-lg bg-emerald-500 px-3 py-2 text-xs font-bold text-[#10221c] transition hover:bg-emerald-400 sm:block">
                 Top up
               </button>
+            )}
+            {currentRoundWin > 0 && roundState?.phase === "drawing" && (
+              <div
+                data-testid="keno-header-win"
+                className="rounded-full border border-emerald-300/50 bg-emerald-400/15 px-3 py-1.5 text-xs font-black text-emerald-200 shadow-lg shadow-emerald-500/10"
+                aria-live="polite"
+              >
+                Win +{currentRoundWin.toFixed(2)} USDT
+              </div>
             )}
             {mode === "demo" && balance < 1 && (
               <button type="button" data-testid="button-reset-demo" onClick={resetDemo} disabled={resettingDemo} className="rounded-lg bg-cyan-400 px-3 py-2 text-xs font-bold text-[#10221c] disabled:opacity-50">
