@@ -322,12 +322,51 @@ const BASE_PAYTABLE_FAIR: Array<{ picks: number; hits: number; multiplier: strin
 function computeActivePaytable(
   houseEdge: number,
 ): Array<{ picks: number; hits: number; multiplier: string }> {
-  const rtpFactor = 1 - Math.max(0, Math.min(houseEdge, 0.99));
+  const rtpFactor = 1 - Math.max(0, Math.min(houseEdge, 1));
   return BASE_PAYTABLE_FAIR.map(row => {
     const base = parseFloat(row.multiplier);
     const active = base === 0 ? 0 : parseFloat((base * rtpFactor).toFixed(4));
     return { picks: row.picks, hits: row.hits, multiplier: String(active) };
   });
+}
+
+// ─── Pool/pari-mutuel entitlement calculation (picks always = 20) ──────────
+
+// Precompute log-factorials 0..80 once (avoids overflow from raw factorials of C(80,20)).
+const LOG_FACTORIAL: number[] = [0];
+for (let i = 1; i <= 80; i++) LOG_FACTORIAL.push(LOG_FACTORIAL[i - 1] + Math.log(i));
+
+function logChoose(n: number, r: number): number {
+  if (r < 0 || r > n) return -Infinity;
+  return LOG_FACTORIAL[n] - LOG_FACTORIAL[r] - LOG_FACTORIAL[n - r];
+}
+
+/**
+ * True hypergeometric probability of exactly `hits` matches when picking
+ * `picks` numbers, with 20 drawn from a pool of 80.
+ * P(hits) = C(20, hits) * C(60, picks - hits) / C(80, picks)
+ */
+export function hypergeometricP(picks: number, hits: number): number {
+  const logP = logChoose(20, hits) + logChoose(60, picks - hits) - logChoose(80, picks);
+  return Math.exp(logP);
+}
+
+// Minimum hits (out of 20 picks) required to win any share of the pool.
+// Expected/average hits by pure chance is 5 (20 picks * 20/80); we require
+// double that as a genuine "beat the odds" threshold before paying anything.
+export const POOL_MIN_WINNING_HITS = 10;
+
+/**
+ * Raw (pre-scaling) entitlement for one ticket in the pool model.
+ * Weighted inversely by how rare the outcome was (standard pari-mutuel design):
+ * rarer, higher hit-counts get proportionally larger raw shares.
+ * Returns 0 for hits below POOL_MIN_WINNING_HITS.
+ */
+export function poolRawEntitlement(hits: number, betAmount: number): number {
+  if (hits < POOL_MIN_WINNING_HITS) return 0;
+  const p = hypergeometricP(20, hits);
+  if (p <= 0) return 0;
+  return betAmount * (1 / p);
 }
 
 // ─── Seed helpers ────────────────────────────────────────────────────────────
@@ -498,7 +537,7 @@ function deriveProvablyFairDraw(serverSeed: string, roundId: number, drawTimesta
 // command after evaluation.
 
 const BETTING_MS = 30_000;  // 30-second betting window
-const DRAWING_MS =  8_000;  // Keep the settled ticket/result visible for 8 seconds
+const DRAWING_MS =  10_000;  // Keep the settled ticket/result visible for 10 seconds
 
 // ── Batch / ticket types ──────────────────────────────────────────────────────
 
@@ -1017,11 +1056,14 @@ kenoRouter.get("/state", (req, res) => {
     const myResult = myResultKey ? round.results.get(myResultKey) : undefined;
 
     // Build myBatch response (supports 1–10 tickets per user)
-    const myBatchOut = myBatch ? {
-      mode:        myBatch.mode,
-      totalStaked: myBatch.totalStaked,
-      ticketCount: myBatch.tickets.length,
-      tickets:     myBatch.tickets.map(t => ({
+    // SECURITY/RELIABILITY FIX: gate on myBatch OR myResult, not just myBatch.
+    // Once a round settles, the pending bet may be cleared from round.bets,
+    // but the settled outcome still lives in round.results — dont discard it.
+    const myBatchOut = (myBatch || myResult) ? {
+      mode:        myBatch?.mode ?? myResult?.mode,
+      totalStaked: myBatch?.totalStaked ?? (myResult ? myResult.tickets.reduce((sum, t) => sum + parseFloat(t.betAmount), 0).toFixed(2) : "0"),
+      ticketCount: myBatch?.tickets.length ?? myResult?.tickets.length ?? 0,
+      tickets:     (myBatch?.tickets ?? myResult?.tickets ?? []).map(t => ({
         picks:     t.picks,
         betAmount: t.betAmount,
       })),
@@ -1343,6 +1385,9 @@ kenoRouter.post("/bet-batch", async (req, res) => {
 
 // POST /api/games/keno/play  — play a round
 kenoRouter.post("/play", async (req, res) => {
+  // DISABLED 2026-08-10: instant-play removed in favor of pool-based shared rounds.
+  return res.status(410).json({ error: "Instant play has been removed. Please use the shared round (/bet) instead." });
+  // eslint-disable-next-line no-unreachable
   try {
     await ensureSeeded();
     const userId = (req as any).userId;
@@ -1508,6 +1553,9 @@ kenoRouter.post("/play", async (req, res) => {
 //   6. Insert one keno_batches row + N keno_rounds rows + one keno_transactions row.
 
 kenoRouter.post("/play-batch", async (req, res) => {
+  // DISABLED 2026-08-10: instant-play removed in favor of pool-based shared rounds.
+  return res.status(410).json({ error: "Instant play has been removed. Please use the shared round (/bet-batch) instead." });
+  // eslint-disable-next-line no-unreachable
   try {
     await ensureSeeded();
     const userId = (req as any).userId;
@@ -1974,8 +2022,8 @@ kenoAdminRouter.put("/keno/house-edge", adminAuth, async (req, res) => {
     await ensureSeeded();
     const rawEdge = req.body?.house_edge;
     const houseEdge = parseFloat(rawEdge);
-    if (isNaN(houseEdge) || houseEdge < 0 || houseEdge >= 1)
-      return res.status(400).json({ error: "house_edge must be a number in [0, 1)" });
+    if (isNaN(houseEdge) || houseEdge < 0 || houseEdge > 1)
+      return res.status(400).json({ error: "house_edge must be a number in [0, 1]" });
 
     const activePaytable = computeActivePaytable(houseEdge);
 

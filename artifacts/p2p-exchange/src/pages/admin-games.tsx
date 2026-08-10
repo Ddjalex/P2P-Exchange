@@ -284,6 +284,41 @@ function PaytableTab() {
   const [saved, setSaved] = useState(false);
   const [editedPick, setEditedPick] = useState(1);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [targetRtp, setTargetRtp] = useState<string>("80");
+  const [applyingRtp, setApplyingRtp] = useState(false);
+  const [rtpApplied, setRtpApplied] = useState(false);
+  const [rtpError, setRtpError] = useState<string | null>(null);
+
+  async function applyTargetRtp() {
+    setApplyingRtp(true);
+    setRtpApplied(false);
+    setRtpError(null);
+    try {
+      const rtpNum = parseFloat(targetRtp);
+      if (isNaN(rtpNum) || rtpNum < 0 || rtpNum > 100) {
+        setRtpError("Target RTP must be a number between 0 and 100");
+        return;
+      }
+      const houseEdge = (100 - rtpNum) / 100;
+      const res = await adminFetch("/games/keno/house-edge", {
+        method: "PUT",
+        body: JSON.stringify({ house_edge: houseEdge }),
+      });
+      if (res.ok) {
+        const fresh = await adminGet<PaytableEntry[]>("/games/keno/paytable");
+        setPaytable(fresh);
+        const d: Record<string, string> = {};
+        for (const row of fresh) d[`${row.picks}_${row.hits}`] = row.multiplier;
+        setDrafts(d);
+        setRtpApplied(true);
+      } else {
+        const body = await res.json().catch(() => ({}));
+        setRtpError(body.error || "Failed to apply target RTP");
+      }
+    } finally {
+      setApplyingRtp(false);
+    }
+  }
 
   useEffect(() => {
     adminGet<PaytableEntry[]>("/games/keno/paytable")
@@ -341,85 +376,40 @@ function PaytableTab() {
 
   return (
     <div className="space-y-4">
-      {/* Pick selector */}
-      <div className="flex gap-1.5 overflow-x-auto pb-1">
-        {Array.from({ length: 10 }, (_, i) => i + 1).map(n => {
-          const pr = calcRtp(n, livePt);
-          return (
-            <button
-              key={n}
-              onClick={() => setEditedPick(n)}
-              className={`flex-shrink-0 flex flex-col items-center rounded-xl px-3 py-2 border text-xs transition-all ${
-                editedPick === n
-                  ? "bg-purple-600 border-purple-600 text-white"
-                  : "border-border text-muted-foreground hover:border-purple-500/50"
-              }`}
-            >
-              <span className="font-semibold">Pick {n}</span>
-              <span className={`text-[9px] mt-0.5 ${editedPick === n ? "text-purple-200" : pr < 0.70 || pr > 0.95 ? "text-amber-400" : "text-green-400"}`}>
-                {(pr * 100).toFixed(0)}%
-              </span>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* RTP indicator */}
-      <div className={`rounded-xl border px-4 py-2.5 flex items-center justify-between ${rtp < 0.70 || rtp > 0.95 ? "border-amber-500/30 bg-amber-500/5" : "border-green-500/30 bg-green-500/5"}`}>
+      {/* Target RTP / House Edge control */}
+      <div className="rounded-xl border border-purple-500/30 bg-purple-500/5 p-4 space-y-3">
         <div className="flex items-center gap-2">
-          <BarChart2 className={`w-4 h-4 ${rtpColor}`} />
-          <span className="text-sm text-muted-foreground">Live RTP for Pick {editedPick}</span>
+          <BarChart2 className="w-4 h-4 text-purple-400" />
+          <span className="text-sm font-semibold">Target RTP (auto-scales all multipliers)</span>
         </div>
-        <span className={`text-sm font-bold ${rtpColor}`}>{(rtp * 100).toFixed(2)}%</span>
+        <p className="text-xs text-muted-foreground">
+          Set a single target RTP percentage and every multiplier below is automatically recalculated proportionally. The draw itself always stays 100% random — only payout amounts change.
+        </p>
+        <div className="flex items-center gap-2">
+          <input
+            type="number"
+            min="1"
+            max="99"
+            step="0.1"
+            value={targetRtp}
+            onChange={e => { setTargetRtp(e.target.value); setRtpApplied(false); }}
+            className="flex-1 bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-500"
+          />
+          <span className="text-sm text-muted-foreground">% RTP</span>
+          <button
+            onClick={applyTargetRtp}
+            disabled={applyingRtp}
+            className="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-sm font-semibold flex items-center gap-1.5 disabled:opacity-50 flex-shrink-0"
+          >
+            {applyingRtp ? <RefreshCw className="w-4 h-4 animate-spin" /> : rtpApplied ? <CheckCircle className="w-4 h-4" /> : null}
+            {applyingRtp ? "Applying…" : rtpApplied ? "Applied!" : "Apply"}
+          </button>
+        </div>
+        {rtpError && <p className="text-xs text-red-400">{rtpError}</p>}
       </div>
 
-      {rtp < 0.50 && (
-        <div className="flex items-start gap-2 rounded-xl bg-amber-500/10 border border-amber-500/30 px-3 py-2">
-          <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
-          <p className="text-xs text-amber-400">RTP below 50% — multipliers may be too low. Target 75–90% for a balanced game.</p>
-        </div>
-      )}
-
-      {/* Multiplier rows */}
-      <div className="space-y-2">
-        {pickRows.map(r => {
-          const key = `${r.picks}_${r.hits}`;
-          const prob = hypergeometricP(r.picks, r.hits);
-          return (
-            <div key={key} className="rounded-xl bg-secondary/50 border border-border px-4 py-3">
-              <div className="flex items-center justify-between mb-2">
-                <div>
-                  <span className="text-sm font-semibold">{r.hits} hits</span>
-                  <span className="text-xs text-muted-foreground ml-2">P = {(prob * 100).toFixed(4)}%</span>
-                </div>
-                <span className="text-xs text-muted-foreground">
-                  EV: {(prob * parseFloat(drafts[key] ?? "0")).toFixed(4)}
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={drafts[key] ?? "0"}
-                  onChange={e => handleChange(r.picks, r.hits, e.target.value)}
-                  className="flex-1 bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-500"
-                />
-                <span className="text-sm text-muted-foreground">×</span>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      <button
-        onClick={save}
-        disabled={saving}
-        className="w-full py-3 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-semibold text-sm flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
-      >
-        {saving ? <><RefreshCw className="w-4 h-4 animate-spin" /> Saving…</> : saved ? <><CheckCircle className="w-4 h-4" /> Saved!</> : <><Save className="w-4 h-4" /> Save Paytable</>}
-      </button>
     </div>
+
   );
 }
 

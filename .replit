@@ -62,3 +62,7 @@ NODE_ENV = "development"
 
 [nix]
 channel = "stable-25_05"
+
+[[ports]]
+localPort = 8080
+externalPort = 80

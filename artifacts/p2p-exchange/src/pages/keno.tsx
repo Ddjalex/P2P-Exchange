@@ -865,7 +865,7 @@ export default function KenoPage() {
         setRevealedNums(prev => [...prev, drawn[i]]);
         setActiveDrawNumber(drawn[i]);
         setDrawProgress(i + 1);
-        await new Promise<void>(r => setTimeout(r, 150));
+        await new Promise<void>(r => setTimeout(r, 350));
       }
 
       if (animCancelledRef.current) return;
@@ -1264,7 +1264,7 @@ export default function KenoPage() {
               </div>
             )}
 
-            {completedRoundResult && !animating && roundState?.phase === "drawing" && (
+            {completedRoundResult && !animating && (
               <div className={`mb-3 rounded-xl border px-5 py-4 ${
                 completedRoundResult.totalPayout > 0
                   ? "border-emerald-400/40 bg-emerald-400/10"
@@ -1349,7 +1349,7 @@ export default function KenoPage() {
                   <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-300">
                       {animating
                         ? "Drawing numbers — shared draw!"
-                        : completedRoundResult && roundState?.phase === "drawing"
+                        : completedRoundResult
                         ? completedRoundResult.totalPayout > 0
                           ? "Round complete — winnings added to your balance"
                           : "Round complete — try again next round"
@@ -1360,14 +1360,14 @@ export default function KenoPage() {
                       : "Betting open — place your numbers!"}
                   </p>
                     <h2 className="text-xl font-black text-white sm:text-2xl">
-                      {completedRoundResult && !animating && roundState?.phase === "drawing"
+                      {completedRoundResult && !animating
                         ? completedRoundResult.totalPayout > 0
                           ? `+${completedRoundResult.totalPayout.toFixed(2)} USDT won`
                           : "No winning numbers this round"
                         : "Choose up to 10 numbers"}
                     </h2>
                   <p className="mt-1 text-sm font-semibold text-cyan-300">
-                      {completedRoundResult && !animating && roundState?.phase === "drawing"
+                      {completedRoundResult && !animating
                         ? `${completedRoundResult.tickets.reduce((sum, ticket) => sum + ticket.hitCount, 0)} number${completedRoundResult.tickets.reduce((sum, ticket) => sum + ticket.hitCount, 0) !== 1 ? "s" : ""} matched · ticket saved in History`
                         : `From 1 to 80 · ${currentPicks.length} selected`}
                     {(roundState?.totalBets ?? 0) > 0 && !animating && (

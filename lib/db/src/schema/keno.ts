@@ -83,6 +83,14 @@ export const kenoDrawsTable = pgTable("keno_draws", {
   drawTimestamp:      timestamp("draw_timestamp").notNull(),
   participantCount:   integer("participant_count").notNull().default(0),
   createdAt:          timestamp("created_at").notNull().defaultNow(),
+  // ── Pool/pari-mutuel financial snapshot (locked at round start) ──────────
+  houseMarginPercent: numeric("house_margin_percent", { precision: 5, scale: 2 }),
+  grossPool:          numeric("gross_pool", { precision: 14, scale: 2 }),
+  ownerProfitAllocation: numeric("owner_profit_allocation", { precision: 14, scale: 2 }),
+  prizeBudget:        numeric("prize_budget", { precision: 14, scale: 2 }),
+  totalPrizesPaid:    numeric("total_prizes_paid", { precision: 14, scale: 2 }),
+  unclaimedAmount:    numeric("unclaimed_amount", { precision: 14, scale: 2 }),
+  confirmedEntries:   integer("confirmed_entries"),
 });
 
 // ─── Game settings (min_bet, max_bet, game_enabled, min_topup, max_topup) ────
