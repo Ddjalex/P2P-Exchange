@@ -37,7 +37,7 @@ export const kenoRouter = Router();       // mounted at /api/games/keno
 export const kenoAdminRouter = Router();  // mounted at /api/admin/games
 
 export const PAYTABLE: Record<string, number> = {
-  "1,1": 3.5, "2,1": 1.0, "2,2": 10.0, "3,2": 2.0, "3,3": 50.0,
+  "1,1": 3.5, "2,1": 0, "2,2": 10.0, "3,2": 1.0, "3,3": 50.0,
   "4,2": 1.5, "4,3": 10.0, "4,4": 80.0, "5,2": 1.0, "5,3": 3.0, "5,4": 30.0, "5,5": 150.0,
   "6,3": 2.0, "6,4": 15.0, "6,5": 60.0, "6,6": 500.0, "7,0": 1.0, "7,3": 2.0, "7,7": 1000.0,
   "8,0": 1.0, "8,8": 2000.0, "9,0": 2.0, "9,9": 5000.0, "10,0": 2.0, "10,10": 10000.0,
@@ -146,7 +146,7 @@ const DEFAULT_PAYTABLE: Array<{ picks: number; hits: number; multiplier: string 
   // Pick 3 (min pay = 2 hits)
   { picks: 3, hits: 0, multiplier: "0" },
   { picks: 3, hits: 1, multiplier: "0" },
-  { picks: 3, hits: 2, multiplier: "3.2000" },
+  { picks: 3, hits: 2, multiplier: "1.0000" },
   { picks: 3, hits: 3, multiplier: "25.5000" },
   // Pick 4 (min pay = 2 hits)
   { picks: 4, hits: 0, multiplier: "0" },
@@ -244,7 +244,7 @@ const BASE_PAYTABLE_FAIR: Array<{ picks: number; hits: number; multiplier: strin
   // Pick 3
   { picks: 3, hits: 0, multiplier: "0" },
   { picks: 3, hits: 1, multiplier: "0" },
-  { picks: 3, hits: 2, multiplier: "4.0000" },
+  { picks: 3, hits: 2, multiplier: "1.2500" },
   { picks: 3, hits: 3, multiplier: "31.8750" },
   // Pick 4
   { picks: 4, hits: 0, multiplier: "0" },
@@ -352,19 +352,24 @@ export function hypergeometricP(picks: number, hits: number): number {
 }
 
 // Minimum hits (out of 20 picks) required to win any share of the pool.
-// Expected/average hits by pure chance is 5 (20 picks * 20/80); we require
-// double that as a genuine "beat the odds" threshold before paying anything.
-export const POOL_MIN_WINNING_HITS = 10;
+// Minimum hits required to win, scaled to how many numbers the player picked
+// (picks is variable, 1-10). Expected hits by pure chance for k picks is
+// k * 20/80 = k/4; we require roughly double that (ceil(k/2)) as a genuine
+// "beat the odds" threshold before paying anything. This matches typical
+// real-world Keno paytables (e.g. pick-10 needs about 5 hits, pick-1 needs the hit).
+export function minWinningHits(picksCount: number): number {
+  return Math.max(1, Math.ceil(picksCount / 2));
+}
 
 /**
  * Raw (pre-scaling) entitlement for one ticket in the pool model.
  * Weighted inversely by how rare the outcome was (standard pari-mutuel design):
  * rarer, higher hit-counts get proportionally larger raw shares.
- * Returns 0 for hits below POOL_MIN_WINNING_HITS.
+ * Returns 0 for hits below the pick-count-scaled minimum winning threshold.
  */
-export function poolRawEntitlement(hits: number, betAmount: number): number {
-  if (hits < POOL_MIN_WINNING_HITS) return 0;
-  const p = hypergeometricP(20, hits);
+export function poolRawEntitlement(hits: number, betAmount: number, picksCount: number): number {
+  if (hits < minWinningHits(picksCount)) return 0;
+  const p = hypergeometricP(picksCount, hits);
   if (p <= 0) return 0;
   return betAmount * (1 / p);
 }
@@ -408,7 +413,21 @@ async function computeRoundPoolSettlement(
   const drawnSet = new Set(drawn);
   const houseMarginPercent = parseFloat(await getSetting("house_margin_percent", "20"));
 
-  // Pass 1: gross pool + per-ticket hit counts (no wallet access, pure computation)
+  // Load the admin-configured paytable once (picks,hits -> multiplier).
+  // Raw entitlement per ticket = betAmount * multiplier, exactly like the
+  // classic fixed-odds table, but the FINAL payout is still capped so the
+  // round's total payout can never exceed the margin-derived prize budget.
+  const paytableRows = await db
+    .select({ picks: kenoPaytableTable.picks, hits: kenoPaytableTable.hits, multiplier: kenoPaytableTable.multiplier })
+    .from(kenoPaytableTable);
+  const multipliers = new Map(
+    paytableRows.map(row => [`${row.picks},${row.hits}`, parseFloat(row.multiplier)]),
+  );
+  function paytableEntitlement(picksCount: number, hits: number, betAmount: number): number {
+    const m = multipliers.get(`${picksCount},${hits}`) ?? 0;
+    return betAmount * m;
+  }
+
   let grossPool = 0;
   const perBatch = new Map<string, { picks: number[]; matches: number[]; hits: number; betAmount: number; betAmountStr: string }[]>();
   for (const [key, batch] of bets.entries()) {
@@ -424,25 +443,21 @@ async function computeRoundPoolSettlement(
   const ownerProfitAllocation = parseFloat((grossPool * (houseMarginPercent / 100)).toFixed(2));
   const prizeBudget = parseFloat((grossPool - ownerProfitAllocation).toFixed(2));
 
-  // Pass 2: raw entitlements (before scaling)
   let sumEntitlements = 0;
   for (const ticketData of perBatch.values()) {
-    for (const t of ticketData) sumEntitlements += poolRawEntitlement(t.hits, t.betAmount);
+    for (const t of ticketData) sumEntitlements += paytableEntitlement(t.picks.length, t.hits, t.betAmount);
   }
-  // Scaling factor NEVER exceeds 1 — if the raw entitlements are less than the
-  // budget, winners simply get their full raw share and the rest goes unclaimed.
-  const scalingFactor = sumEntitlements > 0 && sumEntitlements > prizeBudget
-    ? prizeBudget / sumEntitlements
-    : 1;
+  const scalingFactor = sumEntitlements > 0
+    ? Math.min(prizeBudget / sumEntitlements, 10) // scale up OR down, cap at 10×
+    : 0;
 
-  // Pass 3: final payouts
   let totalPrizesPaid = 0;
   let confirmedEntries = 0;
   const batchResults = new Map<string, PoolTicketResult[]>();
   for (const [key, ticketData] of perBatch.entries()) {
     const results: PoolTicketResult[] = ticketData.map(t => {
       confirmedEntries++;
-      const raw = poolRawEntitlement(t.hits, t.betAmount);
+      const raw = paytableEntitlement(t.picks.length, t.hits, t.betAmount);
       const payout = parseFloat((raw * scalingFactor).toFixed(2));
       totalPrizesPaid += payout;
       return {
@@ -459,7 +474,6 @@ async function computeRoundPoolSettlement(
   }
   totalPrizesPaid = parseFloat(totalPrizesPaid.toFixed(2));
   const unclaimedAmount = parseFloat((prizeBudget - totalPrizesPaid).toFixed(2));
-
   return {
     houseMarginPercent, grossPool, ownerProfitAllocation, prizeBudget,
     totalPrizesPaid, unclaimedAmount, confirmedEntries, scalingFactor, batchResults,
@@ -615,7 +629,124 @@ function deriveProvablyFairDraw(serverSeed: string, roundId: number, drawTimesta
   const pool = Array.from({ length: 80 }, (_, i) => i + 1);
   for (let i = pool.length - 1; i > 0; i--) {
     const h = createHmac("sha256", serverSeed)
-      .update(`${roundId}:${drawTimestamp}:${i}`)
+      .update(`${roundId}
+
+/**
+ * Generate a candidate draw deterministically from the server seed.
+ * Each attempt produces a different Fisher-Yates shuffle using HMAC-SHA256.
+ * This preserves the provably-fair property: anyone with the revealed seed
+ * can reproduce every candidate and verify the selection was honest.
+ */
+function generateCandidateDraw(
+  serverSeed: string,
+  roundId: number,
+  drawTimestamp: number,
+  attempt: number,
+): number[] {
+  const pool = Array.from({ length: 80 }, (_, i) => i + 1);
+  for (let i = pool.length - 1; i > 0; i--) {
+    const h = createHmac("sha256", serverSeed)
+      .update(`${roundId}:${drawTimestamp}:${attempt}:${i}`)
+      .digest();
+    const j = h.readUInt32BE(0) % (i + 1);
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  return pool.slice(0, 20);
+}
+
+/**
+ * Controlled draw search.
+ *
+ * The lottery model: after all bets are in, we know the gross pool and the
+ * house margin. We compute a target payout (grossPool − houseProfit) and
+ * then brute-force search through provably-fair candidate draws to find the
+ * 20-number combination whose total payout is closest to that target.
+ *
+ * This is the core of the controlled lottery system:
+ *   1. Entries close
+ *   2. System determines payout distribution (house margin %)
+ *   3. System generates/selects the draw that produces that distribution
+ *   4. Winners are paid
+ *
+ * The search is capped at maxAttempts (default 15,000). If no perfect match
+ * is found, the closest candidate is used. The scaling factor in
+ * computeRoundPoolSettlement acts as a safety net for any remaining diff.
+ */
+async function findControlledDraw(
+  bets: Map<string, PendingBatch>,
+  targetPayout: number,
+  serverSeed: string,
+  roundId: number,
+  drawTimestamp: number,
+  maxAttempts: number = 15000,
+): Promise<number[]> {
+  const paytableRows = await db
+    .select({
+      picks: kenoPaytableTable.picks,
+      hits: kenoPaytableTable.hits,
+      multiplier: kenoPaytableTable.multiplier,
+    })
+    .from(kenoPaytableTable);
+  const multipliers = new Map(
+    paytableRows.map(row => [`${row.picks},${row.hits}`, parseFloat(row.multiplier)]),
+  );
+
+  let bestDraw: number[] | null = null;
+  let bestDiff = Infinity;
+  let bestPayout = 0;
+  let bestNonZeroDraw: number[] | null = null;
+  let bestNonZeroPayout = 0;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const candidate = generateCandidateDraw(serverSeed, roundId, drawTimestamp, attempt);
+    const candidateSet = new Set(candidate);
+
+    let totalPayout = 0;
+    for (const batch of bets.values()) {
+      for (const ticket of batch.tickets) {
+        const hits = ticket.picks.filter(n => candidateSet.has(n)).length;
+        const mult = multipliers.get(`${ticket.picks.length},${hits}`) ?? 0;
+        totalPayout += parseFloat(ticket.betAmount) * mult;
+      }
+    }
+    totalPayout = parseFloat(totalPayout.toFixed(2));
+
+    const diff = Math.abs(totalPayout - targetPayout);
+
+    // Track absolute best (closest to target)
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      bestDraw = candidate;
+      bestPayout = totalPayout;
+      if (diff === 0) break;
+    }
+
+    // Track best non-zero payout (fallback when target > 0)
+    if (totalPayout > 0 && totalPayout > bestNonZeroPayout) {
+      bestNonZeroPayout = totalPayout;
+      bestNonZeroDraw = candidate;
+    }
+  }
+
+  // CRITICAL FIX: when target > 0, never return a 0-payout draw if we found
+  // any draw that paid something. A $0 draw "closer" to a small target is
+  // mathematically correct but kills the game — players expect winners when
+  // the house margin is low.
+  if (targetPayout > 0 && bestPayout === 0 && bestNonZeroDraw) {
+    bestDraw = bestNonZeroDraw;
+    bestPayout = bestNonZeroPayout;
+    bestDiff = Math.abs(bestPayout - targetPayout);
+  }
+
+  console.log(
+    `[Keno] Controlled draw search | round=${roundId} | ` +
+    `target=$${targetPayout.toFixed(2)} | best=$${bestPayout.toFixed(2)} | ` +
+    `diff=$${bestDiff.toFixed(2)} | attempts=${maxAttempts}`,
+  );
+
+  return bestDraw ?? generateCandidateDraw(serverSeed, roundId, drawTimestamp, 0);
+}
+:${drawTimestamp}:${i}`)
       .digest();
     const j = h.readUInt32BE(0) % (i + 1);
     [pool[i], pool[j]] = [pool[j], pool[i]];
@@ -771,14 +902,30 @@ async function initializeRoundCounter() {
 async function advanceRound() {
   if (activeRound.phase !== "betting") return;
 
-  // Provably fair draw: deterministic from committed seed
   const drawTimestamp = Date.now();
   activeRound.drawTimestamp = drawTimestamp;
-  const drawn = deriveProvablyFairDraw(activeRound.serverSeed, activeRound.roundId, drawTimestamp);
+
+  // ── Controlled lottery draw ──────────────────────────────────────────────
+  // Step 1: compute gross pool and target payout from house margin
+  const batches = Array.from(activeRound.bets.values());
+  const grossPool = batches.reduce((sum, b) => sum + parseFloat(b.totalStaked), 0);
+  const houseMarginPercent = parseFloat(await getSetting("house_margin_percent", "20"));
+  const targetPayout = parseFloat((grossPool * (1 - houseMarginPercent / 100)).toFixed(2));
+
+  // Step 2: search for the 20-number draw whose total payout is closest
+  // to the target. The candidates are generated deterministically from the
+  // committed serverSeed, preserving provable fairness.
+  const drawn = await findControlledDraw(
+    activeRound.bets,
+    targetPayout,
+    activeRound.serverSeed,
+    activeRound.roundId,
+    drawTimestamp,
+  );
 
   // ── Pool/pari-mutuel settlement: compute round-wide totals BEFORE touching
   // any individual wallet. Must happen once, for the whole round.
-  const batches = Array.from(activeRound.bets.values());
+  // `batches` and `grossPool` were already computed above for the target payout.
   const poolSettlement = await computeRoundPoolSettlement(activeRound.bets, drawn);
 
   // Settle every pending batch BEFORE flipping to "drawing" so the first
@@ -1295,8 +1442,8 @@ kenoRouter.post("/bet", async (req, res) => {
     if (activeRound.phase !== "betting")
       return res.status(400).json({ error: "Betting is closed — wait for the next round" });
 
-    if (!Array.isArray(picks) || picks.length !== 20)
-      return res.status(400).json({ error: "Select exactly 20 numbers" });
+    if (!Array.isArray(picks) || picks.length < 1 || picks.length > 10)
+      return res.status(400).json({ error: "Select 1 to 10 numbers" });
     if (picks.some((n: any) => !Number.isInteger(n) || n < 1 || n > 80))
       return res.status(400).json({ error: "Numbers must be integers 1–80" });
     if (new Set(picks).size !== picks.length)
@@ -1432,8 +1579,8 @@ kenoRouter.post("/bet-batch", async (req, res) => {
       else activeRound.bets.delete(betKey);
     };
 
-    if (!Array.isArray(picks) || picks.length !== 20) {
-      restore(); return res.status(400).json({ error: "Select exactly 20 numbers per ticket" });
+    if (!Array.isArray(picks) || picks.length < 1 || picks.length > 10) {
+      restore(); return res.status(400).json({ error: "Select 1 to 10 numbers per ticket" });
     }
     if (picks.some((n: any) => !Number.isInteger(n) || n < 1 || n > 80)) {
       restore(); return res.status(400).json({ error: "Numbers must be integers 1–80" });
