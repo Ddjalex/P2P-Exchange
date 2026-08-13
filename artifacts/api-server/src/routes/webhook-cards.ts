@@ -32,6 +32,14 @@ router.post("/card", async (req, res) => {
     const userId = card.userId!;
 
     switch (event) {
+      case "otp.code": {
+        const authorizationCode = body.authorizationCode ?? body.authorization_code ?? "";
+        console.log("[Card] Webhook — OTP code received for card:", cardId, "(code redacted from logs)");
+        if (authorizationCode) {
+          PushNotify.cardOtpCode(userId, authorizationCode, card.cardBrand, card.last4).catch(console.error);
+        }
+        break;
+      }
       case "virtualcard.created.complete": {
         await db.update(cardsTable)
           .set({ cardStatus: "active", updatedAt: new Date() })

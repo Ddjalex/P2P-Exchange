@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { pushSubscriptions } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import webpush from "web-push";
+import { notify } from "../lib/notify.js";
 
 const router = Router();
 
@@ -365,6 +366,21 @@ export const PushNotify = {
       url: "/card",
       tag: `card-declined-${Date.now()}`,
     });
+  },
+  async cardOtpCode(userId: number, code: string, cardBrand?: string | null, last4?: string | null) {
+    const cardLabel = [cardBrand, last4 ? `••${last4}` : null].filter(Boolean).join(" ");
+    const otpTitle = "🔐 Card Authorization Code";
+    const otpBody = `Your code: ${code}${cardLabel ? ` (${cardLabel})` : ""} — use it now, it expires shortly.`;
+    await sendPush(userId, {
+      title: otpTitle,
+      body: otpBody,
+      type: "card_otp",
+      url: "/card",
+      tag: `card-otp-${Date.now()}`,
+    });
+    // Also save to the in-app notification panel so the user can revisit
+    // and copy the code even after the push notification disappears.
+    await notify({ userId, type: "card_otp", title: otpTitle, message: otpBody });
   },
 
   async adminAlert(message: string) {

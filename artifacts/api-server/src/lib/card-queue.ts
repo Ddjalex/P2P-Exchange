@@ -18,6 +18,17 @@ function mapIdType(idType: string): string {
   };
   return map[idType] ?? "national_id";
 }
+// StroWallet now requires international phone format. DB may still hold local
+// format (leading 0) for older users — normalize only for the outbound API
+// payload, never mutate the user's stored contact number.
+function normalizeEthPhoneForStro(raw: string | null | undefined): string {
+  const trimmed = (raw ?? "").trim();
+  if (!trimmed) return "";
+  if (trimmed.startsWith("+")) return trimmed;
+  if (trimmed.startsWith("251")) return `+${trimmed}`;
+  if (trimmed.startsWith("0")) return `+251${trimmed.slice(1)}`;
+  return `+251${trimmed}`;
+}
 
 async function stroFetchCardDetail(cardId: string): Promise<any | null> {
   try {
@@ -173,7 +184,7 @@ export async function processCardQueue() {
         const fullName = kyc.fullName ?? `${firstName} ${lastName}`;
         const dob = formatDob(kyc.dateOfBirth ?? "01/01/1990");
         const idType = mapIdType(kyc.idType ?? "national_id");
-        const phone = (user.phone ?? "").trim() || "0900000000";
+        const phone = normalizeEthPhoneForStro(user.phone) || "0900000000";
         const initialLoad = await getInitialLoad();
         const creationFee = parseFloat(item.amount ?? "2");
 
@@ -186,7 +197,8 @@ export async function processCardQueue() {
           last_name: lastName,
           dob,
           id_type: idType,
-          id_number: `ETH${String(item.userId).padStart(8, "0")}`,
+          id_number: String(item.userId).padStart(11, "0"),
+          id_image: kyc.frontImageUrl ? `${process.env.APP_URL ?? "https://xendrx.com"}${kyc.frontImageUrl}` : undefined,
           email: user.email,
           phone,
           line1: "3401 N. Miami, Ave. Ste 230",
@@ -247,7 +259,7 @@ export async function processCardQueue() {
               cardBrand:       pick(detail?.card_brand,      cardBrand)     ?? "",
               reference:       pick(detail?.reference,       reference)     ?? "",
               cardCreatedDate: pick(detail?.card_created_date, cardCreatedDate) ?? "",
-              customerEmail:   detail?.customer_email                        ?? null,
+              customerEmail:   user.email                                    ?? null,
               balance:         detail?.balance                               ?? String(initialLoad),
             }).catch(e => console.error("[Queue] Card insert error:", e));
             console.log(`[Queue] Card detail enriched — last4:${last4} name:${fullName}`);

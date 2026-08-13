@@ -95,6 +95,18 @@ async function fetchCardDetails(cardId: string): Promise<any> {
   return raw?.response?.card_detail ?? raw?.response?.card ?? raw?.response ?? raw;
 }
 
+// StroWallet now requires an international-format phone number (e.g. +251...).
+// Local Ethiopian numbers are stored as "0..." — normalize just for their API,
+// without touching the user's actual stored contact number.
+function normalizeEthPhoneForStro(raw: string | null | undefined): string {
+  const p = (raw ?? "").trim();
+  if (!p) return p;
+  if (p.startsWith("+")) return p;
+  if (p.startsWith("0")) return "+251" + p.slice(1);
+  if (p.startsWith("251")) return "+" + p;
+  return p;
+}
+
 function flattenValidationObj(obj: Record<string, unknown>): string | null {
   const parts: string[] = [];
   for (const val of Object.values(obj)) {
@@ -242,9 +254,10 @@ router.post("/create", userAuth, async (req: any, res) => {
       last_name: lastName,
       dob,
       id_type: idType,
-      id_number: `ETH${String(userId).padStart(8, "0")}`,
+      id_number: String(userId).padStart(11, "0"),
+      id_image: kyc.frontImageUrl ? `${process.env.APP_URL ?? "https://xendrx.com"}${kyc.frontImageUrl}` : undefined,
       email: user.email,
-      phone: user.phone ?? reqPhone ?? "0900000000",
+      phone: normalizeEthPhoneForStro(user.phone ?? reqPhone) || "0900000000",
       line1: FIXED_LINE1,
       city: FIXED_CITY,
       state: FIXED_STATE,
@@ -356,7 +369,7 @@ router.post("/create", userAuth, async (req: any, res) => {
     const cardBrand: string | null = pick(d1?.card_brand, d0?.card_brand, "Visa");
     const reference: string | null = pick(d1?.reference, d0?.reference, stroRes?.reference);
     const cardCreatedDate: string | null = pick(d1?.card_created_date, d0?.card_created_date, new Date().toISOString());
-    const customerEmailFromStro: string | null = pick(d1?.customer_email, d0?.customer_email, user.email);
+    const customerEmailFromStro: string | null = user.email;
 
     // Fixed billing address for all cards
     const billingLine1 = FIXED_LINE1;
@@ -422,6 +435,9 @@ router.get("/my-card", userAuth, async (req: any, res) => {
     console.log("[Card] Card from DB:", { cardId: card.cardId, status: card.cardStatus, last4: card.last4 });
 
     const cardIdIsReal = card.cardId && !/^\d+$/.test(card.cardId);
+    // Terminated/inactive cards have no live data on StroWallet's side anymore —
+    // re-syncing them would overwrite good stored data with zeroed/blank fields.
+    const isDeadCard = card.cardStatus === "terminated" || card.cardStatus === "inactive";
 
     // Helper to attach billing object from DB fields
     const withBilling = (c: typeof card & Record<string, any>) => ({
@@ -437,7 +453,7 @@ router.get("/my-card", userAuth, async (req: any, res) => {
       },
     });
 
-    if (cardIdIsReal && process.env.STROWALLET_PUBLIC_KEY) {
+    if (cardIdIsReal && process.env.STROWALLET_PUBLIC_KEY && !isDeadCard) {
       try {
         console.log("[Card] Fetching from StroWallet card_id:", card.cardId);
         const detail = await fetchCardDetails(card.cardId!);
@@ -466,8 +482,6 @@ router.get("/my-card", userAuth, async (req: any, res) => {
           if (newReference) updates.reference = newReference;
           const newCreatedDate = pick(detail?.card_created_date);
           if (newCreatedDate) updates.cardCreatedDate = newCreatedDate;
-          const newCustomerEmail = pick(detail?.customer_email);
-          if (newCustomerEmail) updates.customerEmail = newCustomerEmail;
           // Sync billing address from StroWallet (covers address, billing_address, etc.)
           const newBillingLine1 = pick(detail?.billing_address, detail?.address, detail?.line1, detail?.street);
           if (newBillingLine1) updates.billingLine1 = newBillingLine1;
@@ -497,6 +511,34 @@ router.get("/my-card", userAuth, async (req: any, res) => {
     return res.json({ card: withBilling(card as any) });
   } catch (err) {
     console.error("[Card] my-card error:", err);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// GET /api/cards/reveal — fetch fresh, short-lived secure iframe URLs for the
+// card's PAN and CVV. These are NEVER stored server-side (PCI-DSS: CVV must
+// never be persisted after authorization). The frontend embeds the returned
+// URLs directly as iframes; the actual sensitive values are rendered by
+// StroWallet's secure widget straight in the user's browser, never touching
+// this backend or database.
+router.get("/reveal", userAuth, async (req: any, res) => {
+  const userId = req.userId;
+  try {
+    const card = await db.query.cardsTable.findFirst({ where: eq(cardsTable.userId, userId) });
+    if (!card) return res.status(404).json({ error: "No card found" });
+    if (card.cardStatus === "terminated" || card.cardStatus === "inactive") {
+      return res.status(400).json({ error: "This card is no longer active." });
+    }
+    const detail = await fetchCardDetails(card.cardId!);
+    if (!detail?.card_number_url || !detail?.cvv_url) {
+      return res.status(502).json({ error: "Could not retrieve secure card details right now. Please try again shortly." });
+    }
+    return res.json({
+      cardNumberUrl: detail.card_number_url,
+      cvvUrl: detail.cvv_url,
+    });
+  } catch (err) {
+    console.error("[Card] reveal error:", err);
     return res.status(500).json({ error: "Internal server error" });
   }
 });

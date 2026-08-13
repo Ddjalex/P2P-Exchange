@@ -26,13 +26,37 @@ async function apiFetch(url: string, opts?: RequestInit) {
 }
 
 function CardVisual({
-  holderName, cardNumber, last4, cvv, expiry, balance, status, blurred,
+  holderName, cardId, cardNumber, last4, cvv, expiry, balance, status, cardBrand, blurred,
 }: {
-  holderName: string; cardNumber?: string | null; last4?: string | null; cvv?: string | null;
-  expiry?: string | null; balance?: string | null; status?: string; blurred?: boolean;
+  holderName: string; cardId?: string | null; cardNumber?: string | null; last4?: string | null; cvv?: string | null;
+  expiry?: string | null; balance?: string | null; status?: string; cardBrand?: string | null; blurred?: boolean;
 }) {
   const [showNumber, setShowNumber] = useState(false);
   const [showCvv, setShowCvv] = useState(false);
+  // Secure PAN/CVV reveal — StroWallet no longer returns raw card data via API.
+  // Instead we fetch short-lived iframe URLs on demand and render them inline;
+  // the actual sensitive values never touch our backend or state, only the
+  // iframe URLs themselves (which expire quickly) are held in memory here.
+  const [revealUrls, setRevealUrls] = useState<{ cardNumberUrl: string; cvvUrl: string } | null>(null);
+  const [revealLoading, setRevealLoading] = useState(false);
+  const isMastercard = (cardBrand ?? "").toLowerCase().includes("master");
+  async function ensureRevealUrls() {
+    if (revealUrls || revealLoading || cardNumber) return; // old cards already have raw data locally
+    setRevealLoading(true);
+    try {
+      const res = await fetch("/api/cards/reveal", {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      const data = await res.json();
+      if (res.ok && data.cardNumberUrl && data.cvvUrl) {
+        setRevealUrls({ cardNumberUrl: data.cardNumberUrl, cvvUrl: data.cvvUrl });
+      }
+    } catch {
+      // Silently fail — the toggle will just stay closed and the user can retry
+    } finally {
+      setRevealLoading(false);
+    }
+  }
   const isFrozen = status === "inactive" || status === "frozen";
   const isProcessing = status === "processing";
   const accent = isFrozen ? "rgb(120,120,200)" : "rgb(0,229,255)";
@@ -67,8 +91,25 @@ function CardVisual({
         <line x1="24" y1="98" x2="68" y2="98" stroke="rgb(170,136,0)" strokeWidth="0.8" strokeOpacity="0.5" />
         <line x1="46" y1="78" x2="46" y2="110" stroke="rgb(170,136,0)" strokeWidth="0.8" strokeOpacity="0.5" />
         <text x="24" y="58" fontFamily="Poppins, sans-serif" fontSize="14" fontWeight="800" fill="white">xen<tspan fill={accent}>drx</tspan></text>
-        <image href="/visa-logo.png" x="300" y="28" width="68" height="44" preserveAspectRatio="xMidYMid meet" style={{ borderRadius: "4px" }} />
-        <text x="24" y="145" fontFamily="'Courier New', monospace" fontSize="13" fontWeight="600" fill="white" letterSpacing="2">{displayNumber}</text>
+        {isMastercard ? (
+          <g>
+            <circle cx="322" cy="50" r="15" fill="#EB001B" fillOpacity="0.85" />
+            <circle cx="342" cy="50" r="15" fill="#F79E1B" fillOpacity="0.85" />
+          </g>
+        ) : (
+          <image href="/visa-logo.png" x="300" y="28" width="68" height="44" preserveAspectRatio="xMidYMid meet" style={{ borderRadius: "4px" }} />
+        )}
+        {showNumber && !cardNumber && revealUrls ? (
+          <foreignObject x="20" y="130" width="200" height="20">
+            <div style={{ background: "#fff", borderRadius: "4px", border: `1px solid ${accent}`, width: "100%", height: "100%", overflow: "hidden" }}>
+              <iframe src={revealUrls.cardNumberUrl} title="Card Number" style={{ border: "none", width: "100%", height: "100%" }} />
+            </div>
+          </foreignObject>
+        ) : (
+          <text x="24" y="145" fontFamily="'Courier New', monospace" fontSize="13" fontWeight="600" fill="white" letterSpacing="2">
+            {showNumber && !cardNumber && revealLoading ? "Loading…" : displayNumber}
+          </text>
+        )}
         <text x="24" y="174" fontFamily="Poppins, sans-serif" fontSize="9" fill={accentDim} letterSpacing="2">CARD HOLDER</text>
         <text x="24" y="192" fontFamily="Poppins, sans-serif" fontSize="12" fontWeight="600" fill="white" letterSpacing="1">{holderName.toUpperCase().slice(0, 22)}</text>
         <text x="298" y="174" fontFamily="Poppins, sans-serif" fontSize="9" fill={accentDim} letterSpacing="2">EXPIRES</text>
@@ -77,12 +118,36 @@ function CardVisual({
         <rect x="12" y="213" width="108" height="46" rx="8" fill="rgba(0,229,255,0.06)" stroke={accent} strokeWidth="0.5" strokeOpacity="0.2" />
         <text x="66" y="225" textAnchor="middle" fontFamily="Poppins, sans-serif" fontSize="8" fill={accentDim} letterSpacing="1">BALANCE</text>
         <text x="66" y="246" textAnchor="middle" fontFamily="Poppins, sans-serif" fontSize="15" fontWeight="700" fill="white">{balanceDisplay}</text>
-        <g onClick={() => setShowCvv((v) => !v)} style={{ cursor: "pointer" }}>
+        <g
+          onClick={() => {
+            if (!showCvv) ensureRevealUrls();
+            setShowCvv((v) => !v);
+          }}
+          style={{ cursor: "pointer" }}
+        >
           <rect x="128" y="213" width="108" height="46" rx="8" fill="rgba(0,229,255,0.06)" stroke={accent} strokeWidth="0.5" strokeOpacity="0.2" />
           <text x="182" y="225" textAnchor="middle" fontFamily="Poppins, sans-serif" fontSize="8" fill={accentDim} letterSpacing="1">CVV</text>
-          <text x="182" y="246" textAnchor="middle" fontFamily="'Courier New', monospace" fontSize="15" fontWeight="700" fill="white">{cvvDisplay}</text>
+          {!showCvv || (!cvv && !revealUrls) ? (
+            <text x="182" y="246" textAnchor="middle" fontFamily="'Courier New', monospace" fontSize="15" fontWeight="700" fill="white">
+              {showCvv && revealLoading ? "…" : cvvDisplay}
+            </text>
+          ) : cvv ? (
+            <text x="182" y="246" textAnchor="middle" fontFamily="'Courier New', monospace" fontSize="15" fontWeight="700" fill="white">{cvv}</text>
+          ) : (
+            <foreignObject x="134" y="234" width="96" height="22">
+              <div style={{ background: "#fff", borderRadius: "4px", border: `1px solid ${accent}`, width: "100%", height: "100%", overflow: "hidden" }}>
+                <iframe src={revealUrls!.cvvUrl} title="CVV" style={{ border: "none", width: "100%", height: "100%" }} />
+              </div>
+            </foreignObject>
+          )}
         </g>
-        <g onClick={() => setShowNumber((v) => !v)} style={{ cursor: "pointer" }}>
+        <g
+          onClick={() => {
+            if (!showNumber) ensureRevealUrls();
+            setShowNumber((v) => !v);
+          }}
+          style={{ cursor: "pointer" }}
+        >
           <rect x="244" y="213" width="124" height="46" rx="8" fill="rgba(0,229,255,0.06)" stroke={accent} strokeWidth="0.5" strokeOpacity="0.2" />
           <text x="306" y="225" textAnchor="middle" fontFamily="Poppins, sans-serif" fontSize="8" fill={accentDim} letterSpacing="1">FULL PAN</text>
           {showNumber ? (
@@ -485,12 +550,14 @@ export default function CardPage() {
             <div style={{ width: "100%", maxWidth: "380px", marginBottom: "16px" }}>
               <CardVisual
                 holderName={card.nameOnCard ?? kycName}
+                cardId={card.cardId}
                 cardNumber={card.cardNumber}
                 last4={card.last4}
                 cvv={card.cvv}
                 expiry={card.expiry}
                 balance={card.balance}
                 status={card.cardStatus}
+                cardBrand={card.cardBrand}
               />
             </div>
 
