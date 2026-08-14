@@ -629,13 +629,7 @@ function deriveProvablyFairDraw(serverSeed: string, roundId: number, drawTimesta
   const pool = Array.from({ length: 80 }, (_, i) => i + 1);
   for (let i = pool.length - 1; i > 0; i--) {
     const h = createHmac("sha256", serverSeed)
-      .update(`${roundId}:${drawTimestamp}:${i}`)
-      .digest();
-    const j = h.readUInt32BE(0) % (i + 1);
-    [pool[i], pool[j]] = [pool[j], pool[i]];
-  }
-  return pool.slice(0, 20);
-}
+      .update(`${roundId}
 
 /**
  * Generate a candidate draw deterministically from the server seed.
@@ -751,6 +745,15 @@ async function findControlledDraw(
   );
 
   return bestDraw ?? generateCandidateDraw(serverSeed, roundId, drawTimestamp, 0);
+}
+:${drawTimestamp}:${i}`)
+      .digest();
+    const j = h.readUInt32BE(0) % (i + 1);
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  // Return in raw shuffle order — the frontend animates tiles in this exact
+  // sequence so they light up randomly across the grid, not top-to-bottom.
+  return pool.slice(0, 20);
 }
 
 // ─── Multiplayer Round Manager ────────────────────────────────────────────────
