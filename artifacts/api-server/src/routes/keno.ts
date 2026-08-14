@@ -13,7 +13,13 @@
  */
 
 import { Router } from "express";
-import { randomInt, createHmac, timingSafeEqual, randomBytes, createHash } from "crypto";
+import {
+  randomInt,
+  createHmac,
+  timingSafeEqual,
+  randomBytes,
+  createHash,
+} from "crypto";
 import bcrypt from "bcryptjs";
 import { db } from "@workspace/db";
 import {
@@ -33,30 +39,123 @@ import { eq, and, desc, sql } from "drizzle-orm";
 
 // ─── Exported routers ────────────────────────────────────────────────────────
 
-export const kenoRouter = Router();       // mounted at /api/games/keno
-export const kenoAdminRouter = Router();  // mounted at /api/admin/games
+export const kenoRouter = Router(); // mounted at /api/games/keno
+export const kenoAdminRouter = Router(); // mounted at /api/admin/games
 
+/**
+ * Inline paytable mirror — kept for backward compatibility with any
+ * external importers.  The live game reads from keno_paytable (DB).
+ *
+ * User-specific rules locked in:
+ *   • 1 match  = $0  (all pick counts)
+ *   • 1/2      = $0
+ *   • 2/3      = money back (1×)
+ *   • 1/3      = $0
+ *
+ * Everything else follows standard Keno escalation: more spots picked +
+ * more hits = exponentially bigger payout (because the odds drop off a
+ * cliff).  Max jackpot at 10/10 = 36,200×.
+ */
 export const PAYTABLE: Record<string, number> = {
-  "1,1": 3.5, "2,1": 0, "2,2": 10.0, "3,2": 1.0, "3,3": 50.0,
-  "4,2": 1.5, "4,3": 10.0, "4,4": 80.0, "5,2": 1.0, "5,3": 3.0, "5,4": 30.0, "5,5": 150.0,
-  "6,3": 2.0, "6,4": 15.0, "6,5": 60.0, "6,6": 500.0, "7,0": 1.0, "7,3": 2.0, "7,7": 1000.0,
-  "8,0": 1.0, "8,8": 2000.0, "9,0": 2.0, "9,9": 5000.0, "10,0": 2.0, "10,10": 10000.0,
+  // Pick 1
+  "1,0": 0,
+  "1,1": 3.2,
+  // Pick 2  (1/2 = $0)
+  "2,0": 0,
+  "2,1": 0,
+  "2,2": 13.31,
+  // Pick 3  (1/3 = $0, 2/3 = money back)
+  "3,0": 0,
+  "3,1": 0,
+  "3,2": 1.0,
+  "3,3": 25.5,
+  // Pick 4
+  "4,0": 0,
+  "4,1": 0,
+  "4,2": 1.68,
+  "4,3": 6.7,
+  "4,4": 50.25,
+  // Pick 5
+  "5,0": 0,
+  "5,1": 0,
+  "5,2": 0,
+  "5,3": 4.53,
+  "5,4": 22.65,
+  "5,5": 226.5,
+  // Pick 6
+  "6,0": 0,
+  "6,1": 0,
+  "6,2": 0,
+  "6,3": 1.86,
+  "6,4": 9.31,
+  "6,5": 55.8,
+  "6,6": 930,
+  // Pick 7
+  "7,0": 0,
+  "7,1": 0,
+  "7,2": 0,
+  "7,3": 0,
+  "7,4": 5.64,
+  "7,5": 28.2,
+  "7,6": 169,
+  "7,7": 5645,
+  // Pick 8
+  "8,0": 0,
+  "8,1": 0,
+  "8,2": 0,
+  "8,3": 0,
+  "8,4": 2.8,
+  "8,5": 14,
+  "8,6": 69.9,
+  "8,7": 559,
+  "8,8": 13985,
+  // Pick 9
+  "9,0": 0,
+  "9,1": 0,
+  "9,2": 0,
+  "9,3": 0,
+  "9,4": 0,
+  "9,5": 8.47,
+  "9,6": 42.3,
+  "9,7": 254,
+  "9,8": 2540,
+  "9,9": 67720,
+  // Pick 10
+  "10,0": 0,
+  "10,1": 0,
+  "10,2": 0,
+  "10,3": 0,
+  "10,4": 0,
+  "10,5": 7.24,
+  "10,6": 21.72,
+  "10,7": 72.4,
+  "10,8": 362,
+  "10,9": 1448,
+  "10,10": 36200,
 };
 
-export function get_multiplier(picks_count: number, hits_count: number): number {
+export function get_multiplier(
+  picks_count: number,
+  hits_count: number,
+): number {
   return PAYTABLE[`${picks_count},${hits_count}`] ?? 0.0;
 }
 
-async function getConfiguredMultiplier(picksCount: number, hitsCount: number): Promise<number> {
+async function getConfiguredMultiplier(
+  picksCount: number,
+  hitsCount: number,
+): Promise<number> {
   await ensureSeeded();
   const row = await db
     .select({ multiplier: kenoPaytableTable.multiplier })
     .from(kenoPaytableTable)
-    .where(and(
-      eq(kenoPaytableTable.picks, picksCount),
-      eq(kenoPaytableTable.hits, hitsCount),
-    ))
-    .then(rows => rows[0]);
+    .where(
+      and(
+        eq(kenoPaytableTable.picks, picksCount),
+        eq(kenoPaytableTable.hits, hitsCount),
+      ),
+    )
+    .then((rows) => rows[0]);
   return parseFloat(row?.multiplier ?? "0");
 }
 
@@ -77,25 +176,28 @@ export async function settle_ticket(
   user: SettlementUser,
 ) {
   const hits = new Set(
-    ticket.picks.filter(pick => new Set(drawn_20_numbers).has(pick)),
+    ticket.picks.filter((pick) => new Set(drawn_20_numbers).has(pick)),
   ).size;
   const multiplier = await getConfiguredMultiplier(ticket.picks.length, hits);
-  const win_amount = Math.round(Number(ticket.bet_amount) * multiplier * 100) / 100;
+  const win_amount =
+    Math.round(Number(ticket.bet_amount) * multiplier * 100) / 100;
 
-  const settlement = await db.transaction(async tx => {
-    const locked = await tx.execute(
+  const settlement = await db.transaction(async (tx) => {
+    const locked = (await tx.execute(
       sql`SELECT balance FROM users WHERE id = ${user.id} FOR UPDATE`,
-    ) as any;
+    )) as any;
     const row = locked.rows?.[0];
     if (!row) throw new Error("User not found");
 
     const currentBalance = Number(row.balance ?? 0);
-    const newBalance = win_amount > 0
-      ? Math.round((currentBalance + win_amount) * 100) / 100
-      : currentBalance;
+    const newBalance =
+      win_amount > 0
+        ? Math.round((currentBalance + win_amount) * 100) / 100
+        : currentBalance;
 
     if (win_amount > 0) {
-      await tx.update(usersTable)
+      await tx
+        .update(usersTable)
         .set({ balance: String(newBalance) })
         .where(eq(usersTable.id, user.id));
     }
@@ -135,7 +237,20 @@ export async function settle_ticket(
 //            + P(8)=0.01354%×362 + P(9)=0.000612%×1448 + P(10)=0.0000112%×36200
 //            = 0.372+0.249+0.117+0.049+0.009+0.004 = 80.00%
 
-const DEFAULT_PAYTABLE: Array<{ picks: number; hits: number; multiplier: string }> = [
+const DEFAULT_PAYTABLE: Array<{
+  picks: number;
+  hits: number;
+  multiplier: string;
+}> = [
+  //
+  // USER-SPECIFIC RULES (locked in):
+  //   • 1 match on any ticket = $0
+  //   • 1/2 hits = $0
+  //   • 2/3 hits = money back (1×)
+  //   • 1/3 hits = $0
+  //
+  // Everything else follows standard Keno escalation.
+  //
   // Pick 1
   { picks: 1, hits: 0, multiplier: "0" },
   { picks: 1, hits: 1, multiplier: "3.2000" },
@@ -215,11 +330,11 @@ const DEFAULT_PAYTABLE: Array<{ picks: number; hits: number; multiplier: string 
 
 const DEFAULT_SETTINGS: Array<{ key: string; value: string }> = [
   { key: "game_enabled", value: "true" },
-  { key: "min_bet",      value: "0.10" },
-  { key: "max_bet",      value: "100.00" },
-  { key: "min_topup",    value: "1.00" },
-  { key: "max_topup",    value: "1000.00" },
-  { key: "house_edge",   value: "0.20" }, // 20% house edge → 80% RTP
+  { key: "min_bet", value: "0.10" },
+  { key: "max_bet", value: "100.00" },
+  { key: "min_topup", value: "1.00" },
+  { key: "max_topup", value: "1000.00" },
+  { key: "house_edge", value: "0.20" }, // 20% house edge → 80% RTP
 ];
 
 // ─── Base (fair / 0% margin) paytable ────────────────────────────────────────
@@ -233,7 +348,11 @@ const DEFAULT_SETTINGS: Array<{ key: string; value: string }> = [
 //
 // Example: (picks=3, hits=3) fair=31.875x; at 20% edge → 31.875 * 0.80 = 25.5x ✓
 
-const BASE_PAYTABLE_FAIR: Array<{ picks: number; hits: number; multiplier: string }> = [
+const BASE_PAYTABLE_FAIR: Array<{
+  picks: number;
+  hits: number;
+  multiplier: string;
+}> = [
   // Pick 1  — P(1|1) = 0.25 → fair = 4.0x
   { picks: 1, hits: 0, multiplier: "0" },
   { picks: 1, hits: 1, multiplier: "4.0000" },
@@ -323,7 +442,7 @@ function computeActivePaytable(
   houseEdge: number,
 ): Array<{ picks: number; hits: number; multiplier: string }> {
   const rtpFactor = 1 - Math.max(0, Math.min(houseEdge, 1));
-  return BASE_PAYTABLE_FAIR.map(row => {
+  return BASE_PAYTABLE_FAIR.map((row) => {
     const base = parseFloat(row.multiplier);
     const active = base === 0 ? 0 : parseFloat((base * rtpFactor).toFixed(4));
     return { picks: row.picks, hits: row.hits, multiplier: String(active) };
@@ -334,7 +453,8 @@ function computeActivePaytable(
 
 // Precompute log-factorials 0..80 once (avoids overflow from raw factorials of C(80,20)).
 const LOG_FACTORIAL: number[] = [0];
-for (let i = 1; i <= 80; i++) LOG_FACTORIAL.push(LOG_FACTORIAL[i - 1] + Math.log(i));
+for (let i = 1; i <= 80; i++)
+  LOG_FACTORIAL.push(LOG_FACTORIAL[i - 1] + Math.log(i));
 
 function logChoose(n: number, r: number): number {
   if (r < 0 || r > n) return -Infinity;
@@ -347,7 +467,8 @@ function logChoose(n: number, r: number): number {
  * P(hits) = C(20, hits) * C(60, picks - hits) / C(80, picks)
  */
 export function hypergeometricP(picks: number, hits: number): number {
-  const logP = logChoose(20, hits) + logChoose(60, picks - hits) - logChoose(80, picks);
+  const logP =
+    logChoose(20, hits) + logChoose(60, picks - hits) - logChoose(80, picks);
   return Math.exp(logP);
 }
 
@@ -367,7 +488,11 @@ export function minWinningHits(picksCount: number): number {
  * rarer, higher hit-counts get proportionally larger raw shares.
  * Returns 0 for hits below the pick-count-scaled minimum winning threshold.
  */
-export function poolRawEntitlement(hits: number, betAmount: number, picksCount: number): number {
+export function poolRawEntitlement(
+  hits: number,
+  betAmount: number,
+  picksCount: number,
+): number {
   if (hits < minWinningHits(picksCount)) return 0;
   const p = hypergeometricP(picksCount, hits);
   if (p <= 0) return 0;
@@ -380,14 +505,14 @@ interface PoolTicketResult extends SettledTicketResult {}
 
 interface RoundPoolSettlement {
   houseMarginPercent: number;
-  grossPool:          number;
+  grossPool: number;
   ownerProfitAllocation: number;
-  prizeBudget:        number;
-  totalPrizesPaid:    number;
-  unclaimedAmount:    number;
-  confirmedEntries:   number;
-  scalingFactor:      number;
-  batchResults:       Map<string, PoolTicketResult[]>; // same key as activeRound.bets: `${userId}:${mode}`
+  prizeBudget: number;
+  totalPrizesPaid: number;
+  unclaimedAmount: number;
+  confirmedEntries: number;
+  scalingFactor: number;
+  batchResults: Map<string, PoolTicketResult[]>; // same key as activeRound.bets: `${userId}:${mode}`
 }
 
 /**
@@ -411,72 +536,120 @@ async function computeRoundPoolSettlement(
   drawn: number[],
 ): Promise<RoundPoolSettlement> {
   const drawnSet = new Set(drawn);
-  const houseMarginPercent = parseFloat(await getSetting("house_margin_percent", "20"));
+  const houseMarginPercent = parseFloat(
+    await getSetting("house_margin_percent", "20"),
+  );
 
   // Load the admin-configured paytable once (picks,hits -> multiplier).
   // Raw entitlement per ticket = betAmount * multiplier, exactly like the
   // classic fixed-odds table, but the FINAL payout is still capped so the
   // round's total payout can never exceed the margin-derived prize budget.
   const paytableRows = await db
-    .select({ picks: kenoPaytableTable.picks, hits: kenoPaytableTable.hits, multiplier: kenoPaytableTable.multiplier })
+    .select({
+      picks: kenoPaytableTable.picks,
+      hits: kenoPaytableTable.hits,
+      multiplier: kenoPaytableTable.multiplier,
+    })
     .from(kenoPaytableTable);
   const multipliers = new Map(
-    paytableRows.map(row => [`${row.picks},${row.hits}`, parseFloat(row.multiplier)]),
+    paytableRows.map((row) => [
+      `${row.picks},${row.hits}`,
+      parseFloat(row.multiplier),
+    ]),
   );
-  function paytableEntitlement(picksCount: number, hits: number, betAmount: number): number {
+  function paytableEntitlement(
+    picksCount: number,
+    hits: number,
+    betAmount: number,
+  ): number {
     const m = multipliers.get(`${picksCount},${hits}`) ?? 0;
     return betAmount * m;
   }
 
   let grossPool = 0;
-  const perBatch = new Map<string, { picks: number[]; matches: number[]; hits: number; betAmount: number; betAmountStr: string }[]>();
+  const perBatch = new Map<
+    string,
+    {
+      picks: number[];
+      matches: number[];
+      hits: number;
+      betAmount: number;
+      betAmountStr: string;
+    }[]
+  >();
   for (const [key, batch] of bets.entries()) {
     grossPool += parseFloat(batch.totalStaked);
-    const ticketData = batch.tickets.map(t => {
+    const ticketData = batch.tickets.map((t) => {
       const betAmount = parseFloat(t.betAmount);
-      const matches = t.picks.filter(n => drawnSet.has(n));
-      return { picks: t.picks, matches, hits: matches.length, betAmount, betAmountStr: t.betAmount };
+      const matches = t.picks.filter((n) => drawnSet.has(n));
+      return {
+        picks: t.picks,
+        matches,
+        hits: matches.length,
+        betAmount,
+        betAmountStr: t.betAmount,
+      };
     });
     perBatch.set(key, ticketData);
   }
   grossPool = parseFloat(grossPool.toFixed(2));
-  const ownerProfitAllocation = parseFloat((grossPool * (houseMarginPercent / 100)).toFixed(2));
-  const prizeBudget = parseFloat((grossPool - ownerProfitAllocation).toFixed(2));
+  const ownerProfitAllocation = parseFloat(
+    (grossPool * (houseMarginPercent / 100)).toFixed(2),
+  );
+  const prizeBudget = parseFloat(
+    (grossPool - ownerProfitAllocation).toFixed(2),
+  );
 
   let sumEntitlements = 0;
   for (const ticketData of perBatch.values()) {
-    for (const t of ticketData) sumEntitlements += paytableEntitlement(t.picks.length, t.hits, t.betAmount);
+    for (const t of ticketData)
+      sumEntitlements += paytableEntitlement(
+        t.picks.length,
+        t.hits,
+        t.betAmount,
+      );
   }
-  const scalingFactor = sumEntitlements > 0
-    ? Math.min(prizeBudget / sumEntitlements, 10) // scale up OR down, cap at 10×
-    : 0;
+  const scalingFactor =
+    sumEntitlements > 0
+      ? Math.min(prizeBudget / sumEntitlements, 10) // scale up OR down, cap at 10×
+      : 0;
 
   let totalPrizesPaid = 0;
   let confirmedEntries = 0;
   const batchResults = new Map<string, PoolTicketResult[]>();
   for (const [key, ticketData] of perBatch.entries()) {
-    const results: PoolTicketResult[] = ticketData.map(t => {
+    const results: PoolTicketResult[] = ticketData.map((t) => {
       confirmedEntries++;
       const raw = paytableEntitlement(t.picks.length, t.hits, t.betAmount);
       const payout = parseFloat((raw * scalingFactor).toFixed(2));
       totalPrizesPaid += payout;
       return {
-        picks:      t.picks,
-        betAmount:  t.betAmountStr,
-        matches:    t.matches,
-        hitCount:   t.hits,
-        multiplier: t.betAmount > 0 ? parseFloat((payout / t.betAmount).toFixed(4)) : 0,
+        picks: t.picks,
+        betAmount: t.betAmountStr,
+        matches: t.matches,
+        hitCount: t.hits,
+        multiplier:
+          t.betAmount > 0 ? parseFloat((payout / t.betAmount).toFixed(4)) : 0,
         payout,
-        isWin:      payout > 0,
+        isWin: payout > 0,
       };
     });
     batchResults.set(key, results);
   }
   totalPrizesPaid = parseFloat(totalPrizesPaid.toFixed(2));
-  const unclaimedAmount = parseFloat((prizeBudget - totalPrizesPaid).toFixed(2));
+  const unclaimedAmount = parseFloat(
+    (prizeBudget - totalPrizesPaid).toFixed(2),
+  );
   return {
-    houseMarginPercent, grossPool, ownerProfitAllocation, prizeBudget,
-    totalPrizesPaid, unclaimedAmount, confirmedEntries, scalingFactor, batchResults,
+    houseMarginPercent,
+    grossPool,
+    ownerProfitAllocation,
+    prizeBudget,
+    totalPrizesPaid,
+    unclaimedAmount,
+    confirmedEntries,
+    scalingFactor,
+    batchResults,
   };
 }
 
@@ -494,29 +667,42 @@ async function ensureSeeded() {
   }
 
   // Paytable: seed using the persisted house_edge (or default 0.20)
-  const existing = await db.select({ id: kenoPaytableTable.id }).from(kenoPaytableTable).limit(1);
+  const existing = await db
+    .select({ id: kenoPaytableTable.id })
+    .from(kenoPaytableTable)
+    .limit(1);
   if (existing.length === 0) {
     const edgeRow = await db
       .select()
       .from(kenoSettingsTable)
       .where(eq(kenoSettingsTable.key, "house_edge"))
-      .then(r => r[0]);
+      .then((r) => r[0]);
     const houseEdge = parseFloat(edgeRow?.value ?? "0.20");
     const activePaytable = computeActivePaytable(houseEdge);
-    await db.insert(kenoPaytableTable).values(activePaytable).onConflictDoNothing();
+    await db
+      .insert(kenoPaytableTable)
+      .values(activePaytable)
+      .onConflictDoNothing();
   }
 }
 
 async function getSetting(key: string, fallback = ""): Promise<string> {
   await ensureSeeded();
-  const row = await db.select().from(kenoSettingsTable).where(eq(kenoSettingsTable.key, key)).then(r => r[0]);
+  const row = await db
+    .select()
+    .from(kenoSettingsTable)
+    .where(eq(kenoSettingsTable.key, key))
+    .then((r) => r[0]);
   return row?.value ?? fallback;
 }
 
 // ─── Wallet helpers ──────────────────────────────────────────────────────────
 
 async function getOrCreateKenoWallet(userId: number) {
-  const rows = await db.select().from(kenoWalletsTable).where(eq(kenoWalletsTable.userId, userId));
+  const rows = await db
+    .select()
+    .from(kenoWalletsTable)
+    .where(eq(kenoWalletsTable.userId, userId));
   if (rows[0]) return rows[0];
   const [w] = await db.insert(kenoWalletsTable).values({ userId }).returning();
   return w;
@@ -532,27 +718,47 @@ function checkPw(userId: number): { allowed: boolean; retryAfterMs?: number } {
   const now = Date.now();
   const e = pwFailures.get(userId);
   if (!e || now > e.resetAt) return { allowed: true };
-  if (e.count >= PW_MAX) return { allowed: false, retryAfterMs: e.resetAt - now };
+  if (e.count >= PW_MAX)
+    return { allowed: false, retryAfterMs: e.resetAt - now };
   return { allowed: true };
 }
 function recordPwFail(userId: number) {
   const now = Date.now();
   const e = pwFailures.get(userId);
-  if (!e || now > e.resetAt) pwFailures.set(userId, { count: 1, resetAt: now + PW_WINDOW });
+  if (!e || now > e.resetAt)
+    pwFailures.set(userId, { count: 1, resetAt: now + PW_WINDOW });
   else e.count++;
 }
-function clearPwFail(userId: number) { pwFailures.delete(userId); }
+function clearPwFail(userId: number) {
+  pwFailures.delete(userId);
+}
 
-async function verifyPassword(userId: number, password: unknown): Promise<{ ok: boolean; error?: string }> {
+async function verifyPassword(
+  userId: number,
+  password: unknown,
+): Promise<{ ok: boolean; error?: string }> {
   const rl = checkPw(userId);
   if (!rl.allowed) {
     const mins = Math.ceil((rl.retryAfterMs ?? PW_WINDOW) / 60000);
-    return { ok: false, error: `Too many incorrect attempts. Try again in ${mins} minute${mins !== 1 ? "s" : ""}.` };
+    return {
+      ok: false,
+      error: `Too many incorrect attempts. Try again in ${mins} minute${mins !== 1 ? "s" : ""}.`,
+    };
   }
-  const row = await db.select({ passwordHash: usersTable.passwordHash }).from(usersTable).where(eq(usersTable.id, userId)).then(r => r[0]);
-  if (!row?.passwordHash) return { ok: false, error: "Account configuration error." };
-  const match = await bcrypt.compare(String(password ?? ""), row.passwordHash).catch(() => false);
-  if (!match) { recordPwFail(userId); return { ok: false, error: "Incorrect password." }; }
+  const row = await db
+    .select({ passwordHash: usersTable.passwordHash })
+    .from(usersTable)
+    .where(eq(usersTable.id, userId))
+    .then((r) => r[0]);
+  if (!row?.passwordHash)
+    return { ok: false, error: "Account configuration error." };
+  const match = await bcrypt
+    .compare(String(password ?? ""), row.passwordHash)
+    .catch(() => false);
+  if (!match) {
+    recordPwFail(userId);
+    return { ok: false, error: "Incorrect password." };
+  }
   clearPwFail(userId);
   return { ok: true };
 }
@@ -560,24 +766,33 @@ async function verifyPassword(userId: number, password: unknown): Promise<{ ok: 
 // ─── Admin auth (same HMAC-SHA256 pattern as admin.ts) ───────────────────────
 
 function adminVerify(token: string): boolean {
-  const secret = process.env.ADMIN_JWT_SECRET ?? process.env.SESSION_SECRET ?? "";
+  const secret =
+    process.env.ADMIN_JWT_SECRET ?? process.env.SESSION_SECRET ?? "";
   const parts = token.split(".");
   if (parts.length !== 2) return false;
   const [data, sig] = parts;
-  const expected = createHmac("sha256", secret).update(data).digest("base64url");
+  const expected = createHmac("sha256", secret)
+    .update(data)
+    .digest("base64url");
   try {
     if (!timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return false;
-  } catch { return false; }
+  } catch {
+    return false;
+  }
   try {
     const parsed = JSON.parse(Buffer.from(data, "base64url").toString());
     return Date.now() - parsed.iat <= 24 * 60 * 60 * 1000;
-  } catch { return false; }
+  } catch {
+    return false;
+  }
 }
 
 function adminAuth(req: any, res: any, next: any) {
   const auth = req.headers.authorization;
-  if (!auth?.startsWith("Bearer ")) return res.status(401).json({ error: "Unauthorized" });
-  if (!adminVerify(auth.slice(7))) return res.status(401).json({ error: "Unauthorized" });
+  if (!auth?.startsWith("Bearer "))
+    return res.status(401).json({ error: "Unauthorized" });
+  if (!adminVerify(auth.slice(7)))
+    return res.status(401).json({ error: "Unauthorized" });
   next();
 }
 
@@ -609,7 +824,11 @@ function generateServerSeed(): string {
 }
 
 /** Step 1 — SHA-256 commitment published to clients before betting. */
-function computeServerHash(serverSeed: string, roundId: number, timestamp: number): string {
+function computeServerHash(
+  serverSeed: string,
+  roundId: number,
+  timestamp: number,
+): string {
   return createHash("sha256")
     .update(`${serverSeed}|${roundId}|${timestamp}`)
     .digest("hex");
@@ -625,7 +844,11 @@ function computeServerHash(serverSeed: string, roundId: number, timestamp: numbe
  *
  * Reproducible: same inputs always yield the same 20 numbers.
  */
-function deriveProvablyFairDraw(serverSeed: string, roundId: number, drawTimestamp: number): number[] {
+function deriveProvablyFairDraw(
+  serverSeed: string,
+  roundId: number,
+  drawTimestamp: number,
+): number[] {
   const pool = Array.from({ length: 80 }, (_, i) => i + 1);
   for (let i = pool.length - 1; i > 0; i--) {
     const h = createHmac("sha256", serverSeed)
@@ -696,7 +919,10 @@ async function findControlledDraw(
     })
     .from(kenoPaytableTable);
   const multipliers = new Map(
-    paytableRows.map(row => [`${row.picks},${row.hits}`, parseFloat(row.multiplier)]),
+    paytableRows.map((row) => [
+      `${row.picks},${row.hits}`,
+      parseFloat(row.multiplier),
+    ]),
   );
 
   let bestDraw: number[] | null = null;
@@ -706,13 +932,18 @@ async function findControlledDraw(
   let bestNonZeroPayout = 0;
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const candidate = generateCandidateDraw(serverSeed, roundId, drawTimestamp, attempt);
+    const candidate = generateCandidateDraw(
+      serverSeed,
+      roundId,
+      drawTimestamp,
+      attempt,
+    );
     const candidateSet = new Set(candidate);
 
     let totalPayout = 0;
     for (const batch of bets.values()) {
       for (const ticket of batch.tickets) {
-        const hits = ticket.picks.filter(n => candidateSet.has(n)).length;
+        const hits = ticket.picks.filter((n) => candidateSet.has(n)).length;
         const mult = multipliers.get(`${ticket.picks.length},${hits}`) ?? 0;
         totalPayout += parseFloat(ticket.betAmount) * mult;
       }
@@ -748,11 +979,13 @@ async function findControlledDraw(
 
   console.log(
     `[Keno] Controlled draw search | round=${roundId} | ` +
-    `target=$${targetPayout.toFixed(2)} | best=$${bestPayout.toFixed(2)} | ` +
-    `diff=$${bestDiff.toFixed(2)} | attempts=${maxAttempts}`,
+      `target=$${targetPayout.toFixed(2)} | best=$${bestPayout.toFixed(2)} | ` +
+      `diff=$${bestDiff.toFixed(2)} | attempts=${maxAttempts}`,
   );
 
-  return bestDraw ?? generateCandidateDraw(serverSeed, roundId, drawTimestamp, 0);
+  return (
+    bestDraw ?? generateCandidateDraw(serverSeed, roundId, drawTimestamp, 0)
+  );
 }
 
 // ─── Multiplayer Round Manager ────────────────────────────────────────────────
@@ -763,57 +996,57 @@ async function findControlledDraw(
 // command before the draw; total winnings are credited in ONE atomic SQL
 // command after evaluation.
 
-const BETTING_MS = 30_000;  // 30-second betting window
-const DRAWING_MS =  10_000;  // Keep the settled ticket/result visible for 10 seconds
+const BETTING_MS = 30_000; // 30-second betting window
+const DRAWING_MS = 10_000; // Keep the settled ticket/result visible for 10 seconds
 
 // ── Batch / ticket types ──────────────────────────────────────────────────────
 
 interface PendingTicket {
-  picks:     number[];
-  betAmount: string;  // per-ticket stake
+  picks: number[];
+  betAmount: string; // per-ticket stake
 }
 
 /** One user's queued entry for the current multiplayer round (1–10 tickets). */
 interface PendingBatch {
-  userId:                number;
-  tickets:               PendingTicket[];
-  totalStaked:           string;          // sum of all ticket bets
-  mode:                  "demo" | "real";
+  userId: number;
+  tickets: PendingTicket[];
+  totalStaked: string; // sum of all ticket bets
+  mode: "demo" | "real";
   balanceAfterDeduction: number;
 }
 
 interface SettledTicketResult {
-  picks:      number[];
-  betAmount:  string;
-  matches:    number[];   // actual intersecting numbers
-  hitCount:   number;
+  picks: number[];
+  betAmount: string;
+  matches: number[]; // actual intersecting numbers
+  hitCount: number;
   multiplier: number;
-  payout:     number;
-  isWin:      boolean;
+  payout: number;
+  isWin: boolean;
 }
 
 /** Settlement result stored in activeRound.results keyed by `${userId}:${mode}`. */
 interface SettledBatchResult {
-  tickets:     SettledTicketResult[];
+  tickets: SettledTicketResult[];
   totalPayout: number;
-  mode:        "demo" | "real";
-  newBalance:  number;
+  mode: "demo" | "real";
+  newBalance: number;
 }
 
 interface GameRound {
-  roundId:          number;
-  phase:            "betting" | "drawing";
-  bettingEndsAt:    number;          // epoch ms
-  drawingEndsAt:    number | null;
-  drawnNumbers:     number[] | null;
+  roundId: number;
+  phase: "betting" | "drawing";
+  bettingEndsAt: number; // epoch ms
+  drawingEndsAt: number | null;
+  drawnNumbers: number[] | null;
   // ── Provably Fair fields ──────────────────────────────────────────────────
-  serverSeed:       string;          // secret until revealed after draw
-  serverHash:       string;          // SHA-256(seed|roundId|seedTimestamp) — published before betting
-  seedTimestamp:    number;          // timestamp used in hash (published with serverHash)
-  drawTimestamp:    number | null;   // set at draw time; revealed with serverSeed
+  serverSeed: string; // secret until revealed after draw
+  serverHash: string; // SHA-256(seed|roundId|seedTimestamp) — published before betting
+  seedTimestamp: number; // timestamp used in hash (published with serverHash)
+  drawTimestamp: number | null; // set at draw time; revealed with serverSeed
   serverSeedRevealed: string | null; // null during betting; set to serverSeed after draw
-  bets:             Map<string, PendingBatch>;      // `${userId}:${mode}`
-  results:          Map<string, SettledBatchResult>; // `${userId}:${mode}`
+  bets: Map<string, PendingBatch>; // `${userId}:${mode}`
+  results: Map<string, SettledBatchResult>; // `${userId}:${mode}`
 }
 
 // ── Batch evaluator ───────────────────────────────────────────────────────────
@@ -835,15 +1068,19 @@ async function evaluateUserBatch(
     })
     .from(kenoPaytableTable);
   const multipliers = new Map(
-    paytableRows.map(row => [`${row.picks},${row.hits}`, parseFloat(row.multiplier)]),
+    paytableRows.map((row) => [
+      `${row.picks},${row.hits}`,
+      parseFloat(row.multiplier),
+    ]),
   );
   const drawnSet = new Set(drawn);
 
-  return tickets.map(ticket => {
-    const betAmt   = parseFloat(ticket.betAmount);
-    const matches  = ticket.picks.filter(n => drawnSet.has(n));
+  return tickets.map((ticket) => {
+    const betAmt = parseFloat(ticket.betAmount);
+    const matches = ticket.picks.filter((n) => drawnSet.has(n));
     const hitCount = matches.length;
-    const multiplier = multipliers.get(`${ticket.picks.length},${hitCount}`) ?? 0;
+    const multiplier =
+      multipliers.get(`${ticket.picks.length},${hitCount}`) ?? 0;
     const win_amount = parseFloat((betAmt * multiplier).toFixed(2));
     return {
       picks: ticket.picks,
@@ -860,23 +1097,23 @@ async function evaluateUserBatch(
 let _roundCounter = 1;
 
 function makeRound(): GameRound {
-  const roundId       = _roundCounter++;
-  const serverSeed    = generateServerSeed();
+  const roundId = _roundCounter++;
+  const serverSeed = generateServerSeed();
   const seedTimestamp = Date.now();
-  const serverHash    = computeServerHash(serverSeed, roundId, seedTimestamp);
+  const serverHash = computeServerHash(serverSeed, roundId, seedTimestamp);
   return {
     roundId,
-    phase:              "betting",
-    bettingEndsAt:      seedTimestamp + BETTING_MS,
-    drawingEndsAt:      null,
-    drawnNumbers:       null,
+    phase: "betting",
+    bettingEndsAt: seedTimestamp + BETTING_MS,
+    drawingEndsAt: null,
+    drawnNumbers: null,
     serverSeed,
     serverHash,
     seedTimestamp,
-    drawTimestamp:      null,
+    drawTimestamp: null,
     serverSeedRevealed: null,
-    bets:               new Map(),
-    results:            new Map(),
+    bets: new Map(),
+    results: new Map(),
   };
 }
 
@@ -894,7 +1131,10 @@ async function initializeRoundCounter() {
       activeRound = makeRound();
     }
   } catch (err) {
-    console.error("[Keno] Failed to restore round counter; starting from 1", err);
+    console.error(
+      "[Keno] Failed to restore round counter; starting from 1",
+      err,
+    );
   }
 }
 
@@ -907,9 +1147,16 @@ async function advanceRound() {
   // ── Controlled lottery draw ──────────────────────────────────────────────
   // Step 1: compute gross pool and target payout from house margin
   const batches = Array.from(activeRound.bets.values());
-  const grossPool = batches.reduce((sum, b) => sum + parseFloat(b.totalStaked), 0);
-  const houseMarginPercent = parseFloat(await getSetting("house_margin_percent", "20"));
-  const targetPayout = parseFloat((grossPool * (1 - houseMarginPercent / 100)).toFixed(2));
+  const grossPool = batches.reduce(
+    (sum, b) => sum + parseFloat(b.totalStaked),
+    0,
+  );
+  const houseMarginPercent = parseFloat(
+    await getSetting("house_margin_percent", "20"),
+  );
+  const targetPayout = parseFloat(
+    (grossPool * (1 - houseMarginPercent / 100)).toFixed(2),
+  );
 
   // Step 2: search for the 20-number draw whose total payout is closest
   // to the target. The candidates are generated deterministically from the
@@ -925,43 +1172,48 @@ async function advanceRound() {
   // ── Pool/pari-mutuel settlement: compute round-wide totals BEFORE touching
   // any individual wallet. Must happen once, for the whole round.
   // `batches` and `grossPool` were already computed above for the target payout.
-  const poolSettlement = await computeRoundPoolSettlement(activeRound.bets, drawn);
+  const poolSettlement = await computeRoundPoolSettlement(
+    activeRound.bets,
+    drawn,
+  );
 
   // Settle every pending batch BEFORE flipping to "drawing" so the first
   // client poll that sees phase==="drawing" already has results.
   await Promise.allSettled(
     Array.from(activeRound.bets.entries()).map(([key, batch]) =>
-      settleUserBatch(batch, drawn, poolSettlement.batchResults.get(key) ?? [])
-    )
+      settleUserBatch(batch, drawn, poolSettlement.batchResults.get(key) ?? []),
+    ),
   );
 
   // Reveal the server seed now that the draw is locked in
   activeRound.serverSeedRevealed = activeRound.serverSeed;
 
-  activeRound.phase         = "drawing";
-  activeRound.drawnNumbers  = drawn;
+  activeRound.phase = "drawing";
+  activeRound.drawnNumbers = drawn;
   activeRound.drawingEndsAt = Date.now() + DRAWING_MS;
 
   // Persist every round to keno_draws regardless of whether anyone bet
   const snapshot = activeRound;
-  db.insert(kenoDrawsTable).values({
-    roundId:          snapshot.roundId,
-    drawnNumbers:     drawn,
-    serverSeed:       snapshot.serverSeed,
-    serverHash:       snapshot.serverHash,
-    seedTimestamp:    new Date(snapshot.seedTimestamp),
-    drawTimestamp:    new Date(drawTimestamp),
-    participantCount: batches.length,
-    houseMarginPercent:    poolSettlement.houseMarginPercent.toFixed(2),
-    grossPool:             poolSettlement.grossPool.toFixed(2),
-    ownerProfitAllocation: poolSettlement.ownerProfitAllocation.toFixed(2),
-    prizeBudget:           poolSettlement.prizeBudget.toFixed(2),
-    totalPrizesPaid:       poolSettlement.totalPrizesPaid.toFixed(2),
-    unclaimedAmount:       poolSettlement.unclaimedAmount.toFixed(2),
-    confirmedEntries:      poolSettlement.confirmedEntries,
-  }).catch((err: unknown) => {
-    console.error("[Keno] Failed to persist round", snapshot.roundId, err);
-  });
+  db.insert(kenoDrawsTable)
+    .values({
+      roundId: snapshot.roundId,
+      drawnNumbers: drawn,
+      serverSeed: snapshot.serverSeed,
+      serverHash: snapshot.serverHash,
+      seedTimestamp: new Date(snapshot.seedTimestamp),
+      drawTimestamp: new Date(drawTimestamp),
+      participantCount: batches.length,
+      houseMarginPercent: poolSettlement.houseMarginPercent.toFixed(2),
+      grossPool: poolSettlement.grossPool.toFixed(2),
+      ownerProfitAllocation: poolSettlement.ownerProfitAllocation.toFixed(2),
+      prizeBudget: poolSettlement.prizeBudget.toFixed(2),
+      totalPrizesPaid: poolSettlement.totalPrizesPaid.toFixed(2),
+      unclaimedAmount: poolSettlement.unclaimedAmount.toFixed(2),
+      confirmedEntries: poolSettlement.confirmedEntries,
+    })
+    .catch((err: unknown) => {
+      console.error("[Keno] Failed to persist round", snapshot.roundId, err);
+    });
 
   // Start next betting round after the drawing window closes
   setTimeout(() => {
@@ -977,7 +1229,11 @@ async function advanceRound() {
 //   • Credits TOTAL_PAYOUT in ONE atomic SQL UPDATE (SELECT … FOR UPDATE)
 //   • Inserts one keno_batches row + N keno_rounds rows + one keno_transactions row
 
-async function settleUserBatch(batch: PendingBatch, drawn: number[], precomputedResults: PoolTicketResult[]): Promise<void> {
+async function settleUserBatch(
+  batch: PendingBatch,
+  drawn: number[],
+  precomputedResults: PoolTicketResult[],
+): Promise<void> {
   const { userId, tickets, totalStaked, mode } = batch;
 
   // Pool model: use the round-wide precomputed, scaled results — do NOT
@@ -988,45 +1244,52 @@ async function settleUserBatch(batch: PendingBatch, drawn: number[], precomputed
   );
 
   // Atomic: credit total payout, log batch + individual rounds in one transaction
-  const settleRes = await db.transaction(async tx => {
-    const lock = await tx.execute(
+  const settleRes = await db.transaction(async (tx) => {
+    const lock = (await tx.execute(
       sql`SELECT * FROM keno_wallets WHERE user_id = ${userId} FOR UPDATE`,
-    ) as any;
+    )) as any;
     const row = lock.rows?.[0];
     if (!row) return { error: "wallet missing" } as const;
 
-    const field  = mode === "real" ? "real_balance" : "demo_balance";
-    const cur    = parseFloat(row[field] ?? "0");
+    const field = mode === "real" ? "real_balance" : "demo_balance";
+    const cur = parseFloat(row[field] ?? "0");
     const newBal = parseFloat((cur + totalPayout).toFixed(2));
 
     // ONE balance update for the whole batch
     if (totalPayout > 0) {
       if (mode === "real") {
-        await tx.update(kenoWalletsTable)
+        await tx
+          .update(kenoWalletsTable)
           .set({ realBalance: String(newBal), updatedAt: new Date() })
           .where(eq(kenoWalletsTable.userId, userId));
       } else {
-        await tx.update(kenoWalletsTable)
+        await tx
+          .update(kenoWalletsTable)
           .set({ demoBalance: String(newBal), updatedAt: new Date() })
           .where(eq(kenoWalletsTable.userId, userId));
       }
     }
 
     // Batch-level record
-    const [batchRow] = await tx.insert(kenoBatchesTable).values({
-      userId, mode,
-      drawnNumbers: drawn,
-      totalStaked,
-      totalPayout: totalPayout.toFixed(2),
-      ticketCount: tickets.length,
-      status: "settled",
-      settledAt: new Date(),
-    }).returning({ id: kenoBatchesTable.id });
+    const [batchRow] = await tx
+      .insert(kenoBatchesTable)
+      .values({
+        userId,
+        mode,
+        drawnNumbers: drawn,
+        totalStaked,
+        totalPayout: totalPayout.toFixed(2),
+        ticketCount: tickets.length,
+        status: "settled",
+        settledAt: new Date(),
+      })
+      .returning({ id: kenoBatchesTable.id });
 
     // Individual ticket records
     for (const r of ticketResults) {
       await tx.insert(kenoRoundsTable).values({
-        userId, mode,
+        userId,
+        mode,
         batchId: batchRow.id,
         picks: r.picks,
         drawnNumbers: drawn,
@@ -1039,7 +1302,10 @@ async function settleUserBatch(batch: PendingBatch, drawn: number[], precomputed
 
     // ONE transaction log entry covering the whole stake
     await tx.insert(kenoTransactionsTable).values({
-      userId, type: "bet", amount: totalStaked, mode,
+      userId,
+      type: "bet",
+      amount: totalStaked,
+      mode,
       balanceAfter: String(newBal),
     });
 
@@ -1072,17 +1338,25 @@ kenoRouter.get("/wallet", async (req, res) => {
     await ensureSeeded();
     const userId = (req as any).userId;
     const wallet = await getOrCreateKenoWallet(userId);
-    const [minBet, maxBet, minTopup, maxTopup, gameEnabled] = await Promise.all([
-      getSetting("min_bet", "0.10"),
-      getSetting("max_bet", "100.00"),
-      getSetting("min_topup", "1.00"),
-      getSetting("max_topup", "1000.00"),
-      getSetting("game_enabled", "true"),
-    ]);
+    const [minBet, maxBet, minTopup, maxTopup, gameEnabled] = await Promise.all(
+      [
+        getSetting("min_bet", "0.10"),
+        getSetting("max_bet", "100.00"),
+        getSetting("min_topup", "1.00"),
+        getSetting("max_topup", "1000.00"),
+        getSetting("game_enabled", "true"),
+      ],
+    );
     res.json({
       realBalance: wallet.realBalance,
       demoBalance: wallet.demoBalance,
-      settings: { minBet, maxBet, minTopup, maxTopup, gameEnabled: gameEnabled === "true" },
+      settings: {
+        minBet,
+        maxBet,
+        minTopup,
+        maxTopup,
+        gameEnabled: gameEnabled === "true",
+      },
     });
   } catch (err) {
     req.log?.error({ err }, "keno/wallet error");
@@ -1094,7 +1368,10 @@ kenoRouter.get("/wallet", async (req, res) => {
 kenoRouter.get("/paytable", async (req, res) => {
   try {
     await ensureSeeded();
-    const rows = await db.select().from(kenoPaytableTable).orderBy(kenoPaytableTable.picks, kenoPaytableTable.hits);
+    const rows = await db
+      .select()
+      .from(kenoPaytableTable)
+      .orderBy(kenoPaytableTable.picks, kenoPaytableTable.hits);
     res.json(rows);
   } catch (err) {
     req.log?.error({ err }, "keno/paytable error");
@@ -1108,17 +1385,27 @@ kenoRouter.post("/topup", async (req, res) => {
     const { amount, password } = req.body;
     const userId = (req as any).userId;
 
-    if (!amount || !password) return res.status(400).json({ error: "Amount and password are required" });
+    if (!amount || !password)
+      return res
+        .status(400)
+        .json({ error: "Amount and password are required" });
 
     const amt = parseFloat(amount);
-    if (isNaN(amt) || amt <= 0) return res.status(400).json({ error: "Invalid amount" });
+    if (isNaN(amt) || amt <= 0)
+      return res.status(400).json({ error: "Invalid amount" });
 
     const [minTopup, maxTopup] = await Promise.all([
       getSetting("min_topup", "1.00").then(parseFloat),
       getSetting("max_topup", "1000.00").then(parseFloat),
     ]);
-    if (amt < minTopup) return res.status(400).json({ error: `Minimum top-up is ${minTopup} USDT` });
-    if (amt > maxTopup) return res.status(400).json({ error: `Maximum top-up is ${maxTopup} USDT` });
+    if (amt < minTopup)
+      return res
+        .status(400)
+        .json({ error: `Minimum top-up is ${minTopup} USDT` });
+    if (amt > maxTopup)
+      return res
+        .status(400)
+        .json({ error: `Maximum top-up is ${maxTopup} USDT` });
 
     // Password confirmation (bcrypt + rate limit)
     const pwCheck = await verifyPassword(userId, password);
@@ -1127,9 +1414,9 @@ kenoRouter.post("/topup", async (req, res) => {
     // Atomic: debit main wallet, credit keno wallet, log both
     const result = await db.transaction(async (tx) => {
       // Lock main wallet row
-      const mainWalletResult = await tx.execute(
-        sql`SELECT * FROM wallets WHERE user_id = ${userId} AND asset = 'USDT' FOR UPDATE`
-      ) as any;
+      const mainWalletResult = (await tx.execute(
+        sql`SELECT * FROM wallets WHERE user_id = ${userId} AND asset = 'USDT' FOR UPDATE`,
+      )) as any;
       const mainWalletRow = mainWalletResult.rows?.[0];
       if (!mainWalletRow) return { error: "Main wallet not found" };
 
@@ -1142,23 +1429,27 @@ kenoRouter.post("/topup", async (req, res) => {
       await tx.execute(
         sql`INSERT INTO keno_wallets (user_id, real_balance, demo_balance, updated_at)
             VALUES (${userId}, 0, 10000, NOW())
-            ON CONFLICT (user_id) DO NOTHING`
+            ON CONFLICT (user_id) DO NOTHING`,
       );
 
-      const kenoResult = await tx.execute(
-        sql`SELECT * FROM keno_wallets WHERE user_id = ${userId} FOR UPDATE`
-      ) as any;
+      const kenoResult = (await tx.execute(
+        sql`SELECT * FROM keno_wallets WHERE user_id = ${userId} FOR UPDATE`,
+      )) as any;
       const kenoWalletRow = kenoResult.rows?.[0];
       const kenoReal = parseFloat(kenoWalletRow?.real_balance ?? "0");
       const newKenoBalance = (kenoReal + amt).toFixed(2);
 
       // Debit main wallet
-      await tx.update(walletsTable)
+      await tx
+        .update(walletsTable)
         .set({ availableBalance: newMainBalance, updatedAt: new Date() })
-        .where(and(eq(walletsTable.userId, userId), eq(walletsTable.asset, "USDT")));
+        .where(
+          and(eq(walletsTable.userId, userId), eq(walletsTable.asset, "USDT")),
+        );
 
       // Credit keno wallet
-      await tx.update(kenoWalletsTable)
+      await tx
+        .update(kenoWalletsTable)
         .set({ realBalance: newKenoBalance, updatedAt: new Date() })
         .where(eq(kenoWalletsTable.userId, userId));
 
@@ -1202,19 +1493,23 @@ kenoRouter.post("/withdraw", async (req, res) => {
     const { amount, password } = req.body;
     const userId = (req as any).userId;
 
-    if (!amount || !password) return res.status(400).json({ error: "Amount and password are required" });
+    if (!amount || !password)
+      return res
+        .status(400)
+        .json({ error: "Amount and password are required" });
 
     const amt = parseFloat(amount);
-    if (isNaN(amt) || amt <= 0) return res.status(400).json({ error: "Invalid amount" });
+    if (isNaN(amt) || amt <= 0)
+      return res.status(400).json({ error: "Invalid amount" });
 
     const pwCheck = await verifyPassword(userId, password);
     if (!pwCheck.ok) return res.status(401).json({ error: pwCheck.error });
 
     const result = await db.transaction(async (tx) => {
       // Lock keno wallet
-      const kenoResult = await tx.execute(
-        sql`SELECT * FROM keno_wallets WHERE user_id = ${userId} FOR UPDATE`
-      ) as any;
+      const kenoResult = (await tx.execute(
+        sql`SELECT * FROM keno_wallets WHERE user_id = ${userId} FOR UPDATE`,
+      )) as any;
       const kenoWalletRow = kenoResult.rows?.[0];
       if (!kenoWalletRow) return { error: "Keno wallet not found" };
 
@@ -1224,9 +1519,9 @@ kenoRouter.post("/withdraw", async (req, res) => {
       const newKenoBalance = (kenoReal - amt).toFixed(2);
 
       // Lock main wallet
-      const mainResult = await tx.execute(
-        sql`SELECT * FROM wallets WHERE user_id = ${userId} AND asset = 'USDT' FOR UPDATE`
-      ) as any;
+      const mainResult = (await tx.execute(
+        sql`SELECT * FROM wallets WHERE user_id = ${userId} AND asset = 'USDT' FOR UPDATE`,
+      )) as any;
       const mainWalletRow = mainResult.rows?.[0];
       if (!mainWalletRow) return { error: "Main wallet not found" };
 
@@ -1234,14 +1529,18 @@ kenoRouter.post("/withdraw", async (req, res) => {
       const newMainBalance = (mainAvail + amt).toFixed(2);
 
       // Debit keno wallet
-      await tx.update(kenoWalletsTable)
+      await tx
+        .update(kenoWalletsTable)
         .set({ realBalance: newKenoBalance, updatedAt: new Date() })
         .where(eq(kenoWalletsTable.userId, userId));
 
       // Credit main wallet
-      await tx.update(walletsTable)
+      await tx
+        .update(walletsTable)
         .set({ availableBalance: newMainBalance, updatedAt: new Date() })
-        .where(and(eq(walletsTable.userId, userId), eq(walletsTable.asset, "USDT")));
+        .where(
+          and(eq(walletsTable.userId, userId), eq(walletsTable.asset, "USDT")),
+        );
 
       // Log: debit keno
       await tx.insert(kenoTransactionsTable).values({
@@ -1281,7 +1580,8 @@ kenoRouter.post("/withdraw", async (req, res) => {
 kenoRouter.post("/demo/reset", async (req, res) => {
   try {
     const userId = (req as any).userId;
-    await db.insert(kenoWalletsTable)
+    await db
+      .insert(kenoWalletsTable)
       .values({ userId, demoBalance: "10000.00" })
       .onConflictDoUpdate({
         target: kenoWalletsTable.userId,
@@ -1298,74 +1598,96 @@ kenoRouter.post("/demo/reset", async (req, res) => {
 kenoRouter.get("/state", (req, res) => {
   try {
     const userId = (req as any).userId;
-    const now    = Date.now();
-    const round  = activeRound;
+    const now = Date.now();
+    const round = activeRound;
 
-    const secondsLeft = round.phase === "betting"
-      ? Math.max(0, Math.ceil((round.bettingEndsAt - now) / 1000))
-      : Math.max(0, Math.ceil(((round.drawingEndsAt ?? now) - now) / 1000));
+    const secondsLeft =
+      round.phase === "betting"
+        ? Math.max(0, Math.ceil((round.bettingEndsAt - now) / 1000))
+        : Math.max(0, Math.ceil(((round.drawingEndsAt ?? now) - now) / 1000));
 
-    const requestedMode = req.query.mode === "real" ? "real" : req.query.mode === "demo" ? "demo" : null;
+    const requestedMode =
+      req.query.mode === "real"
+        ? "real"
+        : req.query.mode === "demo"
+          ? "demo"
+          : null;
     const modeKeys = requestedMode
       ? [`${userId}:${requestedMode}`]
       : [`${userId}:demo`, `${userId}:real`];
-    const myBatchKey = modeKeys.find(key => round.bets.has(key));
-    const myResultKey = modeKeys.find(key => round.results.has(key));
-    const myBatch  = myBatchKey ? round.bets.get(myBatchKey) : undefined;
+    const myBatchKey = modeKeys.find((key) => round.bets.has(key));
+    const myResultKey = modeKeys.find((key) => round.results.has(key));
+    const myBatch = myBatchKey ? round.bets.get(myBatchKey) : undefined;
     const myResult = myResultKey ? round.results.get(myResultKey) : undefined;
 
     // Build myBatch response (supports 1–10 tickets per user)
     // SECURITY/RELIABILITY FIX: gate on myBatch OR myResult, not just myBatch.
     // Once a round settles, the pending bet may be cleared from round.bets,
     // but the settled outcome still lives in round.results — dont discard it.
-    const myBatchOut = (myBatch || myResult) ? {
-      mode:        myBatch?.mode ?? myResult?.mode,
-      totalStaked: myBatch?.totalStaked ?? (myResult ? myResult.tickets.reduce((sum, t) => sum + parseFloat(t.betAmount), 0).toFixed(2) : "0"),
-      ticketCount: myBatch?.tickets.length ?? myResult?.tickets.length ?? 0,
-      tickets:     (myBatch?.tickets ?? myResult?.tickets ?? []).map(t => ({
-        picks:     t.picks,
-        betAmount: t.betAmount,
-      })),
-      ...(myResult ? {
-        drawnNumbers: round.drawnNumbers,
-        totalPayout:  myResult.totalPayout,
-        newBalance:   myResult.newBalance,
-        tickets: myResult.tickets.map(r => ({
-          picks:      r.picks,
-          matches:    r.matches,
-          betAmount:  r.betAmount,
-          hitCount:   r.hitCount,
-          multiplier: r.multiplier,
-          payout:     r.payout,
-          isWin:      r.isWin,
-        })),
-        summary: {
-          totalBet:      parseFloat(myBatch!.totalStaked),
-          totalWinnings: parseFloat(myResult.totalPayout.toFixed(2)),
-          netChange:     parseFloat((myResult.totalPayout - parseFloat(myBatch!.totalStaked)).toFixed(2)),
-          newBalance:    myResult.newBalance,
-        },
-      } : {}),
-    } : null;
+    const myBatchOut =
+      myBatch || myResult
+        ? {
+            mode: myBatch?.mode ?? myResult?.mode,
+            totalStaked:
+              myBatch?.totalStaked ??
+              (myResult
+                ? myResult.tickets
+                    .reduce((sum, t) => sum + parseFloat(t.betAmount), 0)
+                    .toFixed(2)
+                : "0"),
+            ticketCount:
+              myBatch?.tickets.length ?? myResult?.tickets.length ?? 0,
+            tickets: (myBatch?.tickets ?? myResult?.tickets ?? []).map((t) => ({
+              picks: t.picks,
+              betAmount: t.betAmount,
+            })),
+            ...(myResult
+              ? {
+                  drawnNumbers: round.drawnNumbers,
+                  totalPayout: myResult.totalPayout,
+                  newBalance: myResult.newBalance,
+                  tickets: myResult.tickets.map((r) => ({
+                    picks: r.picks,
+                    matches: r.matches,
+                    betAmount: r.betAmount,
+                    hitCount: r.hitCount,
+                    multiplier: r.multiplier,
+                    payout: r.payout,
+                    isWin: r.isWin,
+                  })),
+                  summary: {
+                    totalBet: parseFloat(myBatch!.totalStaked),
+                    totalWinnings: parseFloat(myResult.totalPayout.toFixed(2)),
+                    netChange: parseFloat(
+                      (
+                        myResult.totalPayout - parseFloat(myBatch!.totalStaked)
+                      ).toFixed(2),
+                    ),
+                    newBalance: myResult.newBalance,
+                  },
+                }
+              : {}),
+          }
+        : null;
 
     res.json({
-      roundId:      round.roundId,
-      phase:        round.phase,
+      roundId: round.roundId,
+      phase: round.phase,
       secondsLeft,
-      totalBets:    round.bets.size,
+      totalBets: round.bets.size,
       drawnNumbers: round.drawnNumbers,
-      myBatch:      myBatchOut,
+      myBatch: myBatchOut,
       // ── Provably Fair fields ─────────────────────────────────────────────
       // serverHash is published during betting so players can verify the draw
       // was not altered after they placed their bets.
-      serverHash:          round.serverHash,
-      seedTimestamp:       round.seedTimestamp,
+      serverHash: round.serverHash,
+      seedTimestamp: round.seedTimestamp,
       // serverSeedRevealed is null during betting; set to the actual seed
       // once the draw is locked in — players can verify:
       //   SHA-256(serverSeedRevealed + "|" + roundId + "|" + seedTimestamp) === serverHash
-      serverSeedRevealed:  round.serverSeedRevealed,
-      drawTimestamp:       round.drawTimestamp,
-      status:              round.phase === "drawing" ? "SETTLED" : "OPEN",
+      serverSeedRevealed: round.serverSeedRevealed,
+      drawTimestamp: round.drawTimestamp,
+      status: round.phase === "drawing" ? "SETTLED" : "OPEN",
     });
   } catch (err) {
     req.log?.error({ err }, "keno/state error");
@@ -1380,26 +1702,28 @@ async function deductBatchStake(
   mode: "demo" | "real",
   totalStaked: number,
 ): Promise<{ balanceAfterDeduction: number } | { error: string }> {
-  return db.transaction(async tx => {
+  return db.transaction(async (tx) => {
     await tx.execute(
       sql`INSERT INTO keno_wallets (user_id, real_balance, demo_balance, updated_at)
           VALUES (${userId}, 0, 10000, NOW())
           ON CONFLICT (user_id) DO NOTHING`,
     );
-    const lock = await tx.execute(
+    const lock = (await tx.execute(
       sql`SELECT * FROM keno_wallets WHERE user_id = ${userId} FOR UPDATE`,
-    ) as any;
-    const row   = lock.rows?.[0];
+    )) as any;
+    const row = lock.rows?.[0];
     const field = mode === "real" ? "real_balance" : "demo_balance";
-    const cur   = parseFloat(row?.[field] ?? "0");
+    const cur = parseFloat(row?.[field] ?? "0");
     if (cur < totalStaked) return { error: "Insufficient balance" } as const;
     const after = parseFloat((cur - totalStaked).toFixed(2));
     if (mode === "real") {
-      await tx.update(kenoWalletsTable)
+      await tx
+        .update(kenoWalletsTable)
         .set({ realBalance: String(after), updatedAt: new Date() })
         .where(eq(kenoWalletsTable.userId, userId));
     } else {
-      await tx.update(kenoWalletsTable)
+      await tx
+        .update(kenoWalletsTable)
         .set({ demoBalance: String(after), updatedAt: new Date() })
         .where(eq(kenoWalletsTable.userId, userId));
     }
@@ -1409,25 +1733,31 @@ async function deductBatchStake(
 
 // ── Shared helper: refund TOTAL_STAKED if round closed during DB round-trip ──
 
-async function refundBatchStake(userId: number, mode: "demo" | "real", totalStaked: number) {
-  db.transaction(async tx => {
-    const lock = await tx.execute(
+async function refundBatchStake(
+  userId: number,
+  mode: "demo" | "real",
+  totalStaked: number,
+) {
+  db.transaction(async (tx) => {
+    const lock = (await tx.execute(
       sql`SELECT * FROM keno_wallets WHERE user_id = ${userId} FOR UPDATE`,
-    ) as any;
-    const row   = lock.rows?.[0];
+    )) as any;
+    const row = lock.rows?.[0];
     const field = mode === "real" ? "real_balance" : "demo_balance";
-    const cur   = parseFloat(row?.[field] ?? "0");
+    const cur = parseFloat(row?.[field] ?? "0");
     const refunded = parseFloat((cur + totalStaked).toFixed(2));
     if (mode === "real") {
-      await tx.update(kenoWalletsTable)
+      await tx
+        .update(kenoWalletsTable)
         .set({ realBalance: String(refunded), updatedAt: new Date() })
         .where(eq(kenoWalletsTable.userId, userId));
     } else {
-      await tx.update(kenoWalletsTable)
+      await tx
+        .update(kenoWalletsTable)
         .set({ demoBalance: String(refunded), updatedAt: new Date() })
         .where(eq(kenoWalletsTable.userId, userId));
     }
-  }).catch(e => console.error("[Keno] refund failed", e));
+  }).catch((e) => console.error("[Keno] refund failed", e));
 }
 
 // POST /api/games/keno/bet  — place a SINGLE-ticket bet for the current shared round
@@ -1439,7 +1769,9 @@ kenoRouter.post("/bet", async (req, res) => {
     const { picks, betAmount, mode } = req.body;
 
     if (activeRound.phase !== "betting")
-      return res.status(400).json({ error: "Betting is closed — wait for the next round" });
+      return res
+        .status(400)
+        .json({ error: "Betting is closed — wait for the next round" });
 
     if (!Array.isArray(picks) || picks.length < 1 || picks.length > 10)
       return res.status(400).json({ error: "Select 1 to 10 numbers" });
@@ -1451,11 +1783,14 @@ kenoRouter.post("/bet", async (req, res) => {
       return res.status(400).json({ error: "Invalid mode" });
 
     const bet = parseFloat(betAmount);
-    if (isNaN(bet) || bet <= 0) return res.status(400).json({ error: "Invalid bet amount" });
+    if (isNaN(bet) || bet <= 0)
+      return res.status(400).json({ error: "Invalid bet amount" });
 
     const betKey = `${userId}:${mode}`;
     if (activeRound.bets.has(betKey))
-      return res.status(400).json({ error: "You already placed a bet this round" });
+      return res
+        .status(400)
+        .json({ error: "You already placed a bet this round" });
 
     // Claim the slot immediately — prevents concurrent requests from both
     // passing the has() check above before either finishes the DB deduction.
@@ -1481,17 +1816,26 @@ kenoRouter.post("/bet", async (req, res) => {
     }
 
     // Deduct TOTAL_STAKED in ONE atomic SQL command before the draw
-    const deductRes = await deductBatchStake(userId, mode as "demo" | "real", bet);
+    const deductRes = await deductBatchStake(
+      userId,
+      mode as "demo" | "real",
+      bet,
+    );
     if ("error" in deductRes) {
       activeRound.bets.delete(betKey);
       return res.status(400).json({ error: deductRes.error });
     }
 
     // Race: round closed while the DB transaction was in flight — refund and reject
-    if (activeRound.phase !== "betting" || activeRound.roundId !== claimedRoundId) {
+    if (
+      activeRound.phase !== "betting" ||
+      activeRound.roundId !== claimedRoundId
+    ) {
       activeRound.bets.delete(betKey);
       await refundBatchStake(userId, mode as "demo" | "real", bet);
-      return res.status(400).json({ error: "Betting just closed — your balance was refunded" });
+      return res
+        .status(400)
+        .json({ error: "Betting just closed — your balance was refunded" });
     }
 
     // Register as a 1-ticket batch so settlement uses the shared batch path
@@ -1504,10 +1848,10 @@ kenoRouter.post("/bet", async (req, res) => {
     });
 
     res.json({
-      success:               true,
-      roundId:               activeRound.roundId,
+      success: true,
+      roundId: activeRound.roundId,
       picks,
-      betAmount:             bet.toFixed(2),
+      betAmount: bet.toFixed(2),
       mode,
       balanceAfterDeduction: deductRes.balanceAfterDeduction,
     });
@@ -1529,28 +1873,39 @@ kenoRouter.post("/bet-batch", async (req, res) => {
 
     let tickets: unknown;
     let mode: unknown;
-    try { ({ tickets, mode } = req.body); } catch {
+    try {
+      ({ tickets, mode } = req.body);
+    } catch {
       return res.status(400).json({ error: "Invalid request body" });
     }
 
     if (activeRound.phase !== "betting")
-      return res.status(400).json({ error: "Betting is closed — wait for the next round" });
+      return res
+        .status(400)
+        .json({ error: "Betting is closed — wait for the next round" });
 
     if (!["demo", "real"].includes(mode as string))
       return res.status(400).json({ error: "Invalid mode" });
 
     if (!Array.isArray(tickets) || tickets.length !== 1)
-      return res.status(400).json({ error: "Submit exactly 1 ticket per request" });
+      return res
+        .status(400)
+        .json({ error: "Submit exactly 1 ticket per request" });
 
     const betKey = `${userId}:${mode}`;
 
     // Snapshot the existing batch (may be undefined for first ticket)
-    const existingBatch = activeRound.bets.get(betKey) as PendingBatch | null | undefined;
+    const existingBatch = activeRound.bets.get(betKey) as
+      | PendingBatch
+      | null
+      | undefined;
 
     // Check per-round ticket cap
     const existingCount = existingBatch?.tickets?.length ?? 0;
     if (existingCount >= MAX_TICKETS_PER_ROUND) {
-      return res.status(400).json({ error: `Maximum ${MAX_TICKETS_PER_ROUND} tickets per round` });
+      return res
+        .status(400)
+        .json({ error: `Maximum ${MAX_TICKETS_PER_ROUND} tickets per round` });
     }
 
     // Claim / lock the slot to prevent duplicate concurrent requests
@@ -1579,62 +1934,83 @@ kenoRouter.post("/bet-batch", async (req, res) => {
     };
 
     if (!Array.isArray(picks) || picks.length < 1 || picks.length > 10) {
-      restore(); return res.status(400).json({ error: "Select 1 to 10 numbers per ticket" });
+      restore();
+      return res
+        .status(400)
+        .json({ error: "Select 1 to 10 numbers per ticket" });
     }
     if (picks.some((n: any) => !Number.isInteger(n) || n < 1 || n > 80)) {
-      restore(); return res.status(400).json({ error: "Numbers must be integers 1–80" });
+      restore();
+      return res.status(400).json({ error: "Numbers must be integers 1–80" });
     }
     if (new Set(picks).size !== picks.length) {
-      restore(); return res.status(400).json({ error: "Duplicate numbers not allowed" });
+      restore();
+      return res.status(400).json({ error: "Duplicate numbers not allowed" });
     }
     const bet = parseFloat(rawBet);
     if (isNaN(bet) || bet <= 0) {
-      restore(); return res.status(400).json({ error: "Invalid bet amount" });
+      restore();
+      return res.status(400).json({ error: "Invalid bet amount" });
     }
     if (bet < minBet) {
-      restore(); return res.status(400).json({ error: `Minimum bet is ${minBet} USDT` });
+      restore();
+      return res.status(400).json({ error: `Minimum bet is ${minBet} USDT` });
     }
     if (bet > maxBet) {
-      restore(); return res.status(400).json({ error: `Maximum bet is ${maxBet} USDT` });
+      restore();
+      return res.status(400).json({ error: `Maximum bet is ${maxBet} USDT` });
     }
 
     const newTicket: PendingTicket = { picks, betAmount: bet.toFixed(2) };
 
     // Deduct only this ticket's stake atomically
-    const deductRes = await deductBatchStake(userId, mode as "demo" | "real", bet);
+    const deductRes = await deductBatchStake(
+      userId,
+      mode as "demo" | "real",
+      bet,
+    );
     if ("error" in deductRes) {
-      restore(); return res.status(400).json({ error: deductRes.error });
+      restore();
+      return res.status(400).json({ error: deductRes.error });
     }
 
     // Race: round closed during the DB transaction — refund and reject
-    if (activeRound.phase !== "betting" || activeRound.roundId !== claimedRoundId) {
+    if (
+      activeRound.phase !== "betting" ||
+      activeRound.roundId !== claimedRoundId
+    ) {
       restore();
       await refundBatchStake(userId, mode as "demo" | "real", bet);
-      return res.status(400).json({ error: "Betting just closed — your balance was refunded" });
+      return res
+        .status(400)
+        .json({ error: "Betting just closed — your balance was refunded" });
     }
 
     // Merge new ticket into (possibly existing) batch
     const prevTickets = existingBatch?.tickets ?? [];
-    const prevStaked  = parseFloat(existingBatch?.totalStaked ?? "0");
-    const allTickets  = [...prevTickets, newTicket];
+    const prevStaked = parseFloat(existingBatch?.totalStaked ?? "0");
+    const allTickets = [...prevTickets, newTicket];
     const totalStaked = parseFloat((prevStaked + bet).toFixed(2));
 
     activeRound.bets.set(betKey, {
       userId,
-      tickets:               allTickets,
-      totalStaked:           totalStaked.toFixed(2),
-      mode:                  mode as "demo" | "real",
+      tickets: allTickets,
+      totalStaked: totalStaked.toFixed(2),
+      mode: mode as "demo" | "real",
       balanceAfterDeduction: deductRes.balanceAfterDeduction,
     });
 
     res.json({
-      success:               true,
-      roundId:               activeRound.roundId,
+      success: true,
+      roundId: activeRound.roundId,
       mode,
-      ticketCount:           allTickets.length,
-      totalStaked:           totalStaked.toFixed(2),
+      ticketCount: allTickets.length,
+      totalStaked: totalStaked.toFixed(2),
       balanceAfterDeduction: deductRes.balanceAfterDeduction,
-      tickets: allTickets.map(t => ({ picks: t.picks, betAmount: t.betAmount })),
+      tickets: allTickets.map((t) => ({
+        picks: t.picks,
+        betAmount: t.betAmount,
+      })),
     });
   } catch (err) {
     req.log?.error({ err }, "keno/bet-batch error");
@@ -1645,7 +2021,12 @@ kenoRouter.post("/bet-batch", async (req, res) => {
 // POST /api/games/keno/play  — play a round
 kenoRouter.post("/play", async (req, res) => {
   // DISABLED 2026-08-10: instant-play removed in favor of pool-based shared rounds.
-  return res.status(410).json({ error: "Instant play has been removed. Please use the shared round (/bet) instead." });
+  return res
+    .status(410)
+    .json({
+      error:
+        "Instant play has been removed. Please use the shared round (/bet) instead.",
+    });
   // eslint-disable-next-line no-unreachable
   try {
     await ensureSeeded();
@@ -1656,41 +2037,52 @@ kenoRouter.post("/play", async (req, res) => {
     if (!Array.isArray(picks) || picks.length !== 20)
       return res.status(400).json({ error: "Select exactly 20 numbers" });
     if (picks.some((n: any) => !Number.isInteger(n) || n < 1 || n > 80))
-      return res.status(400).json({ error: "Numbers must be integers between 1 and 80" });
+      return res
+        .status(400)
+        .json({ error: "Numbers must be integers between 1 and 80" });
     if (new Set(picks).size !== picks.length)
-      return res.status(400).json({ error: "Duplicate numbers are not allowed" });
+      return res
+        .status(400)
+        .json({ error: "Duplicate numbers are not allowed" });
     if (!["demo", "real"].includes(mode))
       return res.status(400).json({ error: "Mode must be 'demo' or 'real'" });
 
     const bet = parseFloat(betAmount);
-    if (isNaN(bet) || bet <= 0) return res.status(400).json({ error: "Invalid bet amount" });
+    if (isNaN(bet) || bet <= 0)
+      return res.status(400).json({ error: "Invalid bet amount" });
 
     const [minBet, maxBet, gameEnabled] = await Promise.all([
       getSetting("min_bet", "0.10").then(parseFloat),
       getSetting("max_bet", "100.00").then(parseFloat),
       getSetting("game_enabled", "true"),
     ]);
-    if (gameEnabled !== "true") return res.status(403).json({ error: "Keno is temporarily disabled" });
-    if (bet < minBet) return res.status(400).json({ error: `Minimum bet is ${minBet} USDT` });
-    if (bet > maxBet) return res.status(400).json({ error: `Maximum bet is ${maxBet} USDT` });
+    if (gameEnabled !== "true")
+      return res.status(403).json({ error: "Keno is temporarily disabled" });
+    if (bet < minBet)
+      return res.status(400).json({ error: `Minimum bet is ${minBet} USDT` });
+    if (bet > maxBet)
+      return res.status(400).json({ error: `Maximum bet is ${maxBet} USDT` });
 
     // ── Provably fair instant draw ───────────────────────────────────────────
-    const instantSeed      = generateServerSeed();
+    const instantSeed = generateServerSeed();
     const instantTimestamp = Date.now();
-    const instantHash      = computeServerHash(instantSeed, 0, instantTimestamp);
-    const drawn            = deriveProvablyFairDraw(instantSeed, 0, instantTimestamp);
+    const instantHash = computeServerHash(instantSeed, 0, instantTimestamp);
+    const drawn = deriveProvablyFairDraw(instantSeed, 0, instantTimestamp);
     const drawnSet = new Set(drawn);
-    const matches = (picks as number[]).filter(n => drawnSet.has(n));
+    const matches = (picks as number[]).filter((n) => drawnSet.has(n));
     const hitCount = matches.length;
 
     // ── Paytable lookup ──────────────────────────────────────────────────────
-    const ptRow = await db.select({ multiplier: kenoPaytableTable.multiplier })
+    const ptRow = await db
+      .select({ multiplier: kenoPaytableTable.multiplier })
       .from(kenoPaytableTable)
-      .where(and(
-        eq(kenoPaytableTable.picks, picks.length),
-        eq(kenoPaytableTable.hits, hitCount),
-      ))
-      .then(r => r[0]);
+      .where(
+        and(
+          eq(kenoPaytableTable.picks, picks.length),
+          eq(kenoPaytableTable.hits, hitCount),
+        ),
+      )
+      .then((r) => r[0]);
 
     const multiplier = parseFloat(ptRow?.multiplier ?? "0");
     const payout = parseFloat((bet * multiplier).toFixed(2));
@@ -1701,12 +2093,12 @@ kenoRouter.post("/play", async (req, res) => {
       await tx.execute(
         sql`INSERT INTO keno_wallets (user_id, real_balance, demo_balance, updated_at)
             VALUES (${userId}, 0, 10000, NOW())
-            ON CONFLICT (user_id) DO NOTHING`
+            ON CONFLICT (user_id) DO NOTHING`,
       );
 
-      const lockResult = await tx.execute(
-        sql`SELECT * FROM keno_wallets WHERE user_id = ${userId} FOR UPDATE`
-      ) as any;
+      const lockResult = (await tx.execute(
+        sql`SELECT * FROM keno_wallets WHERE user_id = ${userId} FOR UPDATE`,
+      )) as any;
       const walletRow = lockResult.rows?.[0];
 
       const balField = mode === "real" ? "real_balance" : "demo_balance";
@@ -1717,26 +2109,31 @@ kenoRouter.post("/play", async (req, res) => {
       const newBalance = parseFloat((currentBalance - bet + payout).toFixed(2));
 
       if (mode === "real") {
-        await tx.update(kenoWalletsTable)
+        await tx
+          .update(kenoWalletsTable)
           .set({ realBalance: String(newBalance), updatedAt: new Date() })
           .where(eq(kenoWalletsTable.userId, userId));
       } else {
-        await tx.update(kenoWalletsTable)
+        await tx
+          .update(kenoWalletsTable)
           .set({ demoBalance: String(newBalance), updatedAt: new Date() })
           .where(eq(kenoWalletsTable.userId, userId));
       }
 
       // Log round
-      const [round] = await tx.insert(kenoRoundsTable).values({
-        userId,
-        mode,
-        picks: picks as number[],
-        drawnNumbers: drawn,
-        betAmount: bet.toFixed(2),
-        hitCount,
-        multiplier: multiplier.toFixed(4),
-        payoutAmount: payout.toFixed(2),
-      }).returning();
+      const [round] = await tx
+        .insert(kenoRoundsTable)
+        .values({
+          userId,
+          mode,
+          picks: picks as number[],
+          drawnNumbers: drawn,
+          betAmount: bet.toFixed(2),
+          hitCount,
+          multiplier: multiplier.toFixed(4),
+          payoutAmount: payout.toFixed(2),
+        })
+        .returning();
 
       // Log transaction
       await tx.insert(kenoTransactionsTable).values({
@@ -1753,44 +2150,46 @@ kenoRouter.post("/play", async (req, res) => {
     if ("error" in result) return res.status(400).json({ error: result.error });
 
     res.json({
-      roundId:            result.round?.id,
-      serverHash:         instantHash,
+      roundId: result.round?.id,
+      serverHash: instantHash,
       serverSeedRevealed: instantSeed,
-      drawTimestamp:      instantTimestamp,
-      status:             "SETTLED",
+      drawTimestamp: instantTimestamp,
+      status: "SETTLED",
       drawnNumbers: result.drawn,
-      tickets: [{
-        // Snake_case fields (spec-compliant)
-        ticket_id:            result.round?.id,
-        picks_count:          (picks as number[]).length,
-        hits_count:           result.hitCount,
-        bet_amount:           parseFloat(bet.toFixed(2)),
-        multiplier:           result.multiplier,
-        winning_amount:       result.payout,
-        updated_user_balance: result.newBalance,
-        // camelCase aliases for frontend compatibility
-        ticketId:   result.round?.id,
-        picks,
-        matches,
-        hitCount:   result.hitCount,
-        betAmount:  parseFloat(bet.toFixed(2)),
-        payout:     result.payout,
-        isWin:      result.payout > 0,
-      }],
+      tickets: [
+        {
+          // Snake_case fields (spec-compliant)
+          ticket_id: result.round?.id,
+          picks_count: (picks as number[]).length,
+          hits_count: result.hitCount,
+          bet_amount: parseFloat(bet.toFixed(2)),
+          multiplier: result.multiplier,
+          winning_amount: result.payout,
+          updated_user_balance: result.newBalance,
+          // camelCase aliases for frontend compatibility
+          ticketId: result.round?.id,
+          picks,
+          matches,
+          hitCount: result.hitCount,
+          betAmount: parseFloat(bet.toFixed(2)),
+          payout: result.payout,
+          isWin: result.payout > 0,
+        },
+      ],
       summary: {
-        totalBet:      parseFloat(bet.toFixed(2)),
+        totalBet: parseFloat(bet.toFixed(2)),
         totalWinnings: parseFloat(result.payout.toFixed(2)),
-        netChange:     parseFloat((result.payout - bet).toFixed(2)),
-        newBalance:    result.newBalance,
+        netChange: parseFloat((result.payout - bet).toFixed(2)),
+        newBalance: result.newBalance,
       },
       // Flat settlement block — convenience for single-ticket consumers
       settlement: {
-        ticket_id:            result.round?.id,
-        picks_count:          (picks as number[]).length,
-        hits_count:           result.hitCount,
-        bet_amount:           parseFloat(bet.toFixed(2)),
-        multiplier:           result.multiplier,
-        winning_amount:       result.payout,
+        ticket_id: result.round?.id,
+        picks_count: (picks as number[]).length,
+        hits_count: result.hitCount,
+        bet_amount: parseFloat(bet.toFixed(2)),
+        multiplier: result.multiplier,
+        winning_amount: result.payout,
         updated_user_balance: result.newBalance,
       },
       mode,
@@ -1813,7 +2212,12 @@ kenoRouter.post("/play", async (req, res) => {
 
 kenoRouter.post("/play-batch", async (req, res) => {
   // DISABLED 2026-08-10: instant-play removed in favor of pool-based shared rounds.
-  return res.status(410).json({ error: "Instant play has been removed. Please use the shared round (/bet-batch) instead." });
+  return res
+    .status(410)
+    .json({
+      error:
+        "Instant play has been removed. Please use the shared round (/bet-batch) instead.",
+    });
   // eslint-disable-next-line no-unreachable
   try {
     await ensureSeeded();
@@ -1821,7 +2225,9 @@ kenoRouter.post("/play-batch", async (req, res) => {
 
     let tickets: unknown;
     let mode: unknown;
-    try { ({ tickets, mode } = req.body); } catch {
+    try {
+      ({ tickets, mode } = req.body);
+    } catch {
       return res.status(400).json({ error: "Invalid request body" });
     }
 
@@ -1835,7 +2241,8 @@ kenoRouter.post("/play-batch", async (req, res) => {
       getSetting("max_bet", "100.00").then(parseFloat),
       getSetting("game_enabled", "true"),
     ]);
-    if (gameEnabled !== "true") return res.status(403).json({ error: "Keno is temporarily disabled" });
+    if (gameEnabled !== "true")
+      return res.status(403).json({ error: "Keno is temporarily disabled" });
 
     // ── Validate every ticket, accumulate TOTAL_BET ──────────────────────────
     let totalStaked = 0;
@@ -1844,18 +2251,30 @@ kenoRouter.post("/play-batch", async (req, res) => {
       try {
         const { picks, betAmount: rawBet } = raw ?? {};
         if (!Array.isArray(picks) || picks.length !== 20)
-          return res.status(400).json({ error: `Ticket ${i + 1}: select exactly 20 numbers` });
+          return res
+            .status(400)
+            .json({ error: `Ticket ${i + 1}: select exactly 20 numbers` });
         if (picks.some((n: any) => !Number.isInteger(n) || n < 1 || n > 80))
-          return res.status(400).json({ error: `Ticket ${i + 1}: numbers must be integers 1–80` });
+          return res
+            .status(400)
+            .json({ error: `Ticket ${i + 1}: numbers must be integers 1–80` });
         if (new Set(picks).size !== picks.length)
-          return res.status(400).json({ error: `Ticket ${i + 1}: duplicate numbers not allowed` });
+          return res
+            .status(400)
+            .json({ error: `Ticket ${i + 1}: duplicate numbers not allowed` });
         const bet = parseFloat(rawBet);
         if (isNaN(bet) || bet <= 0)
-          return res.status(400).json({ error: `Ticket ${i + 1}: invalid bet amount` });
+          return res
+            .status(400)
+            .json({ error: `Ticket ${i + 1}: invalid bet amount` });
         if (bet < minBet)
-          return res.status(400).json({ error: `Ticket ${i + 1}: minimum bet is ${minBet} USDT` });
+          return res
+            .status(400)
+            .json({ error: `Ticket ${i + 1}: minimum bet is ${minBet} USDT` });
         if (bet > maxBet)
-          return res.status(400).json({ error: `Ticket ${i + 1}: maximum bet is ${maxBet} USDT` });
+          return res
+            .status(400)
+            .json({ error: `Ticket ${i + 1}: maximum bet is ${maxBet} USDT` });
         totalStaked += bet;
         validatedTickets.push({ picks, betAmount: bet.toFixed(2) });
       } catch {
@@ -1865,10 +2284,10 @@ kenoRouter.post("/play-batch", async (req, res) => {
     totalStaked = parseFloat(totalStaked.toFixed(2));
 
     // ── Provably fair instant-batch draw ─────────────────────────────────────
-    const batchSeed      = generateServerSeed();
+    const batchSeed = generateServerSeed();
     const batchTimestamp = Date.now();
-    const batchHash      = computeServerHash(batchSeed, 0, batchTimestamp);
-    const drawn          = deriveProvablyFairDraw(batchSeed, 0, batchTimestamp);
+    const batchHash = computeServerHash(batchSeed, 0, batchTimestamp);
+    const drawn = deriveProvablyFairDraw(batchSeed, 0, batchTimestamp);
 
     // ── Evaluate all tickets against the single draw ──────────────────────────
     const ticketResults = await evaluateUserBatch(validatedTickets, drawn);
@@ -1877,7 +2296,7 @@ kenoRouter.post("/play-batch", async (req, res) => {
     );
 
     // ── Atomic: check balance ≥ TOTAL_BET, deduct stake, credit payout ────────
-    const result = await db.transaction(async tx => {
+    const result = await db.transaction(async (tx) => {
       // Ensure keno wallet exists
       await tx.execute(
         sql`INSERT INTO keno_wallets (user_id, real_balance, demo_balance, updated_at)
@@ -1885,9 +2304,9 @@ kenoRouter.post("/play-batch", async (req, res) => {
             ON CONFLICT (user_id) DO NOTHING`,
       );
 
-      const lockResult = await tx.execute(
+      const lockResult = (await tx.execute(
         sql`SELECT * FROM keno_wallets WHERE user_id = ${userId} FOR UPDATE`,
-      ) as any;
+      )) as any;
       const walletRow = lockResult.rows?.[0];
 
       const balField = mode === "real" ? "real_balance" : "demo_balance";
@@ -1895,17 +2314,24 @@ kenoRouter.post("/play-batch", async (req, res) => {
 
       // ROLLBACK immediately if balance < TOTAL_BET (zero-state execution)
       if (currentBalance < totalStaked)
-        return { error: "Insufficient balance — TOTAL_BET exceeds your current balance" } as const;
+        return {
+          error:
+            "Insufficient balance — TOTAL_BET exceeds your current balance",
+        } as const;
 
       // Net balance = current − TOTAL_BET + TOTAL_PAYOUT (one UPDATE)
-      const newBalance = parseFloat((currentBalance - totalStaked + totalPayout).toFixed(2));
+      const newBalance = parseFloat(
+        (currentBalance - totalStaked + totalPayout).toFixed(2),
+      );
 
       if (mode === "real") {
-        await tx.update(kenoWalletsTable)
+        await tx
+          .update(kenoWalletsTable)
           .set({ realBalance: String(newBalance), updatedAt: new Date() })
           .where(eq(kenoWalletsTable.userId, userId));
       } else {
-        await tx.update(kenoWalletsTable)
+        await tx
+          .update(kenoWalletsTable)
           .set({ demoBalance: String(newBalance), updatedAt: new Date() })
           .where(eq(kenoWalletsTable.userId, userId));
       }
@@ -1914,17 +2340,20 @@ kenoRouter.post("/play-batch", async (req, res) => {
       const nonce = randomBytes(16).toString("hex");
       const entropyData = createHash("sha256").update(nonce).digest("hex");
 
-      const [batchRow] = await tx.insert(kenoBatchesTable).values({
-        userId,
-        mode: mode as string,
-        drawnNumbers: drawn,
-        entropyData,
-        totalStaked: totalStaked.toFixed(2),
-        totalPayout: totalPayout.toFixed(2),
-        ticketCount: validatedTickets.length,
-        status: "settled",
-        settledAt: new Date(),
-      }).returning({ id: kenoBatchesTable.id });
+      const [batchRow] = await tx
+        .insert(kenoBatchesTable)
+        .values({
+          userId,
+          mode: mode as string,
+          drawnNumbers: drawn,
+          entropyData,
+          totalStaked: totalStaked.toFixed(2),
+          totalPayout: totalPayout.toFixed(2),
+          ticketCount: validatedTickets.length,
+          status: "settled",
+          settledAt: new Date(),
+        })
+        .returning({ id: kenoBatchesTable.id });
 
       // Insert one keno_rounds row per ticket
       for (const r of ticketResults) {
@@ -1956,37 +2385,37 @@ kenoRouter.post("/play-batch", async (req, res) => {
     if ("error" in result) return res.status(400).json({ error: result.error });
 
     res.json({
-      batchId:           result.batchId,
-      serverHash:        batchHash,
+      batchId: result.batchId,
+      serverHash: batchHash,
       serverSeedRevealed: batchSeed,
-      drawTimestamp:     batchTimestamp,
-      status:            "SETTLED",
+      drawTimestamp: batchTimestamp,
+      status: "SETTLED",
       drawnNumbers: drawn,
-      entropyData:  result.entropyData,
+      entropyData: result.entropyData,
       mode,
       tickets: ticketResults.map((r, i) => ({
         // Snake_case fields (spec-compliant)
-        ticket_id:            null, // individual IDs not returned in batch; use batchId
-        picks_count:          r.picks.length,
-        hits_count:           r.hitCount,
-        bet_amount:           parseFloat(r.betAmount),
-        multiplier:           r.multiplier,
-        winning_amount:       r.payout,
+        ticket_id: null, // individual IDs not returned in batch; use batchId
+        picks_count: r.picks.length,
+        hits_count: r.hitCount,
+        bet_amount: parseFloat(r.betAmount),
+        multiplier: r.multiplier,
+        winning_amount: r.payout,
         updated_user_balance: result.newBalance,
         // camelCase aliases for frontend compatibility
         ticketIndex: i + 1,
-        picks:       r.picks,
-        matches:     r.matches,
-        hitCount:    r.hitCount,
-        betAmount:   parseFloat(r.betAmount),
-        payout:      r.payout,
-        isWin:       r.isWin,
+        picks: r.picks,
+        matches: r.matches,
+        hitCount: r.hitCount,
+        betAmount: parseFloat(r.betAmount),
+        payout: r.payout,
+        isWin: r.isWin,
       })),
       summary: {
-        totalBet:      parseFloat(totalStaked.toFixed(2)),
+        totalBet: parseFloat(totalStaked.toFixed(2)),
         totalWinnings: parseFloat(totalPayout.toFixed(2)),
-        netChange:     parseFloat((totalPayout - totalStaked).toFixed(2)),
-        newBalance:    result.newBalance,
+        netChange: parseFloat((totalPayout - totalStaked).toFixed(2)),
+        newBalance: result.newBalance,
       },
     });
   } catch (err) {
@@ -1999,12 +2428,11 @@ kenoRouter.post("/play-batch", async (req, res) => {
 kenoRouter.get("/history", async (req, res) => {
   try {
     const userId = (req as any).userId;
-    const limit = Math.min(parseInt(req.query.limit as string || "50"), 100);
+    const limit = Math.min(parseInt((req.query.limit as string) || "50"), 100);
     const mode = req.query.mode as string | undefined;
 
-    const modeFilter = (mode === "demo" || mode === "real")
-      ? sql`AND kr.mode = ${mode}`
-      : sql``;
+    const modeFilter =
+      mode === "demo" || mode === "real" ? sql`AND kr.mode = ${mode}` : sql``;
 
     // Join with keno_batches so each ticket carries its multiplayer round_id
     const rows = await db.execute(sql`
@@ -2019,19 +2447,21 @@ kenoRouter.get("/history", async (req, res) => {
       LIMIT ${limit}
     `);
 
-    res.json(rows.rows.map((r: any) => ({
-      id:           r.id,
-      mode:         r.mode,
-      batchId:      r.batch_id,
-      roundId:      r.round_id ?? null,
-      picks:        r.picks,
-      drawnNumbers: r.drawn_numbers,
-      betAmount:    r.bet_amount,
-      hitCount:     r.hit_count,
-      multiplier:   r.multiplier,
-      payoutAmount: r.payout_amount,
-      createdAt:    r.created_at,
-    })));
+    res.json(
+      rows.rows.map((r: any) => ({
+        id: r.id,
+        mode: r.mode,
+        batchId: r.batch_id,
+        roundId: r.round_id ?? null,
+        picks: r.picks,
+        drawnNumbers: r.drawn_numbers,
+        betAmount: r.bet_amount,
+        hitCount: r.hit_count,
+        multiplier: r.multiplier,
+        payoutAmount: r.payout_amount,
+        createdAt: r.created_at,
+      })),
+    );
   } catch (err) {
     req.log?.error({ err }, "keno/history error");
     res.status(500).json({ error: "Internal server error" });
@@ -2050,7 +2480,7 @@ kenoRouter.get("/stats", async (req, res) => {
     const freq: Record<number, number> = {};
     for (let i = 1; i <= 80; i++) freq[i] = 0;
     for (const row of rows) {
-      for (const n of (row.drawnNumbers as number[])) {
+      for (const n of row.drawnNumbers as number[]) {
         freq[n] = (freq[n] || 0) + 1;
       }
     }
@@ -2078,12 +2508,14 @@ kenoRouter.get("/leaders", async (req, res) => {
       ORDER BY net_profit DESC
       LIMIT 10
     `);
-    res.json(rows.rows.map((r: any) => ({
-      username:    r.username,
-      gamesPlayed: r.games_played,
-      totalPayout: r.total_payout,
-      netProfit:   r.net_profit,
-    })));
+    res.json(
+      rows.rows.map((r: any) => ({
+        username: r.username,
+        gamesPlayed: r.games_played,
+        totalPayout: r.total_payout,
+        netProfit: r.net_profit,
+      })),
+    );
   } catch (err) {
     req.log?.error({ err }, "keno/leaders error");
     res.status(500).json({ error: "Internal server error" });
@@ -2094,12 +2526,12 @@ kenoRouter.get("/leaders", async (req, res) => {
 // Sourced from keno_draws which records every completed round (even empty ones).
 kenoRouter.get("/rounds", async (req, res) => {
   try {
-    const limit = Math.min(parseInt(req.query.limit as string || "20"), 50);
+    const limit = Math.min(parseInt((req.query.limit as string) || "20"), 50);
     const rows = await db
       .select({
-        roundId:          kenoDrawsTable.roundId,
-        drawnNumbers:     kenoDrawsTable.drawnNumbers,
-        drawnAt:          kenoDrawsTable.drawTimestamp,
+        roundId: kenoDrawsTable.roundId,
+        drawnNumbers: kenoDrawsTable.drawnNumbers,
+        drawnAt: kenoDrawsTable.drawTimestamp,
         participantCount: kenoDrawsTable.participantCount,
       })
       .from(kenoDrawsTable)
@@ -2122,8 +2554,12 @@ kenoAdminRouter.get("/keno/stats", adminAuth, async (req, res) => {
     await ensureSeeded();
 
     const [realRounds, demoRounds, financials, today] = await Promise.all([
-      db.execute(sql`SELECT COUNT(*) as count FROM keno_rounds WHERE mode = 'real'`),
-      db.execute(sql`SELECT COUNT(*) as count FROM keno_rounds WHERE mode = 'demo'`),
+      db.execute(
+        sql`SELECT COUNT(*) as count FROM keno_rounds WHERE mode = 'real'`,
+      ),
+      db.execute(
+        sql`SELECT COUNT(*) as count FROM keno_rounds WHERE mode = 'demo'`,
+      ),
       db.execute(sql`
         SELECT
           COALESCE(SUM(bet_amount::numeric), 0) AS total_wagered,
@@ -2140,12 +2576,24 @@ kenoAdminRouter.get("/keno/stats", adminAuth, async (req, res) => {
       `),
     ]);
 
-    const [topups, withdrawals, mergedSetting, platformRow] = await Promise.all([
-      db.execute(sql`SELECT COALESCE(SUM(amount::numeric), 0) AS total FROM keno_transactions WHERE type = 'topup'`),
-      db.execute(sql`SELECT COALESCE(SUM(amount::numeric), 0) AS total FROM keno_transactions WHERE type = 'withdraw'`),
-      db.select().from(kenoSettingsTable).where(eq(kenoSettingsTable.key, 'merged_profit')).then(r => r[0]),
-      db.execute(sql`SELECT total_collected FROM platform_wallet WHERE asset = 'USDT' LIMIT 1`),
-    ]);
+    const [topups, withdrawals, mergedSetting, platformRow] = await Promise.all(
+      [
+        db.execute(
+          sql`SELECT COALESCE(SUM(amount::numeric), 0) AS total FROM keno_transactions WHERE type = 'topup'`,
+        ),
+        db.execute(
+          sql`SELECT COALESCE(SUM(amount::numeric), 0) AS total FROM keno_transactions WHERE type = 'withdraw'`,
+        ),
+        db
+          .select()
+          .from(kenoSettingsTable)
+          .where(eq(kenoSettingsTable.key, "merged_profit"))
+          .then((r) => r[0]),
+        db.execute(
+          sql`SELECT total_collected FROM platform_wallet WHERE asset = 'USDT' LIMIT 1`,
+        ),
+      ],
+    );
 
     const getRow = (r: any) => (r as any).rows?.[0] ?? (r as any)[0] ?? {};
 
@@ -2198,8 +2646,18 @@ kenoAdminRouter.get("/keno/player/:userId", adminAuth, async (req, res) => {
     const uid = parseInt(req.params.userId);
     const [wallet, rounds, txs] = await Promise.all([
       getOrCreateKenoWallet(uid),
-      db.select().from(kenoRoundsTable).where(eq(kenoRoundsTable.userId, uid)).orderBy(desc(kenoRoundsTable.createdAt)).limit(50),
-      db.select().from(kenoTransactionsTable).where(eq(kenoTransactionsTable.userId, uid)).orderBy(desc(kenoTransactionsTable.createdAt)).limit(50),
+      db
+        .select()
+        .from(kenoRoundsTable)
+        .where(eq(kenoRoundsTable.userId, uid))
+        .orderBy(desc(kenoRoundsTable.createdAt))
+        .limit(50),
+      db
+        .select()
+        .from(kenoTransactionsTable)
+        .where(eq(kenoTransactionsTable.userId, uid))
+        .orderBy(desc(kenoTransactionsTable.createdAt))
+        .limit(50),
     ]);
     res.json({ wallet, rounds, transactions: txs });
   } catch (err) {
@@ -2212,7 +2670,10 @@ kenoAdminRouter.get("/keno/player/:userId", adminAuth, async (req, res) => {
 kenoAdminRouter.get("/keno/paytable", adminAuth, async (req, res) => {
   try {
     await ensureSeeded();
-    const rows = await db.select().from(kenoPaytableTable).orderBy(kenoPaytableTable.picks, kenoPaytableTable.hits);
+    const rows = await db
+      .select()
+      .from(kenoPaytableTable)
+      .orderBy(kenoPaytableTable.picks, kenoPaytableTable.hits);
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: "Internal server error" });
@@ -2224,13 +2685,21 @@ kenoAdminRouter.get("/keno/paytable", adminAuth, async (req, res) => {
 // Use PUT /keno/house-edge to recompute all rows from the base paytable.
 kenoAdminRouter.put("/keno/paytable", adminAuth, async (req, res) => {
   try {
-    const entries: Array<{ picks: number; hits: number; multiplier: string }> = req.body;
-    if (!Array.isArray(entries)) return res.status(400).json({ error: "Expected array" });
+    const entries: Array<{ picks: number; hits: number; multiplier: string }> =
+      req.body;
+    if (!Array.isArray(entries))
+      return res.status(400).json({ error: "Expected array" });
 
     for (const e of entries) {
-      await db.update(kenoPaytableTable)
+      await db
+        .update(kenoPaytableTable)
         .set({ multiplier: String(parseFloat(e.multiplier).toFixed(4)) })
-        .where(and(eq(kenoPaytableTable.picks, e.picks), eq(kenoPaytableTable.hits, e.hits)));
+        .where(
+          and(
+            eq(kenoPaytableTable.picks, e.picks),
+            eq(kenoPaytableTable.hits, e.hits),
+          ),
+        );
     }
     res.json({ success: true });
   } catch (err) {
@@ -2247,17 +2716,19 @@ kenoAdminRouter.get("/keno/house-edge", adminAuth, async (req, res) => {
     const rtpFactor = parseFloat((1 - houseEdge).toFixed(4));
     const activePaytable = computeActivePaytable(houseEdge);
     res.json({
-      house_edge:   houseEdge,
-      rtp:          rtpFactor,
-      description:  `${(houseEdge * 100).toFixed(1)}% house edge / ${(rtpFactor * 100).toFixed(1)}% RTP`,
+      house_edge: houseEdge,
+      rtp: rtpFactor,
+      description: `${(houseEdge * 100).toFixed(1)}% house edge / ${(rtpFactor * 100).toFixed(1)}% RTP`,
       // Only return the paying rows for readability
       paying_multipliers: activePaytable
-        .filter(r => parseFloat(r.multiplier) > 0)
-        .map(r => ({
-          picks:             r.picks,
-          hits:              r.hits,
-          base_fair:         parseFloat(
-            BASE_PAYTABLE_FAIR.find(b => b.picks === r.picks && b.hits === r.hits)?.multiplier ?? "0",
+        .filter((r) => parseFloat(r.multiplier) > 0)
+        .map((r) => ({
+          picks: r.picks,
+          hits: r.hits,
+          base_fair: parseFloat(
+            BASE_PAYTABLE_FAIR.find(
+              (b) => b.picks === r.picks && b.hits === r.hits,
+            )?.multiplier ?? "0",
           ),
           active_multiplier: parseFloat(r.multiplier),
         })),
@@ -2282,12 +2753,14 @@ kenoAdminRouter.put("/keno/house-edge", adminAuth, async (req, res) => {
     const rawEdge = req.body?.house_edge;
     const houseEdge = parseFloat(rawEdge);
     if (isNaN(houseEdge) || houseEdge < 0 || houseEdge > 1)
-      return res.status(400).json({ error: "house_edge must be a number in [0, 1]" });
+      return res
+        .status(400)
+        .json({ error: "house_edge must be a number in [0, 1]" });
 
     const activePaytable = computeActivePaytable(houseEdge);
 
     // Single transaction: update setting + all paytable rows atomically
-    await db.transaction(async tx => {
+    await db.transaction(async (tx) => {
       await tx
         .insert(kenoSettingsTable)
         .values({ key: "house_edge", value: String(houseEdge) })
@@ -2310,17 +2783,19 @@ kenoAdminRouter.put("/keno/house-edge", adminAuth, async (req, res) => {
     });
 
     res.json({
-      success:           true,
-      house_edge:        houseEdge,
-      rtp:               parseFloat((1 - houseEdge).toFixed(4)),
-      description:       `${(houseEdge * 100).toFixed(1)}% house edge / ${((1 - houseEdge) * 100).toFixed(1)}% RTP`,
+      success: true,
+      house_edge: houseEdge,
+      rtp: parseFloat((1 - houseEdge).toFixed(4)),
+      description: `${(houseEdge * 100).toFixed(1)}% house edge / ${((1 - houseEdge) * 100).toFixed(1)}% RTP`,
       updated_multipliers: activePaytable
-        .filter(r => parseFloat(r.multiplier) > 0)
-        .map(r => ({
-          picks:             r.picks,
-          hits:              r.hits,
-          base_fair:         parseFloat(
-            BASE_PAYTABLE_FAIR.find(b => b.picks === r.picks && b.hits === r.hits)?.multiplier ?? "0",
+        .filter((r) => parseFloat(r.multiplier) > 0)
+        .map((r) => ({
+          picks: r.picks,
+          hits: r.hits,
+          base_fair: parseFloat(
+            BASE_PAYTABLE_FAIR.find(
+              (b) => b.picks === r.picks && b.hits === r.hits,
+            )?.multiplier ?? "0",
           ),
           active_multiplier: parseFloat(r.multiplier),
         })),
@@ -2335,7 +2810,9 @@ kenoAdminRouter.put("/keno/house-edge", adminAuth, async (req, res) => {
 kenoAdminRouter.get("/keno/house-margin", adminAuth, async (req, res) => {
   try {
     await ensureSeeded();
-    const marginPercent = parseFloat(await getSetting("house_margin_percent", "20"));
+    const marginPercent = parseFloat(
+      await getSetting("house_margin_percent", "20"),
+    );
     res.json({ house_margin_percent: marginPercent });
   } catch (err) {
     console.error("keno get house-margin error", err);
@@ -2352,7 +2829,11 @@ kenoAdminRouter.put("/keno/house-margin", adminAuth, async (req, res) => {
     const raw = req.body?.house_margin_percent;
     const marginPercent = parseFloat(raw);
     if (isNaN(marginPercent) || marginPercent < 0 || marginPercent > 100) {
-      return res.status(400).json({ error: "house_margin_percent must be a number between 0 and 100" });
+      return res
+        .status(400)
+        .json({
+          error: "house_margin_percent must be a number between 0 and 100",
+        });
     }
     await db
       .insert(kenoSettingsTable)
@@ -2373,7 +2854,9 @@ kenoAdminRouter.put("/keno/house-margin", adminAuth, async (req, res) => {
 // bets already placed. Does not touch anything — read-only.
 kenoAdminRouter.get("/keno/current-round-pool", adminAuth, async (req, res) => {
   try {
-    const marginPercent = parseFloat(await getSetting("house_margin_percent", "20"));
+    const marginPercent = parseFloat(
+      await getSetting("house_margin_percent", "20"),
+    );
     const batches = Array.from(activeRound.bets.values());
     let confirmedEntries = 0;
     let grossPool = 0;
@@ -2382,8 +2865,12 @@ kenoAdminRouter.get("/keno/current-round-pool", adminAuth, async (req, res) => {
       grossPool += parseFloat(batch.totalStaked);
     }
     grossPool = parseFloat(grossPool.toFixed(2));
-    const ownerProfitAllocation = parseFloat((grossPool * (marginPercent / 100)).toFixed(2));
-    const prizeBudget = parseFloat((grossPool - ownerProfitAllocation).toFixed(2));
+    const ownerProfitAllocation = parseFloat(
+      (grossPool * (marginPercent / 100)).toFixed(2),
+    );
+    const prizeBudget = parseFloat(
+      (grossPool - ownerProfitAllocation).toFixed(2),
+    );
     res.json({
       round_id: activeRound.roundId,
       phase: activeRound.phase,
@@ -2403,24 +2890,37 @@ kenoAdminRouter.get("/keno/current-round-pool", adminAuth, async (req, res) => {
 // Financial summary for completed rounds, most recent first.
 kenoAdminRouter.get("/keno/round-history", adminAuth, async (req, res) => {
   try {
-    const limit = Math.min(parseInt(String(req.query.limit ?? "20"), 10) || 20, 100);
+    const limit = Math.min(
+      parseInt(String(req.query.limit ?? "20"), 10) || 20,
+      100,
+    );
     const rows = await db
       .select()
       .from(kenoDrawsTable)
       .orderBy(desc(kenoDrawsTable.roundId))
       .limit(limit);
-    res.json(rows.map(r => ({
-      round_id: r.roundId,
-      confirmed_entries: r.confirmedEntries,
-      house_margin_percent: r.houseMarginPercent ? parseFloat(r.houseMarginPercent) : null,
-      gross_pool: r.grossPool ? parseFloat(r.grossPool) : null,
-      owner_profit_allocation: r.ownerProfitAllocation ? parseFloat(r.ownerProfitAllocation) : null,
-      prize_budget: r.prizeBudget ? parseFloat(r.prizeBudget) : null,
-      total_prizes_paid: r.totalPrizesPaid ? parseFloat(r.totalPrizesPaid) : null,
-      unclaimed_amount: r.unclaimedAmount ? parseFloat(r.unclaimedAmount) : null,
-      created_at: r.createdAt,
-      draw_timestamp: r.drawTimestamp,
-    })));
+    res.json(
+      rows.map((r) => ({
+        round_id: r.roundId,
+        confirmed_entries: r.confirmedEntries,
+        house_margin_percent: r.houseMarginPercent
+          ? parseFloat(r.houseMarginPercent)
+          : null,
+        gross_pool: r.grossPool ? parseFloat(r.grossPool) : null,
+        owner_profit_allocation: r.ownerProfitAllocation
+          ? parseFloat(r.ownerProfitAllocation)
+          : null,
+        prize_budget: r.prizeBudget ? parseFloat(r.prizeBudget) : null,
+        total_prizes_paid: r.totalPrizesPaid
+          ? parseFloat(r.totalPrizesPaid)
+          : null,
+        unclaimed_amount: r.unclaimedAmount
+          ? parseFloat(r.unclaimedAmount)
+          : null,
+        created_at: r.createdAt,
+        draw_timestamp: r.drawTimestamp,
+      })),
+    );
   } catch (err) {
     console.error("keno round-history error", err);
     res.status(500).json({ error: "Internal server error" });
@@ -2450,15 +2950,26 @@ kenoAdminRouter.post("/keno/merge-profit", adminAuth, async (req, res) => {
       SELECT COALESCE(SUM(bet_amount::numeric) - SUM(payout_amount::numeric), 0) AS house_profit
       FROM keno_rounds WHERE mode = 'real'
     `);
-    const houseProfit = parseFloat(((profitResult as any).rows?.[0] ?? (profitResult as any)[0])?.house_profit ?? "0");
+    const houseProfit = parseFloat(
+      ((profitResult as any).rows?.[0] ?? (profitResult as any)[0])
+        ?.house_profit ?? "0",
+    );
 
     // How much was already merged in previous calls
-    const mergedRow = await db.select().from(kenoSettingsTable).where(eq(kenoSettingsTable.key, 'merged_profit')).then(r => r[0]);
+    const mergedRow = await db
+      .select()
+      .from(kenoSettingsTable)
+      .where(eq(kenoSettingsTable.key, "merged_profit"))
+      .then((r) => r[0]);
     const alreadyMerged = parseFloat(mergedRow?.value ?? "0");
 
     const toMerge = houseProfit - alreadyMerged;
     if (toMerge <= 0) {
-      return res.json({ success: true, merged: 0, message: "No new profit to merge" });
+      return res.json({
+        success: true,
+        merged: 0,
+        message: "No new profit to merge",
+      });
     }
 
     // Add the delta to the platform wallet
@@ -2469,8 +2980,9 @@ kenoAdminRouter.post("/keno/merge-profit", adminAuth, async (req, res) => {
     `);
 
     // Record the new watermark so next merge only takes the delta
-    await db.insert(kenoSettingsTable)
-      .values({ key: 'merged_profit', value: String(houseProfit) })
+    await db
+      .insert(kenoSettingsTable)
+      .values({ key: "merged_profit", value: String(houseProfit) })
       .onConflictDoUpdate({
         target: kenoSettingsTable.key,
         set: { value: String(houseProfit), updatedAt: new Date() },
@@ -2489,10 +3001,17 @@ kenoAdminRouter.put("/keno/settings", adminAuth, async (req, res) => {
     const updates: Record<string, string> = req.body;
     // house_edge is NOT in this list — it has side-effects (recomputes the full paytable).
     // Use PUT /api/admin/games/keno/house-edge instead.
-    const allowed = ["game_enabled", "min_bet", "max_bet", "min_topup", "max_topup"];
+    const allowed = [
+      "game_enabled",
+      "min_bet",
+      "max_bet",
+      "min_topup",
+      "max_topup",
+    ];
     for (const [key, value] of Object.entries(updates)) {
       if (!allowed.includes(key)) continue;
-      await db.insert(kenoSettingsTable)
+      await db
+        .insert(kenoSettingsTable)
         .values({ key, value: String(value) })
         .onConflictDoUpdate({
           target: kenoSettingsTable.key,

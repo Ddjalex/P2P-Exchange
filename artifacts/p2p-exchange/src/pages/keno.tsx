@@ -1276,9 +1276,9 @@ export default function KenoPage() {
     if (animating) return;
     setCurrentPicks((prev) => {
       if (prev.includes(n)) return prev.filter((x) => x !== n);
-      if (prev.length >= 20) {
+      if (prev.length >= 10) {
         toast({
-          description: "Maximum 20 numbers per ticket",
+          description: "Maximum 10 numbers per ticket",
           variant: "destructive",
         });
         return prev;
@@ -1311,7 +1311,8 @@ export default function KenoPage() {
     ticketsThisRound < MAX_TICKETS_PER_ROUND &&
     roundState?.phase === "betting" &&
     (roundState?.secondsLeft ?? 0) > 0 &&
-    currentPicks.length === 20 &&
+    currentPicks.length >= 1 &&
+    currentPicks.length <= 10 &&
     !isNaN(activeBet) &&
     activeBet > 0 &&
     activeBet <= balance &&
@@ -1937,7 +1938,7 @@ export default function KenoPage() {
                       ? completedRoundResult.totalPayout > 0
                         ? `+${completedRoundResult.totalPayout.toFixed(2)} USDT won`
                         : "No winning numbers this round"
-                      : "Choose exactly 20 numbers"}
+                      : "Choose 1 to 10 numbers"}
                   </h2>
                   <p className="mt-1 text-sm font-semibold text-cyan-300">
                     {completedRoundResult && !animating
@@ -2122,7 +2123,7 @@ export default function KenoPage() {
               <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-white/10 pt-3">
                 <div className="flex items-center gap-2 text-xs text-slate-500">
                   <span className="font-bold text-slate-200">
-                    {currentPicks.length}/20
+                    {currentPicks.length}/10
                   </span>{" "}
                   selected
                 </div>
