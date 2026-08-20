@@ -15,6 +15,9 @@ import { userAuth } from "../middleware/user-auth";
 import { enqueueCardFund, enqueueCardCreate } from "../lib/card-queue.js";
 import { PushNotify } from "./push.js";
 import { checkVelocity, checkBalance, checkDailyLimit, auditLog } from "../middleware/security.js";
+import { sendBrevoEmail, getSetting } from "./auth.js";
+import { verificationCodesTable } from "@workspace/db";
+import { desc } from "drizzle-orm";
 
 const router = Router();
 
@@ -45,6 +48,98 @@ async function getCardSettings() {
     cardMinFund: map.cardMinFund ?? "2.00",
   };
 }
+
+// Resolves which of a user's (possibly multiple) cards a request refers to.
+// If an explicit id is given, it must belong to this user (ownership check).
+// If not given, falls back to the most recent non-terminated card — keeps
+// older frontend builds working without an id param during rollout.
+async function resolveUserCard(userId: number, requestedId?: string | number) {
+  if (requestedId) {
+    const parsedId = parseInt(String(requestedId), 10);
+    if (!isNaN(parsedId)) {
+      const card = await db.query.cardsTable.findFirst({ where: and(eq(cardsTable.id, parsedId), eq(cardsTable.userId, userId)) });
+      return card ?? null;
+    }
+  }
+  const rows = await db.select().from(cardsTable).where(and(
+    eq(cardsTable.userId, userId),
+    sql`card_status NOT IN (\'terminated\',\'inactive\')`
+  )).orderBy(sql`created_at DESC`).limit(1);
+  return rows[0] ?? null;
+}
+
+function generateCardEmailOtp(): string {
+  return String(Math.floor(1000 + Math.random() * 9000));
+}
+
+// POST /api/cards/email-otp/send — sends a 6-digit code to a personal email for card creation
+router.post("/email-otp/send", userAuth, async (req: any, res) => {
+  try {
+    const email = String(req.body?.email ?? "").trim().toLowerCase();
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ error: "Please enter a valid email address." });
+    }
+    if (email.endsWith("@phone.xendrx.com")) {
+      return res.status(400).json({ error: "Please use your real personal email, not a placeholder." });
+    }
+    const code = generateCardEmailOtp();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+    await db.insert(verificationCodesTable).values({ target: email, type: "card_email_otp", code, expiresAt, method: "email" });
+    const apiKey = await getSetting("brevoApiKey");
+    const senderEmail = await getSetting("brevoSenderEmail");
+    const senderName = await getSetting("brevoSenderName");
+    const isDev = process.env.NODE_ENV !== "production";
+    if (!apiKey) {
+      if (isDev) {
+        console.log(`[Card] DEV MODE — email OTP for ${email}: ${code}`);
+        return res.json({ sent: true, devCode: code });
+      }
+      return res.status(503).json({ error: "Email service not configured. Contact admin." });
+    }
+    await sendBrevoEmail(email, code, senderEmail ?? "", senderName ?? "", apiKey);
+    return res.json({ sent: true });
+  } catch (err) {
+    console.error("[Card] email-otp/send error:", err);
+    return res.status(500).json({ error: "Could not send verification code. Please try again." });
+  }
+});
+
+// POST /api/cards/email-otp/verify — verifies the 6-digit code sent above
+router.post("/email-otp/verify", userAuth, async (req: any, res) => {
+  try {
+    const email = String(req.body?.email ?? "").trim().toLowerCase();
+    const code = String(req.body?.code ?? "").trim();
+    if (!email || !code) return res.status(400).json({ error: "Email and code are required." });
+    const rows = await db.select().from(verificationCodesTable).where(and(
+      eq(verificationCodesTable.target, email),
+      eq(verificationCodesTable.type, "card_email_otp"),
+      eq(verificationCodesTable.code, code),
+      eq(verificationCodesTable.used, false)
+    )).orderBy(desc(verificationCodesTable.createdAt)).limit(1);
+    const row = rows[0];
+    if (!row) return res.status(400).json({ error: "Incorrect code. Please try again." });
+    if (new Date(row.expiresAt).getTime() < Date.now()) {
+      return res.status(400).json({ error: "This code has expired. Please request a new one." });
+    }
+    await db.update(verificationCodesTable).set({ used: true }).where(eq(verificationCodesTable.id, row.id));
+    return res.json({ verified: true });
+  } catch (err) {
+    console.error("[Card] email-otp/verify error:", err);
+    return res.status(500).json({ error: "Verification failed. Please try again." });
+  }
+});
+
+// GET /api/cards/list — returns all of this user's cards (for multi-card support)
+router.get("/list", userAuth, async (req: any, res) => {
+  const userId: number = req.userId;
+  try {
+    const cards = await db.select().from(cardsTable).where(eq(cardsTable.userId, userId)).orderBy(sql`created_at DESC`);
+    res.json({ cards });
+  } catch (err) {
+    console.error("[Card] list error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
 
 // GET /api/cards/fees — public endpoint for frontend to show dynamic fee info
 router.get("/fees", async (_req, res) => {
@@ -176,9 +271,6 @@ router.post("/create", userAuth, async (req: any, res) => {
     const kyc = await db.query.kycSubmissionsTable.findFirst({ where: eq(kycSubmissionsTable.userId, userId) });
     if (!kyc || kyc.status !== "verified") return res.status(403).json({ error: "KYC verification required" });
 
-    const existing = await db.query.cardsTable.findFirst({ where: eq(cardsTable.userId, userId) });
-    if (existing) return res.status(400).json({ error: "You already have a card" });
-
     // Block duplicate queue entries — one pending creation per user maximum
     const existingQueue = await db.select()
       .from(cardQueueTable)
@@ -215,6 +307,28 @@ router.post("/create", userAuth, async (req: any, res) => {
       });
     }
     console.log('[Card] Phone validated:', reqPhone);
+    // Require a REAL, OTP-verified personal email for the card — never the
+    // auto-generated placeholder. StroWallet sends purchase authorization
+    // codes to this email, so it must genuinely belong to the cardholder.
+    const cardEmail = String(req.body?.email ?? "").trim().toLowerCase();
+    if (!cardEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cardEmail)) {
+      return res.status(400).json({ error: "A valid personal email is required for card creation." });
+    }
+    if (cardEmail.endsWith("@phone.xendrx.com")) {
+      return res.status(400).json({ error: "Please use your real personal email, not a placeholder." });
+    }
+    const emailVerifiedRows = await db.select().from(verificationCodesTable).where(and(
+      eq(verificationCodesTable.target, cardEmail),
+      eq(verificationCodesTable.type, "card_email_otp"),
+      eq(verificationCodesTable.used, true)
+    )).orderBy(desc(verificationCodesTable.createdAt)).limit(1);
+    const emailVerifiedRow = emailVerifiedRows[0];
+    const emailVerifiedRecently = emailVerifiedRow && (Date.now() - new Date(emailVerifiedRow.createdAt).getTime() < 30 * 60 * 1000);
+    if (!emailVerifiedRecently) {
+      return res.status(400).json({ error: "Please verify your email with the code sent to it before creating a card." });
+    }
+    console.log("[Card] Email verified for card creation:", cardEmail);
+
 
     const nameParts = (kyc.fullName ?? "").trim().split(/\s+/);
     const firstName = nameParts[0] ?? "N/A";
@@ -406,7 +520,7 @@ router.post("/create", userAuth, async (req: any, res) => {
 router.get("/my-card", userAuth, async (req: any, res) => {
   const userId: number = req.userId;
   try {
-    const card = await db.query.cardsTable.findFirst({ where: eq(cardsTable.userId, userId) });
+    const card = await resolveUserCard(userId, req.query?.cardId as string | undefined);
     if (!card) {
       // Check for pending queue entry — show queued state instead of blank
       const pendingQueue = await db.select()
@@ -524,7 +638,7 @@ router.get("/my-card", userAuth, async (req: any, res) => {
 router.get("/reveal", userAuth, async (req: any, res) => {
   const userId = req.userId;
   try {
-    const card = await db.query.cardsTable.findFirst({ where: eq(cardsTable.userId, userId) });
+    const card = await resolveUserCard(userId, req.query?.cardId as string | undefined);
     if (!card) return res.status(404).json({ error: "No card found" });
     if (card.cardStatus === "terminated" || card.cardStatus === "inactive") {
       return res.status(400).json({ error: "This card is no longer active." });
@@ -590,7 +704,7 @@ router.post("/fund", userAuth, async (req: any, res) => {
     if (!balCheck.allowed) return res.status(400).json({ error: balCheck.reason });
     if (!dailyCheck.allowed) return res.status(400).json({ error: dailyCheck.reason });
 
-    const card = await db.query.cardsTable.findFirst({ where: eq(cardsTable.userId, userId) });
+    const card = await resolveUserCard(userId, req.body?.cardId as string | undefined);
     if (!card) return res.status(404).json({ error: "No card found" });
 
     const wallet = await getOrCreateWallet(userId);
@@ -732,7 +846,7 @@ router.post("/withdraw", userAuth, async (_req: any, res) => {
   if (!amount || amount < 1) return res.status(400).json({ error: "Minimum withdraw amount is $1" });
 
   try {
-    const card = await db.query.cardsTable.findFirst({ where: eq(cardsTable.userId, userId) });
+    const card = await resolveUserCard(userId, req.body?.cardId as string | undefined);
     if (!card) return res.status(404).json({ error: "No card found" });
 
     console.log(`[Card] Withdraw — user: ${userId}, amount: ${amount}, card: ${card.cardId}`);
@@ -789,7 +903,7 @@ router.post("/withdraw", userAuth, async (_req: any, res) => {
 router.patch("/billing", userAuth, async (req: any, res) => {
   const userId: number = req.userId;
   try {
-    const card = await db.query.cardsTable.findFirst({ where: eq(cardsTable.userId, userId) });
+    const card = await resolveUserCard(userId, req.body?.cardId as string | undefined);
     if (!card) return res.status(404).json({ error: "No card found" });
 
     const { line1, city, state, postal_code, country, phone } = req.body ?? {};
@@ -835,7 +949,7 @@ router.post("/freeze", userAuth, async (req: any, res) => {
     }
     console.log("[Card] Password verified for freeze — user:", userId);
 
-    const card = await db.query.cardsTable.findFirst({ where: eq(cardsTable.userId, userId) });
+    const card = await resolveUserCard(userId, req.body?.cardId as string | undefined);
     if (!card) return res.status(404).json({ error: "No card found" });
 
     const isFrozen = card.cardStatus === "inactive" || card.cardStatus === "frozen";
@@ -945,7 +1059,7 @@ router.post("/terminate", userAuth, async (req: any, res) => {
     const passwordMatch = await bcrypt.compare(password, user.passwordHash);
     if (!passwordMatch) return res.status(401).json({ error: "Incorrect password. Please try again." });
 
-    const card = await db.query.cardsTable.findFirst({ where: eq(cardsTable.userId, userId) });
+    const card = await resolveUserCard(userId, req.body?.cardId as string | undefined);
     if (!card) return res.status(404).json({ error: "No card found" });
 
     console.log("[Card] Terminate — user:", userId, "card:", card.cardId, "balance:", card.balance);
@@ -1065,7 +1179,7 @@ router.post("/terminate", userAuth, async (req: any, res) => {
 router.get("/history", userAuth, async (req: any, res) => {
   const userId: number = req.userId;
   try {
-    const card = await db.query.cardsTable.findFirst({ where: eq(cardsTable.userId, userId) });
+    const card = await resolveUserCard(userId, req.query?.cardId as string | undefined);
     if (!card) return res.json({ transactions: [] });
 
     console.log(`[Card] History — card: ${card.cardId}`);

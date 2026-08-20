@@ -93,7 +93,7 @@ function generateCode(): string {
   return String(Math.floor(100000 + Math.random() * 900000));
 }
 
-async function getSetting(key: string): Promise<string | null> {
+export async function getSetting(key: string): Promise<string | null> {
   const row = await db.select().from(systemSettingsTable).where(eq(systemSettingsTable.key, key)).then(r => r[0]);
   return row?.value ?? null;
 }
@@ -135,7 +135,7 @@ async function sendSms(phone: string, message: string, apiKey: string): Promise<
   }
 }
 
-async function sendBrevoEmail(to: string, code: string, senderEmail: string, senderName: string, apiKey: string): Promise<void> {
+export async function sendBrevoEmail(to: string, code: string, senderEmail: string, senderName: string, apiKey: string): Promise<void> {
   const res = await fetch("https://api.brevo.com/v3/smtp/email", {
     method: "POST",
     headers: {

@@ -2,7 +2,7 @@ import { pgTable, serial, integer, text, timestamp } from "drizzle-orm/pg-core";
 
 export const cardsTable = pgTable("cards", {
   id: serial("id").primaryKey(),
-  userId: integer("user_id").unique(),
+  userId: integer("user_id"), // no longer unique — users can have multiple cards
   cardId: text("card_id").unique(),
   cardUserId: text("card_user_id"),
   customerId: text("customer_id"),

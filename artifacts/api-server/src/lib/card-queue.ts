@@ -235,9 +235,16 @@ export async function processCardQueue() {
           // Mark completed FIRST — before any further logic that might throw
           await db.update(cardQueueTable).set({ status: "completed", updatedAt: new Date() }).where(eq(cardQueueTable.id, item.id));
 
-          // Guard against duplicates — only insert if no card exists for this user yet
+          // Guard against duplicates — only insert if no card exists for this user yet.
+          // If the existing card is terminated/inactive, clear it so the user can recreate.
           const existing = await db.select().from(cardsTable).where(eq(cardsTable.userId, item.userId)).limit(1);
-          if (cardId && existing.length === 0) {
+          const existingRow = existing[0];
+          const isDeadExistingRow = existingRow && (existingRow.cardStatus === "terminated" || existingRow.cardStatus === "inactive");
+          if (existingRow && isDeadExistingRow) {
+            await db.delete(cardsTable).where(eq(cardsTable.id, existingRow.id));
+            console.log(`[Queue] Cleared old terminated card row for user ${item.userId} to allow recreation`);
+          }
+          if (cardId && (existing.length === 0 || isDeadExistingRow)) {
             // Fetch full card details from StroWallet to get last4, cvv, expiry, name, etc.
             const detail = await stroFetchCardDetail(cardId);
             const pick = (...vals: any[]) => vals.find(v => v !== null && v !== undefined && v !== "") ?? null;

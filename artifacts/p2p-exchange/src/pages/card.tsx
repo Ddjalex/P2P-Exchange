@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AppLayout } from "@/components/layout";
-import { Eye, EyeOff, ArrowUpCircle, Lock, Unlock, RefreshCw, CheckCircle, History, Clock, Copy, AlertTriangle, Trash2 } from "lucide-react";
+import { Eye, EyeOff, ArrowUpCircle, Lock, Unlock, RefreshCw, CheckCircle, History, Clock, Copy, AlertTriangle, Trash2, Mail, CreditCard, MapPin, ChevronRight } from "lucide-react";
 
 function getToken() {
   return localStorage.getItem("p2p_token") ?? "";
@@ -279,6 +279,15 @@ export default function CardPage() {
   const [addrState, setAddrState] = useState("");
   const [postalCode, setPostalCode] = useState("");
   const [phone, setPhone] = useState("");
+  const [cardEmail, setCardEmail] = useState("");
+  const [otpCode, setOtpCode] = useState("");
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpVerified, setOtpVerified] = useState(false);
+  const [otpSending, setOtpSending] = useState(false);
+  const [otpVerifying, setOtpVerifying] = useState(false);
+  const [otpError, setOtpError] = useState("");
+  const [createStep, setCreateStep] = useState<1 | 2>(1);
+  const [showBilling, setShowBilling] = useState(false);
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
 
 
@@ -323,8 +332,41 @@ export default function CardPage() {
     queryClient.invalidateQueries({ queryKey: ["my-card-queue"] });
   };
 
+  const sendCardOtp = async () => {
+    setOtpError("");
+    if (!cardEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cardEmail)) {
+      setOtpError("Please enter a valid email address.");
+      return;
+    }
+    setOtpSending(true);
+    try {
+      const res: any = await apiFetch("/api/cards/email-otp/send", { method: "POST", body: JSON.stringify({ email: cardEmail }) });
+      setOtpSent(true);
+      if (res?.devCode) setOtpCode(res.devCode);
+    } catch (e: any) {
+      setOtpError(e?.message ?? "Could not send code. Please try again.");
+    } finally {
+      setOtpSending(false);
+    }
+  };
+  const verifyCardOtp = async () => {
+    setOtpError("");
+    if (!otpCode) {
+      setOtpError("Please enter the code.");
+      return;
+    }
+    setOtpVerifying(true);
+    try {
+      await apiFetch("/api/cards/email-otp/verify", { method: "POST", body: JSON.stringify({ email: cardEmail, code: otpCode }) });
+      setOtpVerified(true);
+    } catch (e: any) {
+      setOtpError(e?.message ?? "Incorrect code. Please try again.");
+    } finally {
+      setOtpVerifying(false);
+    }
+  };
   const createMutation = useMutation({
-    mutationFn: () => apiFetch("/api/cards/create", { method: "POST", body: JSON.stringify({ country, line1, city: addrCity, state: addrState || addrCity, postal_code: postalCode, phone }) }),
+    mutationFn: () => apiFetch("/api/cards/create", { method: "POST", body: JSON.stringify({ country, line1, city: addrCity, state: addrState || addrCity, postal_code: postalCode, phone, email: cardEmail }) }),
     onSuccess: (d: any) => {
       invalidate();
       setModal(null);
@@ -511,7 +553,7 @@ export default function CardPage() {
             )}
             <div style={{ width: "100%", maxWidth: "360px" }}>
               <Btn
-                onClick={() => setModal("confirm-create")}
+                onClick={() => { setCardEmail(""); setOtpSent(false); setOtpVerified(false); setOtpCode(""); setOtpError(""); setCreateStep(1); setShowBilling(false); setModal("confirm-create"); }}
                 disabled={walletBalance < totalRequired || createMutation.isPending || (createMutation.isSuccess && (createMutation.data as any)?.queued)}
               >
                 {createMutation.isPending ? "⏳ Requesting…" : (createMutation.isSuccess && (createMutation.data as any)?.queued) ? "✅ Request Queued" : "Create My Card"}
@@ -602,6 +644,7 @@ export default function CardPage() {
                     </button>
                   ))}
                 </div>
+                <button onClick={() => { setCardEmail(""); setOtpSent(false); setOtpVerified(false); setOtpCode(""); setOtpError(""); setCreateStep(1); setShowBilling(false); setModal("confirm-create"); }} style={{ width: "100%", background: "rgba(0,229,255,0.06)", border: "1px dashed rgba(0,229,255,0.3)", borderRadius: "14px", padding: "14px", color: "#00e5ff", cursor: "pointer", fontFamily: "Poppins, sans-serif", fontSize: "13px", fontWeight: 600, marginBottom: "16px" }}>+ Create Another Card</button>
                 <DangerZone card={card} onTerminate={() => setModal("terminate")} />
               </div>
             )}
@@ -702,37 +745,122 @@ export default function CardPage() {
       {/* MODALS */}
 
       {modal === "confirm-create" && (
-        <Modal title="Create Your Xendrx Card" onClose={() => setModal(null)}>
-          <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "16px" }}>
-            {[["Card for", kycName], ["Creation fee", `$${creationFee.toFixed(2)} USDT deducted`], ["Auto-loaded", `$${initialLoad.toFixed(2)} USDT on card`], ["Your balance", `$${walletBalance.toFixed(2)} USDT`]].map(([l, v]) => (
-              <div key={l} style={{ display: "flex", justifyContent: "space-between", padding: "10px 14px", background: "rgba(0,229,255,0.05)", borderRadius: "10px" }}>
-                <span style={{ color: "#8899aa", fontSize: "13px" }}>{l}</span>
-                <span style={{ color: "#fff", fontSize: "13px", fontWeight: 600 }}>{v}</span>
+        <Modal title={createStep === 1 ? "Create your card" : "Confirm your card"} onClose={() => setModal(null)}>
+          <p style={{ color: "#6677aa", fontSize: "12px", margin: "0 0 16px" }}>Step {createStep} of 2</p>
+          <div style={{ display: "flex", gap: "6px", marginBottom: "20px" }}>
+            <div style={{ flex: 1, height: "3px", borderRadius: "2px", background: "#00e5ff" }} />
+            <div style={{ flex: 1, height: "3px", borderRadius: "2px", background: createStep === 2 ? "#00e5ff" : "rgba(255,255,255,0.1)" }} />
+          </div>
+          {createStep === 1 && (
+            <>
+              <div style={{ background: "rgba(0,229,255,0.06)", borderRadius: "14px", padding: "16px", marginBottom: "16px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
+                  <Mail size={18} color="#00e5ff" />
+                  <span style={{ color: "#fff", fontSize: "13px", fontWeight: 600 }}>Personal email</span>
+                </div>
+                <p style={{ color: "#8899aa", fontSize: "12px", lineHeight: 1.6, marginBottom: "14px" }}>
+                  We will send purchase codes here. Use an email you can access.
+                </p>
+                <input
+                  type="email"
+                  value={cardEmail}
+                  onChange={(e) => { setCardEmail(e.target.value); setOtpSent(false); setOtpVerified(false); setOtpCode(""); }}
+                  placeholder="you@example.com"
+                  disabled={otpVerified}
+                  style={{ width: "100%", boxSizing: "border-box", padding: "13px 14px", background: "#0a0a14", border: "1px solid rgba(0,229,255,0.25)", borderRadius: "12px", color: "#fff", fontSize: "14px", marginBottom: "10px", outline: "none", fontFamily: "Poppins, sans-serif" }}
+                />
+                {!otpVerified && (
+                  <button onClick={sendCardOtp} disabled={otpSending || !cardEmail} style={{ width: "100%", padding: "13px", background: "#00e5ff", color: "#0a0a14", border: "none", borderRadius: "12px", fontWeight: 600, fontSize: "14px", cursor: otpSending || !cardEmail ? "not-allowed" : "pointer", opacity: otpSending || !cardEmail ? 0.6 : 1, fontFamily: "Poppins, sans-serif" }}>
+                    {otpSending ? "Sending..." : otpSent ? "Resend code" : "Send code"}
+                  </button>
+                )}
+                {otpSent && !otpVerified && (
+                  <div style={{ display: "flex", gap: "8px", marginTop: "14px", paddingTop: "14px", borderTop: "1px solid rgba(255,255,255,0.08)" }}>
+                    <div style={{ display: "flex", gap: "6px", flex: 1 }}>
+                      {[0, 1, 2, 3].map((i) => (
+                        <input
+                          key={i}
+                          id={`otp-box-${i}`}
+                          value={otpCode[i] ?? ""}
+                          onChange={(e) => {
+                            const v = e.target.value.replace(/\D/g, "").slice(-1);
+                            const chars = otpCode.split("");
+                            chars[i] = v;
+                            const next = chars.join("").slice(0, 4);
+                            setOtpCode(next);
+                            if (v && i < 3) document.getElementById(`otp-box-${i + 1}`)?.focus();
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Backspace" && !otpCode[i] && i > 0) document.getElementById(`otp-box-${i - 1}`)?.focus();
+                          }}
+                          maxLength={1}
+                          inputMode="numeric"
+                          style={{ width: "38px", height: "44px", background: "#0a0a14", border: otpCode[i] ? "1px solid #00e5ff" : "1px solid rgba(0,229,255,0.25)", borderRadius: "10px", color: "#fff", fontSize: "16px", fontWeight: 600, textAlign: "center", outline: "none", fontFamily: "Poppins, sans-serif", boxSizing: "border-box" }}
+                        />
+                      ))}
+                    </div>
+                    <button onClick={verifyCardOtp} disabled={otpVerifying || otpCode.length < 4} style={{ padding: "0 16px", background: "rgba(0,229,255,0.12)", color: "#00e5ff", border: "none", borderRadius: "10px", fontWeight: 600, fontSize: "13px", cursor: otpVerifying || otpCode.length < 4 ? "not-allowed" : "pointer", opacity: otpVerifying || otpCode.length < 4 ? 0.6 : 1, fontFamily: "Poppins, sans-serif" }}>
+                      {otpVerifying ? "..." : "Verify"}
+                    </button>
+                  </div>
+                )}
+                {otpVerified && <p style={{ color: "#4dff88", fontSize: "12px", marginTop: "10px" }}>Email verified</p>}
+                {otpError && <p style={{ color: "#ff8888", fontSize: "12px", marginTop: "10px" }}>{otpError}</p>}
               </div>
-            ))}
-          </div>
-          <div style={{ background: "rgba(0,229,255,0.05)", border: "1px solid rgba(0,229,255,0.15)", borderRadius: "10px", padding: "12px 14px", marginBottom: "16px" }}>
-            <p style={{ color: "#00e5ff", fontSize: "11px", fontWeight: 700, letterSpacing: "1px", marginBottom: "8px" }}>📍 BILLING ADDRESS</p>
-            {[
-              ["Address", "3401 N. Miami, Ave. Ste 230"],
-              ["City", "Miami"],
-              ["State", "Florida"],
-              ["Postal Code", "33127"],
-              ["Country", "United States"],
-            ].map(([label, value]) => (
-              <div key={label} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: "1px solid rgba(0,229,255,0.06)" }}>
-                <span style={{ color: "#6677aa", fontSize: "12px" }}>{label}</span>
-                <span style={{ color: "#dde", fontSize: "12px", fontWeight: 600 }}>{value}</span>
+              <button
+                onClick={() => setCreateStep(2)}
+                disabled={!otpVerified}
+                style={{ width: "100%", padding: "14px", background: otpVerified ? "rgba(0,229,255,0.1)" : "rgba(255,255,255,0.06)", color: otpVerified ? "#fff" : "#556677", border: otpVerified ? "1px solid rgba(0,229,255,0.3)" : "none", borderRadius: "12px", fontWeight: 600, fontSize: "14px", cursor: otpVerified ? "pointer" : "not-allowed", fontFamily: "Poppins, sans-serif" }}
+              >
+                Continue
+              </button>
+            </>
+          )}
+          {createStep === 2 && (
+            <>
+              <div style={{ background: "rgba(0,229,255,0.06)", borderRadius: "14px", padding: "16px", marginBottom: "12px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px" }}>
+                  <CreditCard size={18} color="#00e5ff" />
+                  <span style={{ color: "#fff", fontSize: "13px", fontWeight: 600 }}>Order summary</span>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: "9px" }}>
+                  {[["Card for", kycName], ["Creation fee", `$${creationFee.toFixed(2)} USDT`], ["Auto-loaded", `$${initialLoad.toFixed(2)} USDT`]].map(([l, v]) => (
+                    <div key={l} style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span style={{ color: "#8899aa", fontSize: "13px" }}>{l}</span>
+                      <span style={{ color: "#fff", fontSize: "13px", fontWeight: 500 }}>{v}</span>
+                    </div>
+                  ))}
+                  <div style={{ display: "flex", justifyContent: "space-between", paddingTop: "9px", borderTop: "1px solid rgba(255,255,255,0.08)" }}>
+                    <span style={{ color: "#8899aa", fontSize: "13px" }}>Your balance</span>
+                    <span style={{ color: "#00e5ff", fontSize: "13px", fontWeight: 600 }}>${walletBalance.toFixed(2)} USDT</span>
+                  </div>
+                </div>
               </div>
-            ))}
-            <p style={{ color: "#8899aa", fontSize: "11px", marginTop: "8px", lineHeight: 1.5 }}>
-              This billing address is automatically assigned to your card.
-            </p>
-          </div>
-          <div style={{ display: "flex", gap: "10px" }}>
-            <Btn variant="secondary" onClick={() => setModal(null)}>Cancel</Btn>
-            <Btn onClick={() => createMutation.mutate()} disabled={mutBusy}>{createMutation.isPending ? "Creating…" : "Confirm"}</Btn>
-          </div>
+              <button
+                onClick={() => setShowBilling(!showBilling)}
+                style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "13px 16px", background: "rgba(0,229,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "14px", marginBottom: "12px", cursor: "pointer" }}
+              >
+                <span style={{ display: "flex", alignItems: "center", gap: "8px", color: "#fff", fontSize: "13px", fontWeight: 600 }}>
+                  <MapPin size={16} color="#00e5ff" /> Billing address
+                </span>
+                <ChevronRight size={16} color="#556677" style={{ transform: showBilling ? "rotate(90deg)" : "none", transition: "transform 0.15s" }} />
+              </button>
+              {showBilling && (
+                <div style={{ background: "rgba(0,229,255,0.03)", borderRadius: "10px", padding: "12px 14px", marginBottom: "12px" }}>
+                  {[["Address", "3401 N. Miami, Ave. Ste 230"], ["City", "Miami"], ["State", "Florida"], ["Postal Code", "33127"], ["Country", "United States"]].map(([label, value]) => (
+                    <div key={label} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: "1px solid rgba(0,229,255,0.06)" }}>
+                      <span style={{ color: "#6677aa", fontSize: "12px" }}>{label}</span>
+                      <span style={{ color: "#dde", fontSize: "12px", fontWeight: 600 }}>{value}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div style={{ display: "flex", gap: "10px" }}>
+                <Btn variant="secondary" onClick={() => setCreateStep(1)}>Back</Btn>
+                <Btn onClick={() => createMutation.mutate()} disabled={mutBusy}>{createMutation.isPending ? "Creating..." : "Create card"}</Btn>
+              </div>
+            </>
+          )}
         </Modal>
       )}
 
